@@ -5,7 +5,10 @@ from matplotlib.animation import FuncAnimation
 import numpy as np
 
 # Replace 'COM3' with your port, in this case '/dev/cu.usbmodem101'
-ser = serial.Serial('/dev/cu.usbmodem101', 9600, timeout=1)
+mac_port = '/dev/cu.usbmodem101'
+windows_port = 'COM5'
+
+ser = serial.Serial(windows_port, 9600, timeout=1)
 time.sleep(2)  # Give some time for the connection to be established
 
 signal_limit = 2 ** 8
