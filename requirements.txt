@@ -6,3 +6,4 @@ pyjwt
 httpx
 httpx[http2]
 scipy
+tensorflow
