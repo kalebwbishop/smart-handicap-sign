@@ -1,0 +1,1 @@
+print("Device booting...")

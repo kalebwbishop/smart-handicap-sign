@@ -1,3 +1,8 @@
 numpy
 matplotlib
 pyserial
+cryptography
+pyjwt
+httpx
+httpx[http2]
+scipy
