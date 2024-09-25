@@ -5,6 +5,7 @@ from scipy.signal import butter, filtfilt, welch, correlate, find_peaks, lfilter
 from send_notification import send_push_notification
 
 def check_hazard_lights(intensity, fs):
+    print("[" + ", ".join(map(str, intensity)) + "]")
     """
     Check for hazard lights from the signal intensity using FFT and peak detection.
     
@@ -15,22 +16,52 @@ def check_hazard_lights(intensity, fs):
         The sampling frequency of the signal (default is 100 Hz).
     """
 
+    def manual_lfilter(b, a, x, zi=None):
+        # Ensure a[0] is 1 for stability, normalize if necessary
+        if a[0] != 1:
+            b = b / a[0]
+            a = a / a[0]
+
+        # Initialize output array
+        y = np.zeros_like(x)
+        
+        # If initial conditions are not provided, default to zero
+        if zi is None:
+            zi = np.zeros(max(len(a), len(b)) - 1)
+
+        # Lengths of filter coefficients
+        M = len(b)  # Length of the numerator (feed-forward coefficients)
+        N = len(a)  # Length of the denominator (feedback coefficients)
+
+        # Iterate over each sample in the input signal x
+        for n in range(len(x)):
+            # Calculate the current output sample y[n]
+            y_n = 0
+
+            # Apply the numerator (b) part: sum b[i] * x[n-i]
+            for i in range(M):
+                if n - i >= 0:  # Avoid out-of-bounds
+                    y_n += b[i] * x[n - i]
+
+            # Apply the denominator (a) part: sum -a[i] * y[n-i]
+            for i in range(1, N):  # Skip a[0] since it's normalized
+                if n - i >= 0:  # Avoid out-of-bounds
+                    y_n -= a[i] * y[n - i]
+
+            # Store the result in the output signal
+            y[n] = y_n
+
+        return y
+
     def manual_filtfilt(b, a, x):
-        # Length of the input signal
-        n = len(x)
-        
-        # Compute the initial conditions for the forward-backward filter.
-        # These are based on the input data and filter coefficients.
-        zi = np.zeros(max(len(a), len(b)) - 1)
-        
-        # Forward pass: filter the signal in the forward direction.
-        y_fwd, zf_fwd = lfilter(b, a, x, zi=zi * x[0])
+        # Forward pass: filter the signal in the forward direction using manual_lfilter
+        y_fwd = manual_lfilter(b, a, x)
         
         # Reverse the filtered signal
         y_fwd_rev = y_fwd[::-1]
         
-        # Backward pass: filter the reversed signal in the forward direction
-        y_bwd, zf_bwd = lfilter(b, a, y_fwd_rev, zi=zi * y_fwd_rev[0])
+        # Backward pass: filter the reversed signal again using manual_lfilter
+        y_bwd = manual_lfilter(b, a, y_fwd_rev)
         
         # Reverse the backward filtered signal to get the final output
         y_filt = y_bwd[::-1]
@@ -49,7 +80,6 @@ def check_hazard_lights(intensity, fs):
     def bandpass_filter(data, lowcut, highcut, fs, order=4):
         b, a = butter_bandpass(lowcut, highcut, fs, order=order)
         y = manual_filtfilt(b, a, data)
-        print(y)
         return y
     
     # Generate more random-like signal with a faint 1.5 Hz component

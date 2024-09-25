@@ -7,7 +7,7 @@ import numpy as np
 from detection import check_hazard_lights
 
 mac_port = '/dev/cu.usbmodem101'
-windows_port = 'COM3'
+windows_port = 'COM4'
 
 ser = serial.Serial(windows_port, 9600, timeout=1)
 time.sleep(2)
