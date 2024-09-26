@@ -4,43 +4,58 @@ import json
 import math
 
 SIZE = 256
-FREQ = 1 / 25 
+TIME_PERIOD = 1 / 25 
 SAMPLES = 5000
-TARGET_MAX = 1.8
-TARGET_MIN = 1.2
+TARGET_MAX = 2.5
+TARGET_MIN = 0.5
 EPOCHS = 25
 
-# Generate some sample data (replace with your real data)
-
 # Generate data for a sine wave
-training_data = []
-training_labels = []
+training_data = np.empty((0, SIZE))
+training_labels = np.empty((0,))
 for i in range(SAMPLES // 2):
     temp_freq = np.random.uniform(0.5, 5)
+    temp_offset = np.random.uniform(-2, 2)
 
-    x = np.linspace(0, SIZE * FREQ, SIZE)
-    noise = np.random.normal(0, 3, SIZE)  # Adding Gaussian noise with mean 0 and standard deviation 0.1
-    y = np.sin(2 * math.pi * x / temp_freq) + noise
+    x = np.linspace(0, SIZE * TIME_PERIOD, SIZE)
+    noise = np.random.normal(0, 3, SIZE)
+    y = np.sin(2 * math.pi * x / temp_freq + temp_offset) + noise
 
-    training_data.append(y)
-    training_labels.append(temp_freq >= TARGET_MIN and temp_freq <= TARGET_MAX)
+    y -= np.min(y)
+    y /= np.max(y)
 
+    training_data = np.append(training_data, [y], axis=0)
+    training_labels = np.append(training_labels, False)
 
-training_data = np.array(training_data)
-training_labels = np.array(training_labels)
 
 # Generate square wave data
 for i in range(SAMPLES // 2):
-    temp_freq = np.random.uniform(0.5, 5)
+    temp_freq = np.random.uniform(0.2, 4)
+    temp_offset = np.random.uniform(0, 256)
 
-    x = np.linspace(0, SIZE * FREQ, SIZE)
-    noise = np.random.normal(0, 3, SIZE)  # Adding Gaussian noise with mean 0 and standard deviation 0.1
-    y = np.sign(np.sin(2 * math.pi * x / temp_freq)) + noise
+    x = np.linspace(0, SIZE * TIME_PERIOD, SIZE)
+    noise = np.random.normal(0, 0.2, SIZE)
+    y =  np.sin(math.pi * (x + temp_offset) / temp_freq) + (1/3) * np.sin(3 * math.pi * (x + temp_offset) / temp_freq)  + (1/5) * np.sin(5 * math.pi * (x + temp_offset) / temp_freq) + (1/7) * np.sin(7 * math.pi * (x + temp_offset) / temp_freq) + noise
+
+    y -= np.min(y)
+    y /= np.max(y)
 
     training_data = np.append(training_data, [y], axis=0)
     training_labels = np.append(training_labels, [temp_freq >= TARGET_MIN and temp_freq <= TARGET_MAX])
 
+    # import matplotlib.pyplot as plt
 
+    # Plot the last 5 training data sets
+    # print(training_labels[-5:])
+    # plt.figure(figsize=(10, 8))
+    # for i in range(1, 6):
+    #     plt.subplot(5, 1, i)
+    #     plt.plot(x, training_data[-i])
+    #     plt.title(f'Training Data Set {-i}')
+    #     plt.xlabel('Sample Index')
+    #     plt.ylabel('Normalized Amplitude')
+    # plt.tight_layout()
+    # plt.show()
 
 # Build a simple neural network model in TensorFlow
 model = tf.keras.Sequential([

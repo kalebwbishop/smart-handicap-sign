@@ -5,7 +5,6 @@ ser = serial.Serial('COM4', 9600, timeout=1)
 sleep(2)
 
 while True:
-    print(ser.in_waiting)
     while ser.in_waiting:
         data = ser.readline().decode('utf-8').strip()
 
