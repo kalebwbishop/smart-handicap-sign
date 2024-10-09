@@ -26,6 +26,16 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
+      - name: Cache dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            venv
+            ~/.cache/pip
+          key: ${{ runner.os }}-python-${{ env.PYTHON_VERSION }}-${{ hashFiles('${{ env.AZURE_FUNCTIONAPP_PACKAGE_PATH }}/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-python-${{ env.PYTHON_VERSION }}-
+
       - name: Create and start virtual environment
         run: |
           python -m venv venv
