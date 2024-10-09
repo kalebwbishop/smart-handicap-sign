@@ -76,8 +76,8 @@ weights_output, biases_output = model.layers[1].get_weights()
 # Save the weights and biases to a file
 with open('./model_weights_biases.json', 'w') as f:
     f.write(json.dumps({
-        "weights_hidden": weights_hidden.tolist(),
-        "biases_hidden": biases_hidden.tolist(),
-        "weights_output": weights_output.tolist(),
-        "biases_output": biases_output.tolist()
+        "weights_hidden": [[f"{float(j):.4f}" for j in i] for i in list(weights_hidden.tolist())],
+        "biases_hidden": [f"{float(j):.4f}" for j in biases_hidden.tolist()],
+        "weights_output": [[f"{float(j):.4f}" for j in i] for i in list(weights_output.tolist())],
+        "biases_output": [f"{float(j):.4f}" for j in biases_output.tolist()]
     }, indent=4))

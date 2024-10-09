@@ -47,6 +47,8 @@ def send_push_notification(device_token):
             print(f"Failed to send push notification: {response.status_code} {response.text}")
 
 
+send_push_notification("ee939ba5182a53662dffef950bbf5a773a9dedb18f26dfa2b5dcff8a8c3c112c")
+
 import serial
 from time import sleep
 

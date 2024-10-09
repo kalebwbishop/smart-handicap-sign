@@ -1,0 +1,8 @@
+{
+  "[python]": {
+    "editor.defaultFormatter": "ms-python.python"
+  },
+  "files.associations": {
+    "ostream": "cpp"
+  }
+}

@@ -7,3 +7,5 @@ httpx
 httpx[http2]
 scipy
 tensorflow
+flask
+psycopg2
