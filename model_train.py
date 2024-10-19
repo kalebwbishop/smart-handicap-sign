@@ -68,16 +68,29 @@ model = tf.keras.Sequential([
 model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 model.fit(training_data, training_labels, epochs=EPOCHS)
 
+def round_float_array(array, decimals=5):
+    """Round the elements of a numpy array to a specified number of decimal places."""
+    return np.round(array, decimals)
+
 # Get the weights and biases from the trained model
 weights_hidden, biases_hidden = model.layers[0].get_weights()
 weights_output, biases_output = model.layers[1].get_weights()
 
-# Print the weights and biases for use in MicroPython
-# Save the weights and biases to a file
-with open('./model_weights_biases.json', 'w') as f:
-    f.write(json.dumps({
-        "weights_hidden": [[f"{float(j):.4f}" for j in i] for i in list(weights_hidden.tolist())],
-        "biases_hidden": [f"{float(j):.4f}" for j in biases_hidden.tolist()],
-        "weights_output": [[f"{float(j):.4f}" for j in i] for i in list(weights_output.tolist())],
-        "biases_output": [f"{float(j):.4f}" for j in biases_output.tolist()]
-    }, indent=4))
+with open('./model_weights_biases.cpp', 'w') as f:
+    weights_hidden_str = "{" + ",\n ".join(
+        "{" + ", ".join(f"{value:.16f}" for value in row) + "}" for row in weights_hidden.tolist()
+    ) + "}"
+
+    biases_hidden_str = "{" + ", ".join(f"{value:.16f}" for value in biases_hidden.tolist()) + "}"
+
+    weights_output_str = "{" + ",\n ".join(
+        "{" + ", ".join(f"{value:.16f}" for value in row) + "}" for row in weights_output.tolist()
+    ) + "}"
+
+    biases_output_str = "{" + ", ".join(f"{value:.16f}" for value in biases_output.tolist()) + "}"
+    
+    # Write the formatted C++ code to the file
+    f.write(f'float weights_hidden[INPUT_SIZE][16] = {weights_hidden_str};\n')
+    f.write(f'float biases_hidden[16] = {biases_hidden_str};\n')
+    f.write(f'float weights_output[16][1] = {weights_output_str};\n')
+    f.write(f'float biases_output[1] = {biases_output_str};\n')
