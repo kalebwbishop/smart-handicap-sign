@@ -20,4 +20,4 @@ def create_data():
     return jsonify(new_data), 201
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run('172.20.10.3', debug=True)

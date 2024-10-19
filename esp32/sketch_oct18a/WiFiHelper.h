@@ -7,11 +7,11 @@
 #include <WebServer.h>
 #include <Preferences.h>
 
-// Constants
-const char* default_password = "12345678";  // Default AP Password
-IPAddress apIP(192, 168, 4, 1);      // Custom IP address
-IPAddress gateway(192, 168, 4, 1);   // Gateway (typically same as IP in AP mode)
-IPAddress subnet(255, 255, 255, 0);  // Subnet mask
+// Declare global variables with extern to avoid multiple definitions
+extern const char* default_password;
+extern IPAddress apIP;
+extern IPAddress gateway;
+extern IPAddress subnet;
 
 // Global variables
 extern WebServer server;

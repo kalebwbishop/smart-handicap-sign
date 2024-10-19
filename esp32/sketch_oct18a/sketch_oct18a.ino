@@ -1,112 +1,15 @@
 #include <WiFi.h>
-#include <WebServer.h>
-#include <Preferences.h>
 
-// Variables for Wi-Fi credentials
-const char* default_password = "12345678";  // Default AP Password
+#include "WiFiHelper.h"
+#include "classify.h"
 
-WebServer server(80);
-Preferences preferences;
+IPAddress serverIP(172, 20, 10, 3);
+const int port = 5000;
 
-String inputSSID = "";
-String inputPassword = "";
-
-// Define the custom IP, gateway, and subnet for AP mode
-IPAddress apIP(192, 168, 4, 1);      // Custom IP address
-IPAddress gateway(192, 168, 4, 1);   // Gateway (typically same as IP in AP mode)
-IPAddress subnet(255, 255, 255, 0);  // Subnet mask
-
-bool accessPointEnabled = false;
+WiFiClient client;
 
 void setup() {
-  Serial.begin(115200);
-
-  // Initialize preferences (for storing credentials)
-  preferences.begin("wifi-creds", false);
-
-  // Try to load Wi-Fi credentials from storage
-  String storedSSID = preferences.getString("ssid", "");
-  String storedPassword = preferences.getString("password", "");
-
-  // Check if credentials are stored
-  if (storedSSID != "") {
-    // Connect to stored Wi-Fi network
-    WiFi.begin(storedSSID.c_str(), storedPassword.c_str());
-
-    Serial.print("Connecting to WiFi: ");
-    Serial.println(storedSSID);
-
-    if (WiFi.status() == WL_CONNECTED) {
-      Serial.println("Connected to Wi-Fi!");
-      Serial.println("IP Address: " + WiFi.localIP().toString());
-      return;  // Skip to main loop if connected
-    }
-  }
-
-  // If not connected, start Access Point for setup
-  startAccessPoint();
-}
-
-void startAccessPoint() {
-  Serial.println("Starting Access Point...");
-
-  // Get the device's MAC address
-  String macAddress = WiFi.macAddress();
-
-  // Extract the last four digits of the MAC address, removing colons
-  String lastFourDigits = macAddress.substring(12);  // Get last three octets
-  lastFourDigits.replace(":", "");  // Remove colons
-  
-  // Generate the SSID with the last four digits of the MAC address
-  String default_ssid = "Smart Handicap Sign-" + lastFourDigits;  // Use the last part of the MAC
-
-  // Configure the Access Point with a dynamic SSID and default password
-  WiFi.softAPConfig(apIP, gateway, subnet);
-  WiFi.softAP(default_ssid, default_password);
-
-  // Set the flag indicating that the Access Point is enabled
-  accessPointEnabled = true;
-
-  // Start server
-  server.on("/", HTTP_GET, handleRoot);
-  server.on("/submit", HTTP_POST, handleSubmit);
-  server.begin();
-
-  Serial.println("AP IP address: ");
-  Serial.println(WiFi.softAPIP());  // Print the AP IP address
-}
-
-void handleRoot() {
-  String html = "<html><body>"
-                "<h1>Wi-Fi Setup</h1>"
-                "<p>Please enter the SSID and password of a 2.4 GHz Wi-Fi network. The ESP32 does not support 5 GHz networks.</p>"
-                "<form action='/submit' method='POST'>"
-                "SSID: <input type='text' name='ssid'><br>"
-                "Password: <input type='password' name='password'><br>"
-                "<input type='submit' value='Submit'>"
-                "</form></body></html>";
-  server.send(200, "text/html", html);
-}
-
-void handleSubmit() {
-  if (server.hasArg("ssid") && server.hasArg("password")) {
-    inputSSID = server.arg("ssid");
-    inputPassword = server.arg("password");
-
-    // Store the credentials
-    preferences.putString("ssid", inputSSID);
-    preferences.putString("password", inputPassword);
-
-    // Try to connect to the new Wi-Fi network
-    WiFi.softAPdisconnect(true);  // Disconnect the Access Point before reconnecting
-    accessPointEnabled = false;   // Set the flag to indicate AP is disabled
-    WiFi.begin(inputSSID.c_str(), inputPassword.c_str());
-
-    server.send(200, "text/html", "<h1>Connecting to Wi-Fi...</h1>");
-
-    delay(2000);
-    ESP.restart();  // Restart to connect with the new credentials
-  }
+  setupWiFi();  // Call the setup Wi-Fi function from the helper file
 }
 
 void loop() {
@@ -118,5 +21,35 @@ void loop() {
     WiFi.softAPdisconnect(true);  // Disable Access Point
     accessPointEnabled = false;   // Update flag
     Serial.println("Access Point disabled.");
+  }
+
+  // int input_data[256] = {804, 805, 806, 806, 807, 808, 808, 808, 809, 809, 808, 808, 807, 807, 806, 805, 804, 804, 803, 803, 547, 513, 508, 507, 507, 507, 507, 508, 508, 509, 509, 509, 510, 510, 510, 510, 510, 509, 509, 509, 508, 507, 506, 506, 505, 506, 506, 507, 507, 508, 509, 509, 510, 511, 512, 512, 512, 512, 513, 754, 793, 801, 805, 806, 807, 807, 806, 806, 805, 805, 804, 804, 803, 803, 803, 803, 803, 803, 804, 804, 805, 806, 807, 807, 808, 809, 803, 803, 804, 804, 805, 805, 806, 807, 808, 808, 808, 810, 611, 529, 521, 519, 518, 517, 516, 515, 514, 514, 513, 513, 512, 513, 513, 513, 513, 512, 512, 512, 513, 513, 514, 514, 515, 515, 515, 516, 516, 515, 515, 515, 514, 514, 514, 514, 514, 513, 513, 513, 514, 514, 515, 515, 515, 515, 515, 701, 783, 797, 802, 805, 807, 808, 808, 808, 808, 809, 808, 808, 807, 807, 805, 805, 805, 803, 804, 804, 803, 803, 803, 804, 805, 806, 806, 807, 807, 808, 808, 809, 809, 809, 809, 809, 808, 809, 808, 807, 808, 549, 525, 520, 518, 517, 516, 516, 515, 515, 515, 514, 514, 514, 513, 513, 513, 513, 513, 513, 514, 514, 515, 515, 515, 515, 515, 515, 514, 515, 515, 515, 515, 514, 514, 514, 514, 514, 514, 513, 513, 513, 513, 513, 513, 513, 512, 512, 513, 513, 514, 515, 515, 515, 515, 609, 781, 799, 804, 806, 807, 807, 807, 806, 806, 805, 805, 804, 804, 804};
+  int input_data[256] = { 867, 867, 867, 866, 867, 864, 863, 862, 862, 863, 863, 864, 866, 866, 867, 870, 873, 875, 876, 877, 878, 879, 880, 880, 880, 880, 880, 880, 880, 879, 879, 877, 876, 877, 877, 877, 878, 877, 877, 878, 878, 880, 880, 881, 881, 882, 883, 883, 882, 883, 883, 883, 882, 884, 884, 884, 881, 878, 874, 872, 871, 871, 871, 870, 870, 870, 870, 871, 871, 871, 870, 871, 871, 872, 872, 872, 871, 870, 870, 870, 870, 870, 869, 868, 868, 867, 867, 866, 866, 865, 864, 864, 865, 865, 865, 866, 867, 868, 868, 869, 866, 866, 865, 865, 866, 865, 865, 865, 866, 866, 867, 865, 866, 868, 869, 871, 872, 873, 873, 872, 872, 871, 871, 870, 869, 869, 868, 868, 867, 868, 867, 867, 868, 867, 867, 868, 868, 868, 867, 865, 864, 863, 862, 861, 860, 861, 860, 860, 859, 859, 858, 857, 857, 857, 858, 859, 860, 861, 862, 862, 862, 862, 861, 861, 861, 860, 860, 860, 859, 859, 857, 858, 858, 857, 856, 855, 855, 853, 854, 854, 855, 857, 858, 859, 863, 866, 867, 869, 870, 871, 872, 874, 875, 876, 876, 878, 878, 878, 878, 879, 876, 877, 878, 879, 881, 881, 882, 882, 882, 881, 882, 881, 880, 880, 879, 879, 878, 878, 877, 877, 877, 877, 877, 877, 878, 879, 879, 879, 880, 880, 881, 882, 882, 883, 881, 882, 880, 880, 880, 879, 878, 879, 878, 878, 877, 876, 877, 877, 877, 877, 877, 877, 877, 878, 878, 877 };
+
+  Serial.println(classify(input_data, 256)) ? "True" : "False";
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("IP Address: " + WiFi.localIP().toString());
+    if (client.connect(serverIP, port)) {
+      Serial.println("Connected to server");
+
+      String postData = "{\"key1\":\"value1\",\"key2\":\"value2\"}";
+
+      // Send HTTP POST request
+      client.print(String("POST ") + "/api/data" + " HTTP/1.1\r\n" + "Host: 172.20.10.3\r\n" + "Content-Type: application/json\r\n" + "Content-Length: " + postData.length() + "\r\n" + "Connection: close\r\n\r\n" + postData);
+
+      // Read response
+      while (client.connected() || client.available()) {
+        if (client.available()) {
+          String line = client.readStringUntil('\n');
+          Serial.println(line);
+        }
+      }
+
+      client.stop();
+      delay(10000);
+    } else {
+      Serial.println("Connection to server failed");
+    }
   }
 }
