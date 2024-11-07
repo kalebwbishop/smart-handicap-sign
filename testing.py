@@ -1,30 +1,17 @@
-import serial
-from time import sleep
-import matplotlib.pyplot as plt
+import requests
+import json
 
-ser = serial.Serial('COM5', 115200, timeout=1)
-sleep(2)
+url = 'http://127.0.0.1:5000/api/input_device_ep'
+payload = {
+    'classification': True,
+    'input_device_id': 'b952a289-9162-4b57-b7c0-556983521695'
+}
 
-input_data = [0] * 256
-input_index = 0
+headers = {
+    'Content-Type': 'application/json'
+}
 
-while True:
-    while ser.in_waiting:
-        data = ser.readline().decode('utf-8').strip()
+response = requests.post(url, data=json.dumps(payload), headers=headers)
 
-        if data.isdigit():
-            y_value = int(data)
-            print(input_index)
-            input_data[input_index] = y_value
-            input_index += 1
-
-            if input_index == 256:
-                input_index = 0
-
-                plt.plot(input_data)
-                plt.xlabel('Sample Index')
-                plt.ylabel('Y Value')
-                plt.title('Serial Data Plot')
-                plt.show()
-
-    sleep(0.1)
+print(f'Status Code: {response.status_code}')
+print(f'Response Body: {response.text}')

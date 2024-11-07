@@ -43,19 +43,19 @@ for i in range(SAMPLES // 2):
     training_data = np.append(training_data, [y], axis=0)
     training_labels = np.append(training_labels, [temp_freq >= TARGET_MIN and temp_freq <= TARGET_MAX])
 
-    # import matplotlib.pyplot as plt
+    import matplotlib.pyplot as plt
 
     # Plot the last 5 training data sets
-    # print(training_labels[-5:])
-    # plt.figure(figsize=(10, 8))
-    # for i in range(1, 6):
-    #     plt.subplot(5, 1, i)
-    #     plt.plot(x, training_data[-i])
-    #     plt.title(f'Training Data Set {-i}')
-    #     plt.xlabel('Sample Index')
-    #     plt.ylabel('Normalized Amplitude')
-    # plt.tight_layout()
-    # plt.show()
+    print(training_labels[-5:])
+    plt.figure(figsize=(10, 8))
+    for i in range(1, 6):
+        plt.subplot(5, 1, i)
+        plt.plot(x, training_data[-i])
+        plt.title(f'Training Data Set {-i}')
+        plt.xlabel('Sample Index')
+        plt.ylabel('Normalized Amplitude')
+    plt.tight_layout()
+    plt.show()
 
 # Build a simple neural network model in TensorFlow
 model = tf.keras.Sequential([
@@ -76,7 +76,7 @@ weights_output, biases_output = model.layers[1].get_weights()
 # Save the weights and biases to a file
 with open('./model_weights_biases.json', 'w') as f:
     f.write(json.dumps({
-        "weights_hidden": [[f"{float(j):.4f}" for j in i] for i in list(weights_hidden.tolist())],
+        "weights_hidden": weights_hidden.tolist(),
         "biases_hidden": [f"{float(j):.4f}" for j in biases_hidden.tolist()],
         "weights_output": [[f"{float(j):.4f}" for j in i] for i in list(weights_output.tolist())],
         "biases_output": [f"{float(j):.4f}" for j in biases_output.tolist()]

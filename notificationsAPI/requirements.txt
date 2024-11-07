@@ -1,0 +1,10 @@
+Flask
+Flask-Migrate
+gunicorn
+httpx[http2]
+pyodbc
+pyjwt
+cryptography
+psycopg2
+python-dotenv
+requests
