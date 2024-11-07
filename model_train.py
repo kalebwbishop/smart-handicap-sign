@@ -68,6 +68,10 @@ model = tf.keras.Sequential([
 model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 model.fit(training_data, training_labels, epochs=EPOCHS)
 
+def round_float_array(array, decimals=5):
+    """Round the elements of a numpy array to a specified number of decimal places."""
+    return np.round(array, decimals)
+
 # Get the weights and biases from the trained model
 weights_hidden, biases_hidden = model.layers[0].get_weights()
 weights_output, biases_output = model.layers[1].get_weights()
