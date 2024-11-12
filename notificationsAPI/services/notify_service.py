@@ -6,6 +6,9 @@ import os
 import base64
 
 from services.database_service import DatabaseService
+import smtplib
+from email.mime.text import MIMEText
+
 load_dotenv()
 
 class NotifyService:
@@ -54,7 +57,7 @@ class NotifyService:
         print(self.database_service.execute_fetchall_query(
             f"""
             SELECT * FROM output_devices
-            """)    )    
+            """))    
 
     def get_input_device_id(self):
         data = self.req
@@ -94,7 +97,7 @@ class NotifyService:
 
         return result
     
-    def get_device_tokens_of_output_device_ids(self, output_device_ids):
+    def get_output_devices_of_output_device_ids(self, output_device_ids):
         if not output_device_ids:
             return []
         
@@ -102,17 +105,38 @@ class NotifyService:
         
         result = self.database_service.execute_fetchall_query(
             f"""
-            SELECT token FROM output_devices WHERE id IN ({joined_ouput_device_ids})
+            SELECT identifier_type, identifier_value FROM output_devices WHERE id IN ({joined_ouput_device_ids})
             """)
         
-        result = [row[0] for row in result]
-
         return result
 
     def notify_users(self, output_devices):
+        iphone_app_users = []
+        android_app_users = []
+        text_message_users = []
+
         for output_device in output_devices:
-            # api.push.apple.com for production
-            url = f"https://api.sandbox.push.apple.com/3/device/{output_device}"
+            identifier_type, identifier_value = output_device
+
+            if identifier_type == 'IPHONE_APP':
+                iphone_app_users.append(identifier_value)
+            elif identifier_type == 'ANDROID_APP':
+                android_app_users.append(identifier_value)
+            elif identifier_type == 'TEXT_MESSAGE':
+                text_message_users.append(identifier_value)
+
+        self.__notify_iphone_app_users(iphone_app_users)
+        self.__notify_android_app_users(android_app_users)
+        self.__notify_text_message_users(text_message_users)
+            
+
+    def __notify_iphone_app_users(self, identifier_values):
+        if not identifier_values:
+            return
+        
+        # api.push.apple.com for production
+        for identifier_value in identifier_values:
+            url = f"https://api.sandbox.push.apple.com/3/device/{identifier_value}"
             
             headers = {
                 "authorization": f"bearer {NotifyService.token}",
@@ -125,6 +149,38 @@ class NotifyService:
                     print("Push notification sent successfully!")
                 else:
                     print(f"Failed to send push notification: {response.status_code} {response.text}")
+
+    def __notify_android_app_users(self, identifier_value):
+        if not identifier_value:
+            return
+
+    def __notify_text_message_users(self, identifier_values):
+        if not identifier_values:
+            return
+        
+        # Email content
+        for identifier_value in identifier_values:
+            msg = MIMEText("May the force be with you!")
+            msg["From"] = os.getenv("EMAIL_ADDRESS")
+            msg["To"] = identifier_value
+
+            # SMTP server configuration
+            smtp_server = os.getenv("SMTP_SERVER")
+            smtp_port = os.getenv("SMTP_PORT")
+            smtp_user = os.getenv("EMAIL_ADDRESS")
+            smtp_password = os.getenv("SMTP_PASSWORD")
+            smtp_password = "pimd naon brdk wwys"
+
+            try:
+                with smtplib.SMTP(smtp_server, smtp_port) as server:
+                    server.starttls()
+                    server.login(smtp_user, smtp_password)
+                    server.sendmail(msg["From"], [msg["To"]], msg.as_string())
+                    print("Text message sent successfully!")
+            except Exception as e:
+                print(f"Failed to send text message: {e}")
+
+
 
 if __name__ == '__main__':
     NotifyService.notify_users(None, ['ee939ba5182a53662dffef950bbf5a773a9dedb18f26dfa2b5dcff8a8c3c112c'])

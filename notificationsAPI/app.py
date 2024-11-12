@@ -30,8 +30,8 @@ def input_device_ep():
         input_device_id = notify_service.get_input_device_id()
         user_ids = notify_service.get_users_of_input_device(input_device_id)
         output_device_ids = notify_service.get_output_devices_of_user_ids(user_ids)
-        output_device_tokens = notify_service.get_device_tokens_of_output_device_ids(output_device_ids)
-        notify_service.notify_users(output_device_tokens)
+        output_devices = notify_service.get_output_devices_of_output_device_ids(output_device_ids)
+        notify_service.notify_users(output_devices)
 
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
@@ -39,7 +39,7 @@ def input_device_ep():
     return jsonify({
             "status": "Success",
             "message": "Notification(s) sent successfully",
-            "dev": f"{output_device_tokens}"
+            "dev": f"{output_devices}"
         })
 
 if __name__ == '__main__':
