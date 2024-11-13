@@ -7,6 +7,7 @@ cap=0.000001
 adj=2.130620985
 i=0
 t=0
+
 while True:
     GPIO.setup(mpin, GPIO.OUT)
     GPIO.setup(tpin, GPIO.OUT)
@@ -25,6 +26,9 @@ while True:
     res=(measureresistance/cap)*adj
     i=i+1
     t=t+res
+    
+    
+    
     if i==10:
             t=t/i
             print(t)
