@@ -9,6 +9,26 @@ class Perceptron:
         self.bias = np.random.randn()
         self.learning_rate = learning_rate
 
+    def copy(self):
+        """
+        Create a copy of the perceptron.
+        """
+        with open("perceptron_weights.npy", "wb") as f:
+            f.write(self.weights.tobytes())
+
+        with open("perceptron_bias.npy", "wb") as f:
+            np.save(f, self.bias)
+
+    def load(self):
+        """
+        Load the perceptron from a file.
+        """
+        with open("perceptron_weights.npy", "rb") as f:
+            self.weights = np.frombuffer(f.read())
+
+        with open("perceptron_bias.npy", "rb") as f:
+            self.bias = np.load(f)
+
     def activation(self, x):
         return 1 if x > 0 else 0
 

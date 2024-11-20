@@ -34,4 +34,3 @@ def capture(size):
         print(res)
 
     return input_intensity
-

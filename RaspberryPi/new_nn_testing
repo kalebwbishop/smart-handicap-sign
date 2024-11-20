@@ -56,23 +56,23 @@ i = 1
 
 while i < 601:
     if i < 101:
-        square_data.append((1, square_wave(i, 10)))
-        sine_data.append((0, sine_wave(i, 10)))
+        square_data.append((1, square_wave(i, 1)))
+        sine_data.append((0, sine_wave(i, 1)))
     elif i < 201:
-        square_data.append((1, square_wave(i, 10)))
-        sawtooth_data.append((0, sawtooth_wave(i, 10)))
+        square_data.append((1, square_wave(i, 1)))
+        sawtooth_data.append((0, sawtooth_wave(i, 1)))
     elif i < 301:
-        square_data.append((1, square_wave(i, 10)))
-        triangular_data.append((0, triangular_wave(i, 10)))
+        square_data.append((1, square_wave(i, 1)))
+        triangular_data.append((0, triangular_wave(i, 1)))
     elif i < 401:
-        square_data.append((1, square_wave(i, 10)))
-        pulse_data.append((0, pulse_wave(i, 10)))
+        square_data.append((1, square_wave(i, 1)))
+        pulse_data.append((0, pulse_wave(i, 1)))
     elif i < 501:
-        square_data.append((1, square_wave(i, 10)))
-        ramp_data.append((0, ramp_wave(i, 10)))
+        square_data.append((1, square_wave(i, 1)))
+        ramp_data.append((0, ramp_wave(i, 1)))
     elif i < 601:
-        square_data.append((1, square_wave(i, 10)))
-        exponential_data.append((0, exponential_wave(i, 10)))  
+        square_data.append((1, square_wave(i, 1)))
+        exponential_data.append((0, exponential_wave(i, 1)))  
 
     i+=1
 
@@ -115,7 +115,12 @@ print(np.shape(result))
 print(np.shape(zero_result))
 
 print(total_array[1][1][1:])
+print(np.shape(total_array[1][1][1:]))
+print(np.shape(total_array[1][1]))
+print(np.shape(total_array[1]))
+print(np.shape(total_array))
 training_shape = total_array[1][1]
+print(np.shape(training_shape))
 
 values = []
 labels = []
@@ -128,13 +133,19 @@ perceptron_2 = Perceptron(input_size=len(training_shape))
 
 perceptron_2.train(values, labels, epochs=100)
 
+perceptron_2.copy()
 
 
-test_wave = square_wave(10, 20, 500)
-false_wave = sine_wave(10, 20, 500)
+perceptron_3 = Perceptron(input_size=len(training_shape))
 
-new_prediction = perceptron_2.predict(test_wave)
-false_prediction = perceptron_2.predict(false_wave)
+perceptron_3.load()
+
+test_wave = square_wave(10, 2, 500)
+false_wave = sine_wave(10, 2, 500)
+
+# new_prediction = perceptron_3.predict(test_wave)
+new_prediction = perceptron_3.predict([0]*1000)
+false_prediction = perceptron_3.predict(false_wave)
 
 print(new_prediction)
 print(false_prediction)
