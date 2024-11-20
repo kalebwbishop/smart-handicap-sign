@@ -192,6 +192,17 @@ Rectangle {
 
     Connections {
         target: backend
+
+        function onToggle(){
+            console.log("Hazard button pressed!");
+            pressImage.visible = !pressImage.visible;
+            // toggle text visibility
+            assistanceTextElement.visible = !assistanceTextElement.visible;
+            subtextElement.visible = !subtextElement.visible;
+            waitTextElement.visible = !waitTextElement.visible;
+            waitsubtextElement.visible = !waitsubtextElement.visible;
+        }
+
         function onUpdated(msg) {
             currTime = msg;
         }
