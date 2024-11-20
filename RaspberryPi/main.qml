@@ -48,7 +48,7 @@ Rectangle {
             Text {
                 id: assistanceTextElement
                 text: assistanceText
-                font.pixelSize: 100
+                font.pixelSize: 75
                 color: "white"
                 font.family: avantGardeFont.name
                 anchors.horizontalCenter: textBackground.horizontalCenter
@@ -58,7 +58,7 @@ Rectangle {
                 id: waitTextElement
                 text: "please Wait. Help is on the way."
                 visible: false
-                font.pixelSize: 75
+                font.pixelSize: 50
                 color: "white"
                 font.family: avantGardeFont.name
                 anchors.horizontalCenter: textBackground.horizontalCenter
@@ -69,7 +69,7 @@ Rectangle {
             Text {
                 id: subtextElement
                 text: subtext
-                font.pixelSize: 50
+                font.pixelSize: 25
                 color: "white"
                 font.family: avantGardeFont.name
                 opacity: 0
@@ -81,7 +81,7 @@ Rectangle {
                 id: waitsubtextElement
                 text: "Por favor, espere. La ayuda está en camino."
                 visible: false
-                font.pixelSize: 65
+                font.pixelSize: 35
                 color: "white"
                 font.family: avantGardeFont.name
                 anchors.horizontalCenter: textBackground.horizontalCenter
@@ -99,7 +99,7 @@ Rectangle {
                 leftMargin: 12
             }
             text: currTime
-            font.pixelSize: 48
+            font.pixelSize: 20
             color: "white"
             font.family: avantGardeFont.name
         }
@@ -112,8 +112,8 @@ Rectangle {
                 top: parent.top
                 topMargin: 40
             }
-            width: 250
-            height: 250
+            width: 150
+            height: 150
             background: Rectangle {
                 color: "transparent"
                 Image {
@@ -143,8 +143,8 @@ Rectangle {
                 left: hazardButton.left
                 leftMargin: 5
             }
-            width: 200
-            height: 200
+            width: 100
+            height: 100
         }
         }
     }
