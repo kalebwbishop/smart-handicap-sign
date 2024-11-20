@@ -56,23 +56,23 @@ i = 1
 
 while i < 601:
     if i < 101:
-        square_data.append((1, square_wave(i, 1)))
-        sine_data.append((0, sine_wave(i, 1)))
+        square_data.append((1, square_wave(i, 2)))
+        sine_data.append((0, sine_wave(i, 2)))
     elif i < 201:
-        square_data.append((1, square_wave(i, 1)))
-        sawtooth_data.append((0, sawtooth_wave(i, 1)))
+        square_data.append((1, square_wave(i, 2)))
+        sawtooth_data.append((0, sawtooth_wave(i, 2)))
     elif i < 301:
-        square_data.append((1, square_wave(i, 1)))
-        triangular_data.append((0, triangular_wave(i, 1)))
+        square_data.append((1, square_wave(i, 2)))
+        triangular_data.append((0, triangular_wave(i, 2)))
     elif i < 401:
-        square_data.append((1, square_wave(i, 1)))
-        pulse_data.append((0, pulse_wave(i, 1)))
+        square_data.append((1, square_wave(i, 2)))
+        pulse_data.append((0, pulse_wave(i, 2)))
     elif i < 501:
-        square_data.append((1, square_wave(i, 1)))
-        ramp_data.append((0, ramp_wave(i, 1)))
+        square_data.append((1, square_wave(i, 2)))
+        ramp_data.append((0, ramp_wave(i, 2)))
     elif i < 601:
-        square_data.append((1, square_wave(i, 1)))
-        exponential_data.append((0, exponential_wave(i, 1)))  
+        square_data.append((1, square_wave(i, 2)))
+        exponential_data.append((0, exponential_wave(i, 2)))  
 
     i+=1
 
