@@ -78,5 +78,7 @@ sys.exit(app.exec())
 
 if __name__ == '__main__':
     setup()
-    loop()
+
+    while (not False):
+        loop()
 

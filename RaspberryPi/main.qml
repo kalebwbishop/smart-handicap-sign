@@ -49,7 +49,7 @@ Rectangle {
                 id: assistanceTextElement
                 text: assistanceText
                 font.pixelSize: 75
-                color: "white"
+                color: "black"
                 font.family: avantGardeFont.name
                 anchors.horizontalCenter: textBackground.horizontalCenter
                 anchors.verticalCenterOffset: -40  
@@ -58,8 +58,8 @@ Rectangle {
                 id: waitTextElement
                 text: "please Wait. Help is on the way."
                 visible: false
-                font.pixelSize: 50
-                color: "white"
+                font.pixelSize: 45
+                color: "black"
                 font.family: avantGardeFont.name
                 anchors.horizontalCenter: textBackground.horizontalCenter
                 anchors.verticalCenterOffset: -40  
@@ -70,7 +70,7 @@ Rectangle {
                 id: subtextElement
                 text: subtext
                 font.pixelSize: 25
-                color: "white"
+                color: "black"
                 font.family: avantGardeFont.name
                 opacity: 0
                 anchors.horizontalCenter: textBackground.horizontalCenter
@@ -82,7 +82,7 @@ Rectangle {
                 text: "Por favor, espere. La ayuda está en camino."
                 visible: false
                 font.pixelSize: 35
-                color: "white"
+                color: "black"
                 font.family: avantGardeFont.name
                 anchors.horizontalCenter: textBackground.horizontalCenter
                 anchors.top: assistanceTextElement.bottom
@@ -100,7 +100,7 @@ Rectangle {
             }
             text: currTime
             font.pixelSize: 20
-            color: "white"
+            color: "black"
             font.family: avantGardeFont.name
         }
 
