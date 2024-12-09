@@ -1,21 +1,25 @@
 import React, { useMemo } from 'react';
-import { Text, View, Image, StyleSheet, ScrollView } from 'react-native';
+import { View, Image, StyleSheet, ScrollView } from 'react-native';
 
-import ScreenWrapper from '../components/ScreenWrapper';
-import { HSpacer } from '../components/Spacer';
+import ScreenWrapper from '../../components/ScreenWrapper';
+import { HSpacer } from '../../components/Spacer';
+import KBTypography from '@/components/KBTypography';
+import { Link } from 'expo-router';
 
-export default function MainScreen() {
-    return (<ScreenWrapper>
-        <Text style={styles.header}>Signs</Text>
-        <HSpacer size={20} />
-        <SignList />
-    </ScreenWrapper>)
+export default function SignListPage() {
+    return (
+        <ScreenWrapper>
+            <KBTypography variant='title'>Signs</KBTypography>
+            <HSpacer size={20} />
+            <SignList />
+        </ScreenWrapper>
+    );
 }
 
 type Sign = {
     name: string;
     location: string;
-    state: 'Active' | 'Assist' | 'Offline';
+    state: 'Ready' | 'Assist' | 'Offline';
 };
 
 function SignListComponent({ sign }: { sign: Sign }) {
@@ -23,12 +27,12 @@ function SignListComponent({ sign }: { sign: Sign }) {
 
     const dynamicStyles = useMemo(() => {
         switch (state) {
-            case 'Active':
+            case 'Ready':
                 return { buttonBg: '#66B057', textColor: '#FFFFFF' };
             case 'Assist':
-                return { buttonBg: '#FFD700', textColor: '#000000' };
+                return { buttonBg: '#E4D958', textColor: '#000000' };
             case 'Offline':
-                return { buttonBg: '#FF0000', textColor: '#FFFFFF' };
+                return { buttonBg: '#E45858', textColor: '#FFFFFF' };
             default:
                 return { buttonBg: '#CCCCCC', textColor: '#000000' };
         }
@@ -73,46 +77,49 @@ function SignListComponent({ sign }: { sign: Sign }) {
             marginRight: 10,
         },
         state: {
-            fontSize: 20,
             color: dynamicStyles.textColor,
         },
     });
 
     return (
-        <View style={styles.container}>
-            <View style={styles.textContainer}>
-                <View style={styles.nameLocationContainer}>
-                    <Text style={styles.name}>{name}</Text>
-                    <Text style={styles.location}>{location}</Text>
+        <Link href={'/Sign'}>
+            <View style={styles.container}>
+
+                <View style={styles.textContainer}>
+                    <View style={styles.nameLocationContainer}>
+                        <KBTypography style={styles.name}>{name}</KBTypography>
+                        <KBTypography style={styles.location}>{location}</KBTypography>
+                    </View>
+
+                    <View style={styles.stateButtonContainer}>
+                        <KBTypography variant='button' style={styles.state}>{state}</KBTypography>
+                    </View>
                 </View>
 
-                <View style={styles.stateButtonContainer}>
-                    <Text style={styles.state}>{state}</Text>
-                </View>
+                <Image style={styles.locationImage} source={require('../../assets/images/example_sign_location.png')} />
             </View>
-
-            <Image style={styles.locationImage} source={require('../example_sign_location.png')} />
-        </View>
+        </Link>
     );
 }
 
-
 function SignList() {
     const signs: Sign[] = [
-        { name: '1', location: 'Emergency Room', state: 'Active' },
+        { name: '1', location: 'Emergency Room', state: 'Ready' },
         { name: '2', location: 'Emergency Room', state: 'Assist' },
         { name: '3', location: 'Emergency Room', state: 'Offline' },
-        { name: '4', location: 'Emergency Room', state: 'Active' },
+        { name: '4', location: 'Emergency Room', state: 'Ready' },
+        { name: '5', location: 'Emergency Room', state: 'Assist' },
+        { name: '6', location: 'Emergency Room', state: 'Offline' },
     ];
 
     const AssistSigns = signs.filter((sign) => sign.state === 'Assist');
     const OfflineSigns = signs.filter((sign) => sign.state === 'Offline');
-    const ActiveSigns = signs.filter((sign) => sign.state === 'Active');
+    const ReadySigns = signs.filter((sign) => sign.state === 'Ready');
 
     return (
         <ScrollView>
-            {AssistSigns.map((sign, _) => (
-                <View id={`sign-${sign.name}-${sign.location}`}>
+            {AssistSigns.map((sign, idx) => (
+                <View key={`sign-${idx}-${sign.name}-${sign.location}`}>
                     <SignListComponent sign={sign} />
                     <HSpacer size={20} />
                 </View>
@@ -126,8 +133,8 @@ function SignList() {
             />
             <HSpacer size={20} />
 
-            {OfflineSigns.map((sign, _) => (
-                <View id={`sign-${sign.name}-${sign.location}`}>
+            {OfflineSigns.map((sign, idx) => (
+                <View key={`sign-${idx}-${sign.name}-${sign.location}`}>
                     <SignListComponent sign={sign} />
                     <HSpacer size={20} />
                 </View>
@@ -141,8 +148,8 @@ function SignList() {
             />
             <HSpacer size={20} />
 
-            {ActiveSigns.map((sign, _) => (
-                <View id={`sign-${sign.name}-${sign.location}`}>
+            {ReadySigns.map((sign, idx) => (
+                <View key={`sign-${idx}-${sign.name}-${sign.location}`}>
                     <SignListComponent sign={sign} />
                     <HSpacer size={20} />
                 </View>
@@ -150,10 +157,3 @@ function SignList() {
         </ScrollView>
     );
 }
-
-const styles = StyleSheet.create({
-    header: {
-        color: '#FFFFFF',
-        fontSize: 40,
-    },
-});
