@@ -10,7 +10,7 @@ import { Link } from 'expo-router';
 export default function SignPage() {
     return (
         <ScreenWrapper>
-            <Link href='/SignList'>
+            <Link href='..'>
                 <View>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                         <AntDesign name="arrowleft" size={24} color="#FFFFFF" />

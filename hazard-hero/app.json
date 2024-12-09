@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.hazard-hero"
+      "bundleIdentifier": "com.kalebwbishop.hazard-hero"
     },
     "android": {
       "adaptiveIcon": {
@@ -37,6 +37,15 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "b1a15c02-ba54-4cdd-a164-4c4af34e4be4"
+      }
+    },
+    "owner": "kalebwbishop"
   }
 }
