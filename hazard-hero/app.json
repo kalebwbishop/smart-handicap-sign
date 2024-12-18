@@ -1,13 +1,14 @@
 {
   "expo": {
-    "name": "hazard-hero",
+    "name": "Hazard Hero",
     "slug": "hazard-hero",
+    "icon": "./assets/images/logo.png",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
     "scheme": "myapp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "entryPoint": "./App.tsx",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.kalebwbishop.hazard-hero"
@@ -16,7 +17,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.kalebwbishop.hazardhero"
     },
     "web": {
       "bundler": "metro",
@@ -32,6 +34,12 @@
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"
+        }
+      ],
+      [
+        "react-native-auth0",
+        {
+          "domain": "dev-7u0x4ktpv0rpskm0.us.auth0.com"
         }
       ]
     ],

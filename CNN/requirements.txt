@@ -1,3 +1,5 @@
-numpy
 tensorflow
+numpy
+matplotlib
 scikit-learn
+tf2onnx
