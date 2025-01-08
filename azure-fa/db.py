@@ -1,15 +1,17 @@
 import pyodbc
+import logging
+import os
+import dotenv
 
 def connect_to_db():
+    dotenv.load_dotenv()
     try:
-        # Connection settings
-        server = "hazard-hero-dbs.database.windows.net"
-        database = "hazard-hero-db"
-        username = "bishopkw"
-        password = "School30332319!!"  # Replace with your password
+        server = os.getenv("DB_SERVER")
+        database = os.getenv("DB_NAME")
+        username = os.getenv("DB_USER")
+        password = os.getenv("DB_PASS")
         driver = "{ODBC Driver 18 for SQL Server}"
 
-        # Create the connection string
         connection_string = (
             f"DRIVER={driver};"
             f"SERVER={server};"
@@ -21,26 +23,29 @@ def connect_to_db():
             f"Connection Timeout=30;"
         )
 
-        # Establish connection
         connection = pyodbc.connect(connection_string)
-        print("Connection successful!")
-
-        # Create a cursor object
         cursor = connection.cursor()
-
+        
+        logging.info("Successfully connected to the database.")
         return connection, cursor
 
     except Exception as error:
-        print("Error while connecting to PostgreSQL:", error)
+        logging.exception("Error while connecting to db")
+        logging.error(f"Error: {error}")
         return None, None
 
 def close_connection(connection, cursor):
-    if connection:
-        cursor.close()
-        connection.close()
+    try:
+        if cursor:
+            cursor.close()
+        if connection:
+            connection.close()
+            logging.info("Database connection closed.")
+    except Exception as error:
+        logging.exception("Error while closing db connection")
 
 if __name__ == "__main__":
     conn, cur = connect_to_db()
-    if conn:
+    if conn and cur:
         # Perform database operations here
         close_connection(conn, cur)

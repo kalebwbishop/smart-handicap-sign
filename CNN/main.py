@@ -1,125 +1,79 @@
-import tensorflow as tf
 import numpy as np
-import json
-import math
-import matplotlib.pyplot as plt
+from tensorflow.keras import layers, models
+from sklearn.model_selection import train_test_split
 
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv1D, MaxPooling1D, Flatten, Dense, Dropout, BatchNormalization
+def generate_data(samples=1000, label=1) -> tuple[np.ndarray, np.ndarray]:
+    time_steps = 128
+    time = np.linspace(0, 3, time_steps)
 
-# Constants
-SIZE = 128
-FREQ = 25 # Hz (25 samples per second)
-TIME_PERIOD = 1 / FREQ
-SAMPLES = 20000
-TARGET_MAX = 2
-TARGET_MIN = 1
-EPOCHS = 12
+    freq = np.linspace(0.75, 4, samples)
+    data = np.ndarray(shape=(samples, time_steps), dtype=float)
 
-toPrint = None
+    for i in range(samples):
+        if label == 1:
+            pulse_wave = np.sin(2 * np.pi * freq[i] * time)
+        else:
+            pulse_wave = np.random.uniform(-1, 1, time_steps)  # Random noise
 
-training_data = np.empty((0, SIZE))
-training_labels = np.empty((0,))
+        light_intensity = np.clip(pulse_wave, 0, 1) * 100
+        noise = np.random.normal(0, 5, time_steps)
+        light_intensity += noise
+        light_intensity = np.clip(light_intensity, 0, 100)
 
-# Generate noise data
-for i in range(SAMPLES // 4):
-    temp_freq = np.random.uniform(0.2, 4)
-    temp_offset = np.random.uniform(0, 256)
+        data[i] = light_intensity
 
-    x = np.linspace(0, SIZE * TIME_PERIOD, SIZE)
-    y = np.random.normal(0, 0.2, SIZE)
-
-    y -= np.min(y)
-    y /= np.max(y)
-
-    if i == 0:  # Plot the first generated noise data
-        plt.plot(y)
-        plt.title("Generated Noise Data")
-        plt.show()
-
-    training_data = np.append(training_data, [y], axis=0)
-    training_labels = np.append(training_labels, False)
+    labels = np.full(samples, label)
+    return data, labels
 
 
-# Generate square wave data
-for i in range(3 * SAMPLES // 4):
-    temp_freq = np.random.uniform(0.2, 4)
-    temp_offset = np.random.uniform(0, 256)
+def build_model(input_shape: tuple) -> models.Sequential:
+    model = models.Sequential()
+    model.add(layers.Conv1D(32, kernel_size=3, activation='relu', input_shape=input_shape))
+    model.add(layers.MaxPooling1D(pool_size=2))
+    model.add(layers.Conv1D(64, kernel_size=3, activation='relu'))
+    model.add(layers.MaxPooling1D(pool_size=2))
+    model.add(layers.Flatten())
+    model.add(layers.Dense(128, activation='relu'))
+    model.add(layers.Dropout(0.5))
+    model.add(layers.Dense(1, activation='sigmoid'))  # Binary classification
 
-    x = np.linspace(0, SIZE * TIME_PERIOD, SIZE)
-    noise = np.random.normal(0, 0.2, SIZE)
-    y = (np.sin(math.pi * (x + temp_offset) / temp_freq) +
-         (1/3) * np.sin(3 * math.pi * (x + temp_offset) / temp_freq) +
-         (1/5) * np.sin(5 * math.pi * (x + temp_offset) / temp_freq) +
-         (1/7) * np.sin(7 * math.pi * (x + temp_offset) / temp_freq) + noise)
-
-    y -= np.min(y)
-    y /= np.max(y)
-
-    training_data = np.append(training_data, [y], axis=0)
-    training_labels = np.append(training_labels, [temp_freq >= TARGET_MIN and temp_freq <= TARGET_MAX])
-
-    for i in range(len(training_labels)):
-        if training_labels[i]:
-            toPrint = training_data[i]
-            break
-
-# Define CNN architecture
-def create_lightweight_cnn(input_shape):
-    model = Sequential()
-
-    # Convolutional layer
-    model.add(Conv1D(filters=16, kernel_size=3, activation='relu', input_shape=input_shape))
-    model.add(BatchNormalization())  # Helps with faster convergence and stability
-    model.add(MaxPooling1D(pool_size=2))  # Downsampling
-
-    # Add another convolutional layer
-    model.add(Conv1D(filters=32, kernel_size=3, activation='relu'))
-    model.add(MaxPooling1D(pool_size=2))
-
-    # Flatten and dense layers
-    model.add(Flatten())
-    model.add(Dense(64, activation='relu'))  # Fully connected layer
-    model.add(Dropout(0.3))  # Dropout for regularization
-    model.add(Dense(1, activation='sigmoid'))  # Output layer for binary classification
-
-    # Compile the model
-    model.compile(optimizer='adam',
-                  loss='binary_crossentropy',
-                  metrics=['accuracy']
-                  )
     return model
 
 
-# Add feature dimension for CNN input
-training_data = training_data[..., np.newaxis]
+def main():
+    # Generate positive and negative samples
+    pos_data, pos_labels = generate_data(samples=800, label=1)
+    neg_data, neg_labels = generate_data(samples=800, label=0)
 
-# Ensure shapes match
-assert training_data.shape[0] == training_labels.shape[0], "Mismatch in data and label sizes!"
+    # Combine and shuffle
+    data = np.concatenate([pos_data, neg_data], axis=0)
+    labels = np.concatenate([pos_labels, neg_labels], axis=0)
 
-# Update input shape for the model
-input_shape = (SIZE, 1)
-model = create_lightweight_cnn(input_shape)
+    # Train-test split
+    train_data, test_data, train_labels, test_labels = train_test_split(
+        data, labels, test_size=0.2, random_state=42
+    )
 
-# Print model summary
-model.summary()
+    # Reshape for Conv1D input
+    train_data = train_data.reshape(train_data.shape[0], train_data.shape[1], 1)
+    test_data = test_data.reshape(test_data.shape[0], test_data.shape[1], 1)
 
-# Train the model
-model.fit(training_data, training_labels, epochs=EPOCHS)
+    # Build the model
+    model = build_model(input_shape=(train_data.shape[1], 1))
 
-# Save the model in TensorFlow Lite format
-converter = tf.lite.TFLiteConverter.from_keras_model(model)
-tflite_model = converter.convert()
+    # Compile with binary cross-entropy
+    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
 
-# Save to file
-with open('model.tflite', 'wb') as f:
-    f.write(tflite_model)
+    # Train the model
+    model.fit(train_data, train_labels, epochs=50, batch_size=32, validation_split=0.1)
 
-with open('success.txt', 'w') as f:
-    f.write(json.dumps(toPrint.tolist()))
+    # Evaluate the model
+    loss, accuracy = model.evaluate(test_data, test_labels)
+    print(f"Test Accuracy: {accuracy * 100:.2f}%")
+
+    # Save the model
+    model.save('hazard_light_classifier.h5')
 
 
-plt.plot(toPrint)
-plt.title("Square wave")
-plt.show()
-
+if __name__ == "__main__":
+    main()

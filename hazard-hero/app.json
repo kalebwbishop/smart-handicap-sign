@@ -41,7 +41,8 @@
         {
           "domain": "dev-7u0x4ktpv0rpskm0.us.auth0.com"
         }
-      ]
+      ],
+      "react-native-wifi-reborn"
     ],
     "experiments": {
       "typedRoutes": true

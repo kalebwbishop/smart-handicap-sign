@@ -60,6 +60,7 @@ export default function RootLayout() {
                 <Stack.Screen name="index" options={{ gestureEnabled: false}}/>
                 <Stack.Screen name="Sign" />
                 <Stack.Screen name="UserSettings" />
+                <Stack.Screen name="Testing" />
             </Stack>
         </MainProvider>
     )

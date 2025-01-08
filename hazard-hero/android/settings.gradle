@@ -21,7 +21,7 @@ extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
   }
 }
 
-rootProject.name = 'hazard-hero'
+rootProject.name = 'Hazard Hero'
 
 dependencyResolutionManagement {
   versionCatalogs {

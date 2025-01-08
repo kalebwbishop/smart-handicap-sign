@@ -21,7 +21,9 @@ export default function SignListPage() {
     return (
         <ScreenWrapper>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Pressable onPress={() => { router.push('/Testing') }}>
                 <KBTypography variant='title'>Signs</KBTypography>
+                </Pressable>
                 <Pressable onPress={() => { router.push('/UserSettings') }}>
                     <Image style={{ height: 40, aspectRatio: 1, borderRadius: 20 }} source={user?.picture ? { uri: user.picture } : require('../assets/images/example_user.png')} />
                 </Pressable>

@@ -1,69 +1,37 @@
-import tensorflow as tf
 import numpy as np
+from tensorflow.keras.models import load_model
 import matplotlib.pyplot as plt
 
-# Constants
-SIZE = 128
-FREQ = 25  # Hz (25 samples per second)
-TIME_PERIOD = 1 / FREQ
 
-# Load the TFLite model
-interpreter = tf.lite.Interpreter(model_path="model.tflite")
-interpreter.allocate_tensors()
+def generate_test_wave(frequency=2, time_steps=128) -> np.ndarray:
+    time = np.linspace(0, 3, time_steps)
+    pulse_wave = np.sin(2 * np.pi * frequency * time)
+    light_intensity = np.clip(pulse_wave, 0, 1) * 100
+    noise = np.random.normal(0, 5, time_steps)
+    light_intensity += noise
+    light_intensity = np.clip(light_intensity, 0, 100)
+    return light_intensity
 
-# Get input and output details
-input_details = interpreter.get_input_details()
-output_details = interpreter.get_output_details()
 
-# Function to preprocess input data
-def preprocess_data(data):
-    data -= np.min(data)
-    data /= np.max(data)
-    return data[..., np.newaxis]  # Add feature dimension
+def classify_wave(wave: np.ndarray, model_path='hazard_light_classifier.h5') -> str:
+    model = load_model(model_path)
+    wave = wave.reshape(1, wave.shape[0], 1)
+    prediction = model.predict(wave)[0][0]
+    return 'Fits Category' if prediction > 0.5 else 'Does Not Fit Category'
 
-# Generate custom test data (sine wave)
-def generate_sine_wave(size, freq, noise_level=0.1):
-    x = np.linspace(0, size * TIME_PERIOD, size)
-    noise = np.random.normal(0, noise_level, size)
-    y = np.sin(2 * np.pi * x / freq) + noise
-    y = preprocess_data(y)
-    return y
 
-# Generate custom test data (square wave approximation)
-def generate_square_wave(size, freq, noise_level=0.1):
-    x = np.linspace(0, size * TIME_PERIOD, size)
-    noise = np.random.normal(0, noise_level, size)
-    y = (np.sin(np.pi * x / freq) +
-         (1/3) * np.sin(3 * np.pi * x / freq) +
-         (1/5) * np.sin(5 * np.pi * x / freq) +
-         (1/7) * np.sin(7 * np.pi * x / freq) + noise)
-    y = preprocess_data(y)
-    return y
+if __name__ == "__main__":
+    # Generate and classify a test wave
+    test_wave = generate_test_wave(frequency=3)
+    result = classify_wave(test_wave)
+    print(f"Classification Result: {result}")
 
-# Test data
-sine_wave = generate_sine_wave(SIZE, freq=2)
-square_wave = generate_square_wave(SIZE, freq=2)
-
-# Test the model with sine wave
-interpreter.set_tensor(input_details[0]['index'], np.array([sine_wave], dtype=np.float32))
-interpreter.invoke()
-output_sine = interpreter.get_tensor(output_details[0]['index'])[0]
-
-# Test the model with square wave
-interpreter.set_tensor(input_details[0]['index'], np.array([square_wave], dtype=np.float32))
-interpreter.invoke()
-output = interpreter.get_tensor(output_details[0]['index'])[0]
-
-# Print results
-print("Wave prediction:", output_sine)
-print("Wave prediction:", output)
-
-# Plot test data
-plt.figure(figsize=(10, 5))
-plt.subplot(1, 2, 1)
-plt.plot(sine_wave.squeeze())
-plt.title("Sine Wave")
-plt.subplot(1, 2, 2)
-plt.plot(square_wave.squeeze())
-plt.title("Square Wave")
-plt.show()
+    # Plot the test wave
+    plt.figure(figsize=(10, 5))
+    plt.plot(test_wave, label='Test Wave')
+    plt.xlabel('Time Steps')
+    plt.ylabel('Light Intensity')
+    plt.title('Generated Test Wave')
+    plt.legend()
+    plt.grid(True)
+    plt.show()

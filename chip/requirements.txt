@@ -1,0 +1,8 @@
+flask
+requests
+numpy
+python-dotenv
+psutil
+tensorflow
+python-dotenv
+# RPi.GPIO

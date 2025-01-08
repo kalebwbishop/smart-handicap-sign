@@ -1,9 +1,10 @@
 -- Create the hsigns table
 CREATE TABLE hsigns (
-    hsign_id INT IDENTITY(1,1) PRIMARY KEY,  -- Unique ID for each handicap sign
+    hsign_id INT NOT NULL CHECK (hsign_id >= 0),  -- Unique ID for each handicap sign (non-negative)
     name VARCHAR(50) NOT NULL,              -- Name of the handicap sign
     location VARCHAR(50) NOT NULL,          -- Location of the handicap sign
-    status VARCHAR(50) NOT NULL DEFAULT 'Offline'  -- Status of the handicap sign, default to offline
+    status VARCHAR(50) NOT NULL DEFAULT 'Offline',  -- Status of the handicap sign, default to offline
+    PRIMARY KEY (hsign_id)                  -- Explicitly set hsign_id as primary key
 );
 
 -- Create the users table
