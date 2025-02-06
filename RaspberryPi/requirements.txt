@@ -1,7 +1,0 @@
-RPi.GPIO
-httpx
-PyJWT
-httpx[http2]
-requests
-numpy
-pyqt6

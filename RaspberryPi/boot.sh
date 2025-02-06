@@ -1,1 +1,0 @@
-~/dev/RaspberryPi/venv/bin/python3 ~/dev/RaspberryPi/main.py
