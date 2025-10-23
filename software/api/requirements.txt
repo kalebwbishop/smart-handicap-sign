@@ -1,0 +1,11 @@
+flask>=3
+flask-sqlalchemy>=3
+sqlalchemy>=2
+psycopg[binary]
+psycopg2-binary
+python-dotenv
+requests
+alembic
+flask-migrate
+gunicorn
+pyjwt
