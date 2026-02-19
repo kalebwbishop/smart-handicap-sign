@@ -1,0 +1,43 @@
+{
+  "name": "social-stack",
+  "version": "1.0.0",
+  "description": "modular social stack for cross platform mobile development of social media based applications",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend",
+    "database"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:frontend": "npm run android --workspace=frontend",
+    "dev:backend": "npm run dev --workspace=backend",
+    "build": "npm run build --workspaces",
+    "build:frontend": "npm run build --workspace=frontend",
+    "build:backend": "npm run build --workspace=backend",
+    "db:migrate": "npm run migrate --workspace=database",
+    "db:seed": "npm run seed --workspace=database",
+    "db:up": "docker-compose up -d postgres",
+    "db:down": "docker-compose down",
+    "lint": "npm run lint --workspaces",
+    "test": "npm run test --workspaces",
+    "clean": "npm run clean --workspaces && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "keywords": [
+    "react-native",
+    "expo",
+    "express",
+    "postgresql",
+    "mobile",
+    "typescript"
+  ],
+  "author": "",
+  "license": "MIT"
+}
