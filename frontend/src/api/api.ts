@@ -1,4 +1,5 @@
 import { AuthResponse, LoginInitResponse, initiateLogoutResponse, User, Sign, SignNotification } from '../types/types';
+// Note: NotificationType was removed — notifications no longer carry a type field
 import apiClient from './client';
 
 // Auth API
@@ -28,6 +29,11 @@ export const authAPI = {
 
 // Sign API
 export const signAPI = {
+    getSigns: async (): Promise<Sign[]> => {
+        const response = await apiClient.get<Sign[]>('/signs');
+        return response;
+    },
+
     getSign: async (signId: string): Promise<Sign> => {
         const response = await apiClient.get<Sign>(`/signs/${signId}`);
         return response;
@@ -41,18 +47,27 @@ export const signAPI = {
 
 // Notification API
 export const notificationAPI = {
-    getNotifications: async (): Promise<SignNotification[]> => {
-        const response = await apiClient.get<SignNotification[]>('/notifications');
+    getNotifications: async (params?: { after?: string; read?: boolean }): Promise<SignNotification[]> => {
+        const query = new URLSearchParams();
+        if (params?.after) query.append('after', params.after);
+        if (params?.read !== undefined) query.append('read', String(params.read));
+        const qs = query.toString();
+        const response = await apiClient.get<SignNotification[]>(`/notifications${qs ? `?${qs}` : ''}`);
         return response;
     },
 
-    acknowledgeNotification: async (notificationId: string): Promise<{ success: boolean }> => {
-        const response = await apiClient.post<{ success: boolean }>(`/notifications/${notificationId}/acknowledge`);
+    getUnreadCount: async (): Promise<{ unread_count: number }> => {
+        const response = await apiClient.get<{ unread_count: number }>('/notifications/unread/count');
         return response;
     },
 
-    acknowledgeAll: async (): Promise<{ success: boolean }> => {
-        const response = await apiClient.post<{ success: boolean }>('/notifications/acknowledge-all');
+    markAsRead: async (notificationId: string): Promise<SignNotification> => {
+        const response = await apiClient.post<SignNotification>(`/notifications/${notificationId}/read`);
+        return response;
+    },
+
+    markAllAsRead: async (): Promise<{ marked_read: number }> => {
+        const response = await apiClient.post<{ marked_read: number }>('/notifications/read-all');
         return response;
     },
 };

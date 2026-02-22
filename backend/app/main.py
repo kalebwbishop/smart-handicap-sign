@@ -9,6 +9,9 @@ from app.config.database import close_pool, get_pool
 from app.config.settings import get_settings
 from app.middleware.error_handler import AppError, app_error_handler, generic_error_handler
 from app.routes.auth import router as auth_router
+from app.routes.events import router as events_router
+from app.routes.notifications import router as notifications_router
+from app.routes.signs import router as signs_router
 # from app.routes.inference import router as inference_router
 from app.utils.logger import logger
 
@@ -108,6 +111,9 @@ async def status():
 # ── routes ───────────────────────────────────────────────────────────
 
 app.include_router(auth_router, prefix="/api/v1")
+app.include_router(events_router, prefix="/api/v1")
+app.include_router(notifications_router, prefix="/api/v1")
+app.include_router(signs_router, prefix="/api/v1")
 # app.include_router(inference_router, prefix="/api/v1")
 
 

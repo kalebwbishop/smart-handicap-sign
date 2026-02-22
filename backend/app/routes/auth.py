@@ -2,12 +2,14 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 from typing import Optional
+import pyperclip
 
-from app.config.database import get_pool
 from app.config.settings import get_settings
 from app.config.workos_client import get_workos_client
 from app.middleware.auth import CurrentUser, get_current_user
+from app.services import auth_service
 from app.utils.logger import logger
+
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -94,14 +96,9 @@ async def exchange(payload: ExchangePayload):
         user = auth_response.user
         access_token = auth_response.access_token
 
-        pool = await get_pool()        
-
-        # Check if user exists in database
+        # Look up or create user via the auth service
         try:
-            existing = await pool.fetchrow(
-                "SELECT * FROM users WHERE workos_user_id = $1",
-                user.id,
-            )
+            db_user = await auth_service.find_user_by_workos_id(user.id)
         except Exception as e:
             logger.error("Database query failed: %s", str(e), exc_info=True)
             return JSONResponse(
@@ -109,19 +106,12 @@ async def exchange(payload: ExchangePayload):
                 content={"error": "Internal Server Error", "message": "Failed to fetch user data"},
             )
 
-        if existing is None:
-            # Create new user
-            new_user = await pool.fetchrow(
-                "INSERT INTO users (workos_user_id, email, name) VALUES ($1, $2, $3) RETURNING *",
-                user.id,
-                user.email,
-                f"{user.first_name} {user.last_name}",
+        if db_user is None:
+            db_user = await auth_service.create_user(
+                workos_user_id=user.id,
+                email=user.email,
+                name=f"{user.first_name} {user.last_name}",
             )
-
-            db_user = new_user
-            logger.info("New user created: %s", user.email)
-        else:
-            db_user = existing
 
         user_out = {
             "id": str(db_user["id"]),
@@ -131,6 +121,13 @@ async def exchange(payload: ExchangePayload):
             "createdAt": str(db_user["created_at"]) if db_user.get("created_at") else None,
             "updatedAt": str(db_user["updated_at"]) if db_user.get("updated_at") else None,
         }
+
+
+        logger.info("OAuth exchange successful for user: %s, accessToken: %s", user.email, access_token)
+
+        # Copy access token to clipboard for testing if pyperclip is available
+  
+        pyperclip.copy(access_token)
 
         return {"user": user_out, "accessToken": access_token}
 
@@ -149,23 +146,16 @@ async def exchange(payload: ExchangePayload):
 async def me(current_user: CurrentUser = Depends(get_current_user)):
     """Return the authenticated user's full profile."""
     try:
-        pool = await get_pool()
-
-        row = await pool.fetchrow(
-            """SELECT u.*, p.display_name, p.bio, p.profile_image_url,
-                      p.cover_image_url, p.location, p.website
-               FROM users u
-               LEFT JOIN profiles p ON u.id = p.user_id
-               WHERE u.workos_user_id = $1""",
-            current_user.workos_user_id,
+        user_data = await auth_service.get_user_with_profile(
+            current_user.workos_user_id
         )
 
-        if row is None:
+        if user_data is None:
             return JSONResponse(
                 status_code=404, content={"error": "User not found"}
             )
 
-        return {"user": dict(row)}
+        return {"user": user_data}
 
     except Exception:
         logger.error("Get current user failed", exc_info=True)

@@ -44,20 +44,17 @@ export interface Sign {
     location: string;
     status: SignStatus;
     lastUpdated: string;
-    batteryLevel: number;      // 0–100
-    signalStrength: number;    // 0–100
+    last_updated?: string;
 }
 
 // ── Notification types ──────────────────────────────────────────────
 
-export type NotificationType = 'status_change' | 'alert' | 'maintenance' | 'misuse';
-
 export interface SignNotification {
     id: string;
-    signId: string;
-    type: NotificationType;
+    event_id: string | null;
     title: string;
-    message: string;
-    timestamp: string;
-    acknowledged: boolean;
+    body: string;
+    read: boolean;
+    created_at: string;
+    updated_at: string;
 }

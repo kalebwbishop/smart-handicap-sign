@@ -7,11 +7,7 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Drop existing tables to ensure clean schema update (resolves column mismatches)
-DROP TABLE IF EXISTS messages CASCADE;
-DROP TABLE IF EXISTS conversation_participants CASCADE;
-DROP TABLE IF EXISTS conversations CASCADE;
-DROP TABLE IF EXISTS post_likes CASCADE;
-DROP TABLE IF EXISTS posts CASCADE;
+DROP TABLE IF EXISTS notifications CASCADE;
 DROP TABLE IF EXISTS followers CASCADE;
 DROP TABLE IF EXISTS profiles CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
@@ -49,48 +45,92 @@ CREATE TABLE IF NOT EXISTS followers (
     CONSTRAINT no_self_follow CHECK (follower_id != following_id)
 );
 
--- Posts table
-CREATE TABLE IF NOT EXISTS posts (
+-- Create enum type for status
+CREATE TYPE sign_status AS ENUM (
+    'available',
+    'occupied',
+    'offline',
+    'error',
+    'training_ready',
+    'training_positive',
+    'training_negative'
+);
+
+-- Create table
+CREATE TABLE signs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    content TEXT NOT NULL,
-    image_url VARCHAR(500),
+    name TEXT NOT NULL,
+    location TEXT NOT NULL,
+    status sign_status NOT NULL DEFAULT 'available',
+    last_updated TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Optional index if you query by status often
+CREATE INDEX idx_signs_status ON signs(status);
+
+-- Optional index if you sort/filter by last_updated
+CREATE INDEX idx_signs_last_updated ON signs(last_updated);
+
+-- Event type enum
+CREATE TYPE event_type AS ENUM (
+    'status_change',
+    'alert',
+    'maintenance',
+    'misuse'
+);
+
+-- Events table
+CREATE TABLE IF NOT EXISTS events (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    sign_id UUID NOT NULL REFERENCES signs(id) ON DELETE CASCADE,
+    type event_type NOT NULL,
+    data JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Post likes table
-CREATE TABLE IF NOT EXISTS post_likes (
-    post_id UUID NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (post_id, user_id)
-);
+-- Events indexes
+CREATE INDEX idx_events_sign ON events(sign_id);
+CREATE INDEX idx_events_type ON events(type);
+CREATE INDEX idx_events_created_at ON events(created_at DESC);
 
--- Conversations table
-CREATE TABLE IF NOT EXISTS conversations (
+-- Auto-update updated_at on events
+CREATE TRIGGER update_events_updated_at
+    BEFORE UPDATE ON events
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+COMMENT ON TABLE events IS 'Sign notification events (status changes, alerts, maintenance, misuse)';
+COMMENT ON COLUMN events.sign_id IS 'FK to the sign that generated this event';
+COMMENT ON COLUMN events.type IS 'Category of the event';
+COMMENT ON COLUMN events.data IS 'Arbitrary JSON payload with event-specific details';
+
+-- Notifications table (optionally linked to an event)
+CREATE TABLE IF NOT EXISTS notifications (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    event_id UUID REFERENCES events(id) ON DELETE SET NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    read BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Conversation participants (many-to-many relationship)
-CREATE TABLE IF NOT EXISTS conversation_participants (
-    conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    joined_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (conversation_id, user_id)
-);
+-- Notifications indexes
+CREATE INDEX idx_notifications_event ON notifications(event_id);
+CREATE INDEX idx_notifications_read ON notifications(read);
+CREATE INDEX idx_notifications_created_at ON notifications(created_at DESC);
 
--- Messages table
-CREATE TABLE IF NOT EXISTS messages (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-    sender_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    content TEXT NOT NULL,
-    read_at TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
+-- Auto-update updated_at on notifications
+CREATE TRIGGER update_notifications_updated_at
+    BEFORE UPDATE ON notifications
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+COMMENT ON TABLE notifications IS 'User notifications, optionally tied to a sign event';
+COMMENT ON COLUMN notifications.user_id IS 'FK to the user who receives this notification';
+COMMENT ON COLUMN notifications.event_id IS 'Optional FK to the event that triggered this notification';
+COMMENT ON COLUMN notifications.read IS 'Whether the notification has been read by the user';
 
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
@@ -98,19 +138,6 @@ CREATE INDEX IF NOT EXISTS idx_users_workos_id ON users(workos_user_id);
 
 CREATE INDEX IF NOT EXISTS idx_followers_follower ON followers(follower_id);
 CREATE INDEX IF NOT EXISTS idx_followers_following ON followers(following_id);
-
-CREATE INDEX IF NOT EXISTS idx_posts_user ON posts(user_id);
-CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts(created_at DESC);
-
-CREATE INDEX IF NOT EXISTS idx_post_likes_post ON post_likes(post_id);
-CREATE INDEX IF NOT EXISTS idx_post_likes_user ON post_likes(user_id);
-
-CREATE INDEX IF NOT EXISTS idx_conversation_participants_conversation ON conversation_participants(conversation_id);
-CREATE INDEX IF NOT EXISTS idx_conversation_participants_user ON conversation_participants(user_id);
-
-CREATE INDEX IF NOT EXISTS idx_messages_conversation ON messages(conversation_id);
-CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id);
-CREATE INDEX IF NOT EXISTS idx_messages_created_at ON messages(created_at DESC);
 
 -- Function to update 'updated_at' timestamp automatically
 CREATE OR REPLACE FUNCTION update_updated_at_column()
@@ -132,27 +159,12 @@ CREATE TRIGGER update_profiles_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER update_posts_updated_at
-    BEFORE UPDATE ON posts
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER update_conversations_updated_at
-    BEFORE UPDATE ON conversations
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
-
 -- Comments for documentation
 COMMENT ON TABLE users IS 'Core user accounts authenticated via WorkOS';
 COMMENT ON TABLE profiles IS 'Extended user profile information for social features';
 COMMENT ON TABLE followers IS 'Follower/following relationships between users';
-COMMENT ON TABLE posts IS 'User-generated posts with optional images';
-COMMENT ON TABLE post_likes IS 'Likes on posts';
-COMMENT ON TABLE conversations IS 'Direct message conversations';
-COMMENT ON TABLE conversation_participants IS 'Users participating in each conversation';
-COMMENT ON TABLE messages IS 'Messages within conversations';
-
 COMMENT ON COLUMN users.workos_user_id IS 'WorkOS user identifier for authentication';
 COMMENT ON COLUMN profiles.display_name IS 'User-chosen display name (can differ from account name)';
 COMMENT ON COLUMN profiles.bio IS 'User biography/description';
-COMMENT ON COLUMN posts.image_url IS 'URL to image stored in Azure Blob Storage';
+COMMENT ON TABLE notifications IS 'User notifications, optionally tied to a sign event';
+

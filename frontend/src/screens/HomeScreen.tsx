@@ -1,8 +1,9 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
     View,
     Text,
     ScrollView,
+    TextInput,
     Pressable,
     StyleSheet,
     Linking,
@@ -18,57 +19,10 @@ import { typography } from '@/theme/typography';
 import { spacing, layout } from '@/theme/spacing';
 
 /* ──────────────────────────────────────────────
- * Mock data (used until backend endpoints exist)
+ * Constants
  * ────────────────────────────────────────────── */
 
-const MOCK_SIGN: Sign = {
-    id: '1',
-    name: 'Parking Sign A-1',
-    location: 'Main Entrance — Lot A, Space 1',
-    status: 'available',
-    lastUpdated: new Date().toISOString(),
-    batteryLevel: 87,
-    signalStrength: 92,
-};
-
-const MOCK_NOTIFICATIONS: SignNotification[] = [
-    {
-        id: '1',
-        signId: '1',
-        type: 'status_change',
-        title: 'Space Now Available',
-        message: 'Parking space A-1 is now available.',
-        timestamp: new Date(Date.now() - 5 * 60_000).toISOString(),
-        acknowledged: false,
-    },
-    {
-        id: '2',
-        signId: '1',
-        type: 'misuse',
-        title: 'Potential Misuse Detected',
-        message: 'Unauthorized vehicle detected in space A-1 without a valid permit.',
-        timestamp: new Date(Date.now() - 25 * 60_000).toISOString(),
-        acknowledged: false,
-    },
-    {
-        id: '3',
-        signId: '1',
-        type: 'maintenance',
-        title: 'Battery Low Warning',
-        message: 'Sign battery is below 20%. Schedule maintenance soon.',
-        timestamp: new Date(Date.now() - 2 * 3_600_000).toISOString(),
-        acknowledged: true,
-    },
-    {
-        id: '4',
-        signId: '1',
-        type: 'status_change',
-        title: 'Space Occupied',
-        message: 'Parking space A-1 is now occupied.',
-        timestamp: new Date(Date.now() - 5 * 3_600_000).toISOString(),
-        acknowledged: true,
-    },
-];
+const POLL_INTERVAL_MS = 30_000; // 30 seconds
 
 /* ──────────────────────────────────────────────
  * Helpers
@@ -81,12 +35,7 @@ const STATUS_CONFIG: Record<SignStatus, { color: string; label: string; icon: st
     error: { color: '#F59E0B', label: 'Error', icon: '🟡' },
 };
 
-const NOTIF_ICONS: Record<string, string> = {
-    status_change: '🔄',
-    alert: '⚠️',
-    maintenance: '🔧',
-    misuse: '🚨',
-};
+
 
 function timeAgo(iso: string): string {
     const diff = Date.now() - new Date(iso).getTime();
@@ -109,27 +58,71 @@ export default function HomeScreen() {
     const [refreshing, setRefreshing] = useState(false);
 
     // Sign state
-    const [sign, setSign] = useState<Sign>(MOCK_SIGN);
-    const [signLoading, setSignLoading] = useState(false);
+    const [sign, setSign] = useState<Sign | null>(null);
+    const [signLoading, setSignLoading] = useState(true);
+    const [signError, setSignError] = useState<string | null>(null);
 
     // Notifications state
-    const [notifications, setNotifications] = useState<SignNotification[]>(MOCK_NOTIFICATIONS);
+    const [notifications, setNotifications] = useState<SignNotification[]>([]);
+    const [notifLoading, setNotifLoading] = useState(true);
+    const lastPollTime = useRef<string | null>(null);
+
+    // Feedback state
+    const [feedbackText, setFeedbackText] = useState('');
+    const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
+    const [feedbackLoading, setFeedbackLoading] = useState(false);
 
     /* ── Data fetching ── */
 
-    const fetchData = useCallback(async () => {
+    const fetchNotifications = useCallback(async (isPolling = false) => {
         try {
-            // Uncomment when backend endpoints are ready:
-            // const [signData, notifData] = await Promise.all([
-            //     signAPI.getMySign(),
-            //     notificationAPI.getNotifications(),
-            // ]);
-            // setSign(signData);
-            // setNotifications(notifData);
+            if (isPolling && lastPollTime.current) {
+                // Only fetch notifications created after the last poll
+                const newNotifs = await notificationAPI.getNotifications({ after: lastPollTime.current });
+                if (newNotifs.length > 0) {
+                    setNotifications((prev) => {
+                        const existingIds = new Set(prev.map((n) => n.id));
+                        const unique = newNotifs.filter((n) => !existingIds.has(n.id));
+                        return unique.length > 0 ? [...unique, ...prev] : prev;
+                    });
+                    lastPollTime.current = new Date().toISOString();
+                }
+            } else {
+                // Full fetch
+                const allNotifs = await notificationAPI.getNotifications();
+                setNotifications(allNotifs);
+                lastPollTime.current = new Date().toISOString();
+            }
         } catch (err) {
-            console.error('[HomeScreen] Failed to fetch data:', err);
+            console.error('[HomeScreen] Failed to fetch notifications:', err);
+        } finally {
+            if (!isPolling) setNotifLoading(false);
         }
     }, []);
+
+    const fetchData = useCallback(async () => {
+        setSignLoading(true);
+        setSignError(null);
+        try {
+            const signs = await signAPI.getSigns();
+            if (signs.length > 0) {
+                const raw = signs[0];
+                setSign({
+                    ...raw,
+                    lastUpdated: raw.last_updated || raw.lastUpdated,
+                });
+            } else {
+                setSignError('No signs found.');
+            }
+        } catch (err) {
+            console.error('[HomeScreen] Failed to fetch data:', err);
+            setSignError('Failed to load sign data.');
+        } finally {
+            setSignLoading(false);
+        }
+
+        await fetchNotifications();
+    }, [fetchNotifications]);
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
@@ -140,6 +133,15 @@ export default function HomeScreen() {
     useEffect(() => {
         fetchData();
     }, [fetchData]);
+
+    // Polling cycle for notifications
+    useEffect(() => {
+        const interval = setInterval(() => {
+            fetchNotifications(true);
+        }, POLL_INTERVAL_MS);
+
+        return () => clearInterval(interval);
+    }, [fetchNotifications]);
 
     /* ── Actions ── */
 
@@ -158,35 +160,50 @@ export default function HomeScreen() {
     const handleAcknowledge = useCallback(async (notifId: string) => {
         // Optimistic update
         setNotifications((prev) =>
-            prev.map((n) => (n.id === notifId ? { ...n, acknowledged: true } : n)),
+            prev.map((n) => (n.id === notifId ? { ...n, read: true } : n)),
         );
         try {
-            // await notificationAPI.acknowledgeNotification(notifId);
+            await notificationAPI.markAsRead(notifId);
         } catch {
             // Revert on failure
             setNotifications((prev) =>
-                prev.map((n) => (n.id === notifId ? { ...n, acknowledged: false } : n)),
+                prev.map((n) => (n.id === notifId ? { ...n, read: false } : n)),
             );
         }
     }, []);
 
     const handleAcknowledgeAll = useCallback(async () => {
-        const unacked = notifications.filter((n) => !n.acknowledged).map((n) => n.id);
+        const unread = notifications.filter((n) => !n.read).map((n) => n.id);
         // Optimistic update
-        setNotifications((prev) => prev.map((n) => ({ ...n, acknowledged: true })));
+        setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
         try {
-            // await notificationAPI.acknowledgeAll();
+            await notificationAPI.markAllAsRead();
         } catch {
             setNotifications((prev) =>
-                prev.map((n) => (unacked.includes(n.id) ? { ...n, acknowledged: false } : n)),
+                prev.map((n) => (unread.includes(n.id) ? { ...n, read: false } : n)),
             );
         }
     }, [notifications]);
 
+    const handleSubmitFeedback = useCallback(async () => {
+        if (!feedbackText.trim()) return;
+        setFeedbackLoading(true);
+        try {
+            // await apiClient.post('/feedback', { message: feedbackText });
+            console.log('[Feedback]', feedbackText);
+            setFeedbackSubmitted(true);
+            setFeedbackText('');
+        } catch (err) {
+            console.error('[HomeScreen] Feedback error:', err);
+        } finally {
+            setFeedbackLoading(false);
+        }
+    }, [feedbackText]);
+
     /* ── Derived ── */
 
-    const statusConfig = STATUS_CONFIG[sign.status];
-    const unacknowledgedCount = notifications.filter((n) => !n.acknowledged).length;
+    const statusConfig = sign ? STATUS_CONFIG[sign.status] : null;
+    const unacknowledgedCount = notifications.filter((n) => !n.read).length;
 
     return (
         <View style={s.root}>
@@ -223,33 +240,47 @@ export default function HomeScreen() {
                 <View style={s.content}>
                     {/* ── Sign Status Card ── */}
                     <View style={s.card}>
-                        <View style={s.cardHeader}>
-                            <Text style={[typography.h3, { color: colors.textPrimary }]}>Your Sign</Text>
-                            <Text style={[typography.bodySmall, { color: colors.textMuted }]}>
-                                Updated {timeAgo(sign.lastUpdated)}
-                            </Text>
-                        </View>
-
-                        {/* Big status indicator */}
-                        <View style={[s.statusBanner, { backgroundColor: statusConfig.color + '12' }]}>
-                            <View style={s.statusIconRow}>
-                                <View style={[s.statusDot, { backgroundColor: statusConfig.color }]} />
-                                <Text style={[typography.h2, { color: statusConfig.color }]}>
-                                    {statusConfig.label}
+                        {signLoading ? (
+                            <View style={s.emptyState}>
+                                <ActivityIndicator size="large" color={colors.primary} />
+                                <Text style={[typography.body, { color: colors.textMuted, marginTop: spacing.sm }]}>
+                                    Loading sign data…
                                 </Text>
                             </View>
-                            <Text style={{ fontSize: 56, marginTop: spacing.sm }}>♿</Text>
-                        </View>
+                        ) : signError || !sign || !statusConfig ? (
+                            <View style={s.emptyState}>
+                                <Text style={{ fontSize: 32 }}>⚠️</Text>
+                                <Text style={[typography.body, { color: colors.textMuted, marginTop: spacing.sm }]}>
+                                    {signError || 'No sign data available.'}
+                                </Text>
+                            </View>
+                        ) : (
+                            <>
+                                <View style={s.cardHeader}>
+                                    <Text style={[typography.h3, { color: colors.textPrimary }]}>Your Sign</Text>
+                                    <Text style={[typography.bodySmall, { color: colors.textMuted }]}>
+                                        Updated {timeAgo(sign.lastUpdated)}
+                                    </Text>
+                                </View>
 
-                        {/* Sign details */}
-                        <View style={s.detailsGrid}>
-                            <DetailRow label="Sign Name" value={sign.name} />
-                            <DetailRow label="Location" value={sign.location} />
-                            <DetailRow label="Battery" value={`${sign.batteryLevel}%`}
-                                valueColor={sign.batteryLevel < 20 ? '#DC2626' : colors.textPrimary} />
-                            <DetailRow label="Signal" value={`${sign.signalStrength}%`}
-                                valueColor={sign.signalStrength < 30 ? '#F59E0B' : colors.textPrimary} />
-                        </View>
+                                {/* Big status indicator */}
+                                <View style={[s.statusBanner, { backgroundColor: statusConfig.color + '12' }]}>
+                                    <View style={s.statusIconRow}>
+                                        <View style={[s.statusDot, { backgroundColor: statusConfig.color }]} />
+                                        <Text style={[typography.h2, { color: statusConfig.color }]}>
+                                            {statusConfig.label}
+                                        </Text>
+                                    </View>
+                                    <Text style={{ fontSize: 56, marginTop: spacing.sm }}>♿</Text>
+                                </View>
+
+                                {/* Sign details */}
+                                <View style={s.detailsGrid}>
+                                    <DetailRow label="Sign Name" value={sign.name} />
+                                    <DetailRow label="Location" value={sign.location} />
+                                </View>
+                            </>
+                        )}
                     </View>
 
                     {/* ── Notifications ── */}
@@ -298,6 +329,70 @@ export default function HomeScreen() {
                             </View>
                         )}
                     </View>
+
+                    {/* ── Feedback ── */}
+                    <View style={s.card}>
+                        <View style={s.cardHeader}>
+                            <Text style={[typography.h3, { color: colors.textPrimary }]}>Send Feedback</Text>
+                            <Text style={{ fontSize: 20 }}>💬</Text>
+                        </View>
+
+                        {feedbackSubmitted ? (
+                            <View style={s.feedbackSuccess}>
+                                <Text style={{ fontSize: 32 }}>✅</Text>
+                                <Text style={[typography.body, { color: colors.textPrimary, fontWeight: '600', marginTop: spacing.sm }]}>
+                                    Thanks for your feedback!
+                                </Text>
+                                <Text style={[typography.bodySmall, { color: colors.textSecondary, marginTop: 4, textAlign: 'center' }]}>
+                                    Your input helps us improve the Smart Handicap Sign.
+                                </Text>
+                                <Pressable
+                                    onPress={() => setFeedbackSubmitted(false)}
+                                    style={({ pressed }) => [s.feedbackNewBtn, pressed && { opacity: 0.7 }]}
+                                    accessibilityRole="button"
+                                    accessibilityLabel="Send another feedback"
+                                >
+                                    <Text style={[typography.bodySmall, { color: colors.accent, fontWeight: '600' }]}>
+                                        Send Another
+                                    </Text>
+                                </Pressable>
+                            </View>
+                        ) : (
+                            <View>
+                                <Text style={[typography.bodySmall, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
+                                    Let us know about issues, ideas, or anything else.
+                                </Text>
+                                <TextInput
+                                    style={s.feedbackInput}
+                                    value={feedbackText}
+                                    onChangeText={setFeedbackText}
+                                    placeholder="What's on your mind?"
+                                    placeholderTextColor={colors.textMuted}
+                                    multiline
+                                    numberOfLines={4}
+                                    textAlignVertical="top"
+                                    accessibilityLabel="Feedback message"
+                                />
+                                <Pressable
+                                    onPress={handleSubmitFeedback}
+                                    disabled={!feedbackText.trim() || feedbackLoading}
+                                    style={({ pressed }) => [
+                                        s.feedbackSubmitBtn,
+                                        (!feedbackText.trim() || feedbackLoading) && { opacity: 0.5 },
+                                        pressed && { opacity: 0.8 },
+                                    ]}
+                                    accessibilityRole="button"
+                                    accessibilityLabel="Submit feedback"
+                                >
+                                    {feedbackLoading ? (
+                                        <ActivityIndicator size="small" color={colors.white} />
+                                    ) : (
+                                        <Text style={[typography.button, { color: colors.white }]}>Submit Feedback</Text>
+                                    )}
+                                </Pressable>
+                            </View>
+                        )}
+                    </View>
                 </View>
             </ScrollView>
         </View>
@@ -326,37 +421,36 @@ function NotificationRow({
     notification: SignNotification;
     onAcknowledge: (id: string) => void;
 }) {
-    const icon = NOTIF_ICONS[notification.type] || '🔔';
     return (
-        <View style={[s.notifRow, notification.acknowledged && s.notifRowAcked]}>
-            <Text style={{ fontSize: 22, marginRight: spacing.md }}>{icon}</Text>
+        <View style={[s.notifRow, notification.read && s.notifRowAcked]}>
+            <Text style={{ fontSize: 22, marginRight: spacing.md }}>🔔</Text>
             <View style={s.notifBody}>
                 <View style={s.notifTitleRow}>
                     <Text
                         style={[
                             typography.body,
                             { fontWeight: '600', color: colors.textPrimary, flex: 1 },
-                            notification.acknowledged && { color: colors.textMuted },
+                            notification.read && { color: colors.textMuted },
                         ]}
                         numberOfLines={1}
                     >
                         {notification.title}
                     </Text>
                     <Text style={[typography.bodySmall, { color: colors.textMuted, marginLeft: spacing.sm }]}>
-                        {timeAgo(notification.timestamp)}
+                        {timeAgo(notification.created_at)}
                     </Text>
                 </View>
                 <Text
                     style={[
                         typography.bodySmall,
                         { color: colors.textSecondary, marginTop: 2 },
-                        notification.acknowledged && { color: colors.textMuted },
+                        notification.read && { color: colors.textMuted },
                     ]}
                     numberOfLines={2}
                 >
-                    {notification.message}
+                    {notification.body}
                 </Text>
-                {!notification.acknowledged && (
+                {!notification.read && (
                     <Pressable
                         onPress={() => onAcknowledge(notification.id)}
                         style={({ pressed }) => [s.ackBtn, pressed && { opacity: 0.7 }]}
@@ -520,5 +614,37 @@ const s = StyleSheet.create({
     emptyState: {
         alignItems: 'center',
         paddingVertical: spacing.xl,
+    },
+
+    /* Feedback */
+    feedbackInput: {
+        backgroundColor: colors.offWhite,
+        borderWidth: 1,
+        borderColor: colors.divider,
+        borderRadius: layout.borderRadiusSm,
+        padding: spacing.md,
+        minHeight: 100,
+        fontSize: 16,
+        color: colors.textPrimary,
+        lineHeight: 22,
+    },
+    feedbackSubmitBtn: {
+        marginTop: spacing.md,
+        backgroundColor: colors.accent,
+        paddingVertical: 14,
+        borderRadius: layout.borderRadiusSm,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    feedbackSuccess: {
+        alignItems: 'center',
+        paddingVertical: spacing.lg,
+    },
+    feedbackNewBtn: {
+        marginTop: spacing.md,
+        paddingVertical: spacing.sm,
+        paddingHorizontal: spacing.md,
+        borderRadius: layout.borderRadiusSm,
+        backgroundColor: colors.accent + '14',
     },
 });
