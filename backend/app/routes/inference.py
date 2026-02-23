@@ -1,6 +1,12 @@
+import base64
+import io
 from functools import lru_cache
 from typing import List, Optional
 
+import matplotlib
+
+matplotlib.use("Agg")  # headless backend – no GUI needed
+import matplotlib.pyplot as plt
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
@@ -15,7 +21,7 @@ router = APIRouter(prefix="/inference", tags=["inference"])
 
 
 class ClassifyRequest(BaseModel):
-    signal: List[int] = Field(
+    samples: List[int] = Field(
         ...,
         min_length=512,
         max_length=512,
@@ -32,6 +38,10 @@ class ClassifyRequest(BaseModel):
 class ClassifyResponse(BaseModel):
     label: str
     confidence: float
+    debug_graph: Optional[str] = Field(
+        default=None,
+        description="Base64-encoded PNG plot of the input samples (only in debug)",
+    )
 
 
 # ── lazy-loaded model singleton ──────────────────────────────────────
@@ -57,7 +67,24 @@ async def classify(
     clf = _get_classifier()
 
     try:
-        result = clf.classify(payload.signal, threshold=payload.threshold)
+        # ── debug graph of input samples ──────────────────────────────
+        fig, ax = plt.subplots(figsize=(10, 3))
+        ax.plot(payload.samples, linewidth=0.8)
+        ax.set_title("Input Samples (512-point signal)")
+        ax.set_xlabel("Sample index")
+        ax.set_ylabel("Value")
+        ax.set_xlim(0, len(payload.samples) - 1)
+        fig.tight_layout()
+
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=100)
+        plt.close(fig)
+        buf.seek(0)
+        debug_graph_b64 = base64.b64encode(buf.read()).decode()
+        logger.debug("Debug graph generated for %d samples", len(payload.samples))
+        # ──────────────────────────────────────────────────────────────
+
+        result = clf.classify(payload.samples, threshold=payload.threshold)
     except ValueError as exc:
         from fastapi.responses import JSONResponse
 
@@ -72,4 +99,5 @@ async def classify(
         result["label"],
         result["confidence"],
     )
+    result["debug_graph"] = debug_graph_b64
     return result
