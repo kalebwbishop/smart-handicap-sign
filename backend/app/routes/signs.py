@@ -4,8 +4,8 @@ from typing import List, Optional
 from datetime import datetime
 from enum import Enum
 
-from app.middleware.auth import CurrentUser, get_current_user
-from app.services import sign_service
+from app.middleware.auth import CurrentUser, get_current_user, optional_auth
+from app.services import event_service, sign_service
 from app.utils.logger import logger
 
 router = APIRouter(prefix="/signs", tags=["signs"])
@@ -16,7 +16,8 @@ router = APIRouter(prefix="/signs", tags=["signs"])
 
 class SignStatus(str, Enum):
     available = "available"
-    occupied = "occupied"
+    assistance_requested = "assistance_requested"
+    assistance_in_progress = "assistance_in_progress"
     offline = "offline"
     error = "error"
     training_ready = "training_ready"
@@ -53,7 +54,7 @@ class SignOut(BaseModel):
 # ── CREATE /signs ────────────────────────────────────────────────────
 
 
-@router.post("/", response_model=SignOut, status_code=201)
+@router.post("", response_model=SignOut, status_code=201)
 async def create_sign(
     sign: SignCreate,
     current_user: CurrentUser = Depends(get_current_user),
@@ -75,7 +76,7 @@ async def create_sign(
 # ── READ /signs ──────────────────────────────────────────────────────
 
 
-@router.get("/", response_model=List[SignOut])
+@router.get("", response_model=List[SignOut])
 async def list_signs(
     status: Optional[SignStatus] = Query(None, description="Filter by status"),
     skip: int = Query(0, ge=0),
@@ -115,6 +116,32 @@ async def get_sign(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── STATUS /signs/{sign_id}/status (lightweight, no auth) ────────────
+
+
+class SignStatusOut(BaseModel):
+    sign_id: str
+    status: SignStatus
+
+
+@router.get("/{sign_id}/status", response_model=SignStatusOut)
+async def get_sign_status(
+    sign_id: str,
+    _current_user: CurrentUser = Depends(optional_auth),
+):
+    """Return only the current status of a sign (used by ESP32 devices)."""
+    try:
+        result = await sign_service.get_sign(sign_id)
+        if not result:
+            raise HTTPException(status_code=404, detail="Sign not found")
+        return SignStatusOut(sign_id=result["id"], status=result["status"])
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to fetch sign status: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── UPDATE /signs/{sign_id} ──────────────────────────────────────────
 
 
@@ -140,6 +167,106 @@ async def update_sign(
         raise
     except Exception as e:
         logger.error(f"Failed to update sign: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── ACKNOWLEDGE /signs/{sign_id}/acknowledge ────────────────────────
+
+
+@router.post("/{sign_id}/acknowledge", response_model=SignOut)
+async def acknowledge_sign(
+    sign_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Acknowledge an assistance request, moving the sign to *assistance_in_progress*."""
+    try:
+        sign = await sign_service.get_sign(sign_id)
+        if not sign:
+            raise HTTPException(status_code=404, detail="Sign not found")
+
+        if sign["status"] != "assistance_requested":
+            raise HTTPException(
+                status_code=409,
+                detail=f"Sign is '{sign['status']}', not 'assistance_requested'",
+            )
+
+        result = await sign_service.update_sign(
+            sign_id, status="assistance_in_progress"
+        )
+
+        await event_service.create_event(
+            sign_id=sign_id,
+            event_type="status_change",
+            data={
+                "previous_status": "assistance_requested",
+                "new_status": "assistance_in_progress",
+                "acknowledged_by": current_user.id,
+            },
+            create_notification=True,
+            notification_title="Assistance Acknowledged",
+            notification_body=(
+                f"Sign {sign_id} assistance request has been acknowledged."
+            ),
+        )
+
+        logger.info("Sign %s acknowledged by user %s", sign_id, current_user.id)
+        return SignOut(**result)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to acknowledge sign: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── RESOLVE /signs/{sign_id}/resolve ─────────────────────────────────
+
+
+@router.post("/{sign_id}/resolve", response_model=SignOut)
+async def resolve_sign(
+    sign_id: str,
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Mark assistance as complete, returning the sign to *available*."""
+    try:
+        sign = await sign_service.get_sign(sign_id)
+        if not sign:
+            raise HTTPException(status_code=404, detail="Sign not found")
+
+        if sign["status"] not in ("assistance_requested", "assistance_in_progress"):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Sign is '{sign['status']}'; must be "
+                    "'assistance_requested' or 'assistance_in_progress' to resolve"
+                ),
+            )
+
+        previous_status = sign["status"]
+        result = await sign_service.update_sign(sign_id, status="available")
+
+        await event_service.create_event(
+            sign_id=sign_id,
+            event_type="status_change",
+            data={
+                "previous_status": previous_status,
+                "new_status": "available",
+                "resolved_by": current_user.id,
+            },
+            create_notification=True,
+            notification_title="Assistance Resolved",
+            notification_body=(
+                f"Sign {sign_id} has been resolved and is now available."
+            ),
+        )
+
+        logger.info("Sign %s resolved by user %s", sign_id, current_user.id)
+        return SignOut(**result)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to resolve sign: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 

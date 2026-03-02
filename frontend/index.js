@@ -1,3 +1,4 @@
+import './polyfills'; // must be first — patches window.location before axios reads it
 import { registerRootComponent } from 'expo';
 import App from './App';
 

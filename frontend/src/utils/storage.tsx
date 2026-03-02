@@ -1,36 +1,40 @@
-import react, { useEffect, useState } from "react";
 import { Platform } from "react-native";
 import * as expoStorage from "expo-secure-store";
-import secureLocalStorage from "react-secure-storage";
 
+// react-secure-storage is web-only and accesses browser globals (e.g.
+// navigator.languages) at import time, which crashes the iOS runtime.
+// Lazy-load it so the module is only evaluated on web.
+function getSecureLocalStorage() {
+    return require("react-secure-storage").default;
+}
 
 export default class Storage {
 
     static async setKey(key: string, token: string) {
         if (Platform.OS === "web") {
-            const result = await secureLocalStorage.setItem(key, token)
+            getSecureLocalStorage().setItem(key, token);
         } else {
-            const result = await expoStorage.setItemAsync(key, token)
+            await expoStorage.setItemAsync(key, token);
         }
     }
 
     static async removeKey(key: string) {
         if (Platform.OS === "web") {
-            secureLocalStorage.removeItem(key)
+            getSecureLocalStorage().removeItem(key);
         } else {
-            await expoStorage.deleteItemAsync(key)
+            await expoStorage.deleteItemAsync(key);
         }
     }
 
-static async getKey(key: string) {
+    static async getKey(key: string) {
         if (Platform.OS === "web") {
-            const result = await secureLocalStorage.getItem(key)
-            console.log(result)
-            return result
+            const result = getSecureLocalStorage().getItem(key);
+            console.log(result);
+            return result;
         } else {
-            const result = await expoStorage.getItemAsync(key)
-            console.log(result)
-            return result
+            const result = await expoStorage.getItemAsync(key);
+            console.log(result);
+            return result;
         }
     }
-};
+}

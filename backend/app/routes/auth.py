@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 from typing import Optional
+import json
+import base64
 import pyperclip
 
 from app.config.settings import get_settings
@@ -21,6 +23,10 @@ class ExchangePayload(BaseModel):
     data: dict  # expects {"code": "..."}
 
 
+class RefreshPayload(BaseModel):
+    refreshToken: str
+
+
 class UserOut(BaseModel):
     id: str
     workosUserId: str
@@ -34,15 +40,23 @@ class UserOut(BaseModel):
 
 
 @router.get("/login")
-async def login():
+async def login(mobile_redirect: Optional[str] = Query(None)):
     """Initiate WorkOS OAuth / AuthKit flow."""
     try:
         settings = get_settings()
         workos = get_workos_client()
 
+        # Encode mobile redirect URI in state so the callback can use it
+        state = None
+        if mobile_redirect:
+            state = base64.urlsafe_b64encode(
+                json.dumps({"mobile_redirect": mobile_redirect}).encode()
+            ).decode()
+
         authorization_url = workos.user_management.get_authorization_url(
             provider="authkit",
             redirect_uri=settings.workos_redirect_uri,
+            state=state,
         )
 
         return {"authorizationUrl": authorization_url}
@@ -58,7 +72,7 @@ async def login():
 
 
 @router.get("/callback")
-async def callback(code: Optional[str] = None):
+async def callback(code: Optional[str] = None, state: Optional[str] = None):
     """Redirect back to the frontend with the authorization code."""
     if not code:
         return JSONResponse(
@@ -66,6 +80,17 @@ async def callback(code: Optional[str] = None):
             content={"error": "Bad Request", "message": "Authorization code is required"},
         )
     logger.info(f"OAuth callback redirecting with code to frontend")
+
+    # Check if state contains a mobile redirect URI
+    if state:
+        try:
+            state_data = json.loads(base64.urlsafe_b64decode(state).decode())
+            mobile_redirect = state_data.get("mobile_redirect")
+            if mobile_redirect:
+                separator = "&" if "?" in mobile_redirect else "?"
+                return RedirectResponse(url=f"{mobile_redirect}{separator}code={code}")
+        except Exception:
+            logger.warning("Failed to decode state parameter", exc_info=True)
 
     settings = get_settings()
     frontend_url = settings.frontend_url
@@ -123,19 +148,48 @@ async def exchange(payload: ExchangePayload):
         }
 
 
-        logger.info("OAuth exchange successful for user: %s, accessToken: %s", user.email, access_token)
+        refresh_token = auth_response.refresh_token
+
+        logger.info("OAuth exchange successful for user: %s", user.email)
 
         # Copy access token to clipboard for testing if pyperclip is available
-  
-        pyperclip.copy(access_token)
+        try:
+            pyperclip.copy(access_token)
+        except Exception:
+            pass
 
-        return {"user": user_out, "accessToken": access_token}
+        return {"user": user_out, "accessToken": access_token, "refreshToken": refresh_token}
 
     except Exception as e:
         logger.error("OAuth exchange failed: %s", str(e), exc_info=True)
         return JSONResponse(
             status_code=500,
             content={"error": "Internal Server Error", "message": "Authentication failed"},
+        )
+
+
+# ── POST /auth/refresh ───────────────────────────────────────────────
+
+
+@router.post("/refresh")
+async def refresh(payload: RefreshPayload):
+    """Use a refresh token to obtain a new access token (and refresh token)."""
+    try:
+        workos = get_workos_client()
+
+        auth_response = workos.user_management.authenticate_with_refresh_token(
+            refresh_token=payload.refreshToken,
+        )
+
+        return {
+            "accessToken": auth_response.access_token,
+            "refreshToken": auth_response.refresh_token,
+        }
+    except Exception as e:
+        logger.error("Token refresh failed: %s", str(e), exc_info=True)
+        return JSONResponse(
+            status_code=401,
+            content={"error": "Unauthorized", "message": "Refresh token is invalid or expired"},
         )
 
 

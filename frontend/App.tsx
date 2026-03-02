@@ -54,7 +54,7 @@ export default function App() {
         authAPI.handleCallback(code)
             .then(async (response: AuthResponse) => {
                 console.log("[OAuth] Exchange successful", response.user.email);
-                await setUser(response.user, response.accessToken);
+                await setUser(response.user, response.accessToken, response.refreshToken);
             })
             .catch((error) => {
                 console.error("[OAuth] Exchange failed:", error);

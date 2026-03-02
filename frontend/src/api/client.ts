@@ -1,13 +1,18 @@
-import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
+import axios, { AxiosInstance, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 import Storage from '../utils/storage';
-import { useAuthStore } from '../store/authStore';
 
 // Get API URL from environment variable
-const API_URL = process.env.API_URL || 'http://localhost:8000/api/v1';
+// Use LAN IP so physical devices can reach the backend
+const API_URL = process.env.API_URL || 'http://192.168.4.35:8000/api/v1';
 // const API_URL = process.env.API_URL || 'https://res007-0-8a1a2ecf605e412c-dev.redground-500683d1.eastus.azurecontainerapps.io/api/v1';
 
 class ApiClient {
     private client: AxiosInstance;
+    private isRefreshing = false;
+    private failedQueue: Array<{
+        resolve: (token: string) => void;
+        reject: (error: any) => void;
+    }> = [];
 
     constructor() {
         this.client = axios.create({
@@ -30,21 +35,84 @@ class ApiClient {
             (error) => Promise.reject(error)
         );
 
-        // Response interceptor for error handling
+        // Response interceptor — attempt silent refresh on 401
         this.client.interceptors.response.use(
             (response) => response,
             async (error) => {
-                const requestUrl = error.config?.url || '';
-                // Skip auto-logout for the logout endpoint to avoid infinite loop
+                const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+                const requestUrl = originalRequest?.url || '';
+
+                // Skip refresh logic for auth endpoints to avoid loops
+                const isAuthEndpoint =
+                    requestUrl.includes('/auth/logout') ||
+                    requestUrl.includes('/auth/refresh') ||
+                    requestUrl.includes('/auth/exchange');
+
                 if (
-                    (error.response?.status === 401 || error.response?.status === 403) &&
-                    !requestUrl.includes('/auth/logout')
+                    error.response?.status === 401 &&
+                    !originalRequest._retry &&
+                    !isAuthEndpoint
                 ) {
-                    // Token is invalid or expired - logout user
-                    console.error('[API] Unauthorized (401/403) - logging out user');
-                    const { logout } = useAuthStore.getState();
-                    await logout();
+                    // Try refreshing the token
+                    const refreshToken = await Storage.getKey('refresh_token');
+
+                    if (refreshToken) {
+                        if (this.isRefreshing) {
+                            // Another refresh is already in flight — queue this request
+                            return new Promise((resolve, reject) => {
+                                this.failedQueue.push({ resolve, reject });
+                            }).then((newToken) => {
+                                originalRequest.headers.Authorization = `Bearer ${newToken}`;
+                                originalRequest._retry = true;
+                                return this.client(originalRequest);
+                            });
+                        }
+
+                        this.isRefreshing = true;
+                        originalRequest._retry = true;
+
+                        try {
+                            const { data } = await axios.post(`${API_URL}/auth/refresh`, {
+                                refreshToken,
+                            });
+
+                            const newAccessToken: string = data.accessToken;
+                            const newRefreshToken: string = data.refreshToken;
+
+                            // Persist new tokens
+                            const { useAuthStore } = require('../store/authStore');
+                            const { setTokens } = useAuthStore.getState();
+                            await setTokens(newAccessToken, newRefreshToken);
+
+                            // Retry queued requests
+                            this.failedQueue.forEach((p) => p.resolve(newAccessToken));
+                            this.failedQueue = [];
+
+                            // Retry the original request
+                            originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+                            return this.client(originalRequest);
+                        } catch (refreshError) {
+                            // Refresh failed — log the user out
+                            this.failedQueue.forEach((p) => p.reject(refreshError));
+                            this.failedQueue = [];
+
+                            console.error('[API] Token refresh failed — logging out');
+                            const { useAuthStore } = require('../store/authStore');
+                            const { logout } = useAuthStore.getState();
+                            await logout();
+                            return Promise.reject(refreshError);
+                        } finally {
+                            this.isRefreshing = false;
+                        }
+                    } else {
+                        // No refresh token available — log out
+                        console.error('[API] Unauthorized (401) with no refresh token — logging out');
+                        const { useAuthStore } = require('../store/authStore');
+                        const { logout } = useAuthStore.getState();
+                        await logout();
+                    }
                 }
+
                 return Promise.reject(error);
             }
         );

@@ -64,7 +64,7 @@ class EventOut(BaseModel):
 # ── CREATE /events ───────────────────────────────────────────────────
 
 
-@router.post("/", response_model=EventOut, status_code=201)
+@router.post("", response_model=EventOut, status_code=201)
 async def create_event(
     event: EventCreate,
     current_user: CurrentUser = Depends(get_current_user),
@@ -94,7 +94,7 @@ async def create_event(
 # ── READ /events ─────────────────────────────────────────────────────
 
 
-@router.get("/", response_model=List[EventOut])
+@router.get("", response_model=List[EventOut])
 async def list_events(
     sign_id: Optional[str] = Query(None, description="Filter by sign ID"),
     type: Optional[EventType] = Query(None, description="Filter by event type"),

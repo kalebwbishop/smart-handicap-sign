@@ -48,6 +48,7 @@ app = FastAPI(
     title="Social Media API",
     version="2.0.0",
     lifespan=lifespan,
+    redirect_slashes=False,
 )
 
 # CORS

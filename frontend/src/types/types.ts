@@ -12,6 +12,12 @@ export interface User {
 export interface AuthResponse {
     user: User;
     accessToken: string;
+    refreshToken: string;
+}
+
+export interface RefreshResponse {
+    accessToken: string;
+    refreshToken: string;
 }
 
 export interface LoginInitResponse {
@@ -36,7 +42,7 @@ export interface ApiResponse<T> {
 
 // ── Sign types ──────────────────────────────────────────────────────
 
-export type SignStatus = 'available' | 'occupied' | 'offline' | 'error';
+export type SignStatus = 'available' | 'assistance_requested' | 'assistance_in_progress' | 'offline' | 'error' | 'training_ready' | 'training_positive' | 'training_negative';
 
 export interface Sign {
     id: string;

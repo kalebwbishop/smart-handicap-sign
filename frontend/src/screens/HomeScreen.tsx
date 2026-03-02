@@ -11,9 +11,12 @@ import {
     Platform,
     RefreshControl,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuthStore } from '@/store/authStore';
 import { signAPI, notificationAPI } from '@/api/api';
 import { Sign, SignNotification, SignStatus } from '@/types/types';
+import { RootStackParamList } from '@/types/navigation';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 import { spacing, layout } from '@/theme/spacing';
@@ -30,9 +33,13 @@ const POLL_INTERVAL_MS = 30_000; // 30 seconds
 
 const STATUS_CONFIG: Record<SignStatus, { color: string; label: string; icon: string }> = {
     available: { color: '#16A34A', label: 'Available', icon: '🟢' },
-    occupied: { color: '#DC2626', label: 'Occupied', icon: '🔴' },
+    assistance_requested: { color: '#DC2626', label: 'Assistance Requested', icon: '🔴' },
+    assistance_in_progress: { color: '#F59E0B', label: 'Assistance In Progress', icon: '🟡' },
     offline: { color: colors.grayDark, label: 'Offline', icon: '⚪' },
     error: { color: '#F59E0B', label: 'Error', icon: '🟡' },
+    training_ready: { color: '#8B5CF6', label: 'Training Ready', icon: '🟣' },
+    training_positive: { color: '#2563EB', label: 'Training – Positive', icon: '🔵' },
+    training_negative: { color: '#EA580C', label: 'Training – Negative', icon: '🟠' },
 };
 
 
@@ -54,6 +61,7 @@ function timeAgo(iso: string): string {
 
 export default function HomeScreen() {
     const { user, logout } = useAuthStore();
+    const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const [isLoggingOut, setIsLoggingOut] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
 
@@ -74,6 +82,21 @@ export default function HomeScreen() {
 
     /* ── Data fetching ── */
 
+    const refreshSign = useCallback(async () => {
+        try {
+            const signs = await signAPI.getSigns();
+            if (signs.length > 0) {
+                const raw = signs[0];
+                setSign({
+                    ...raw,
+                    lastUpdated: raw.last_updated || raw.lastUpdated,
+                });
+            }
+        } catch (err) {
+            console.error('[HomeScreen] Failed to refresh sign:', err);
+        }
+    }, []);
+
     const fetchNotifications = useCallback(async (isPolling = false) => {
         try {
             if (isPolling && lastPollTime.current) {
@@ -86,6 +109,9 @@ export default function HomeScreen() {
                         return unique.length > 0 ? [...unique, ...prev] : prev;
                     });
                     lastPollTime.current = new Date().toISOString();
+
+                    // New notifications likely mean a sign status changed — re-fetch
+                    await refreshSign();
                 }
             } else {
                 // Full fetch
@@ -98,7 +124,7 @@ export default function HomeScreen() {
         } finally {
             if (!isPolling) setNotifLoading(false);
         }
-    }, []);
+    }, [refreshSign]);
 
     const fetchData = useCallback(async () => {
         setSignLoading(true);
@@ -200,6 +226,40 @@ export default function HomeScreen() {
         }
     }, [feedbackText]);
 
+    const [signActionLoading, setSignActionLoading] = useState(false);
+
+    const handleAcknowledgeSign = useCallback(async () => {
+        if (!sign) return;
+        setSignActionLoading(true);
+        try {
+            const updated = await signAPI.acknowledgeSign(sign.id);
+            setSign({
+                ...updated,
+                lastUpdated: updated.last_updated || updated.lastUpdated,
+            });
+        } catch (err) {
+            console.error('[HomeScreen] Failed to acknowledge sign:', err);
+        } finally {
+            setSignActionLoading(false);
+        }
+    }, [sign]);
+
+    const handleResolveSign = useCallback(async () => {
+        if (!sign) return;
+        setSignActionLoading(true);
+        try {
+            const updated = await signAPI.resolveSign(sign.id);
+            setSign({
+                ...updated,
+                lastUpdated: updated.last_updated || updated.lastUpdated,
+            });
+        } catch (err) {
+            console.error('[HomeScreen] Failed to resolve sign:', err);
+        } finally {
+            setSignActionLoading(false);
+        }
+    }, [sign]);
+
     /* ── Derived ── */
 
     const statusConfig = sign ? STATUS_CONFIG[sign.status] : null;
@@ -255,7 +315,12 @@ export default function HomeScreen() {
                                 </Text>
                             </View>
                         ) : (
-                            <>
+                            <Pressable
+                                onPress={() => navigation.navigate('SignDetail', { sign })}
+                                style={({ pressed }) => [pressed && { opacity: 0.85 }]}
+                                accessibilityRole="button"
+                                accessibilityLabel={`View details for ${sign.name}`}
+                            >
                                 <View style={s.cardHeader}>
                                     <Text style={[typography.h3, { color: colors.textPrimary }]}>Your Sign</Text>
                                     <Text style={[typography.bodySmall, { color: colors.textMuted }]}>
@@ -279,7 +344,57 @@ export default function HomeScreen() {
                                     <DetailRow label="Sign Name" value={sign.name} />
                                     <DetailRow label="Location" value={sign.location} />
                                 </View>
-                            </>
+
+                                <Text style={[typography.bodySmall, { color: colors.accent, textAlign: 'center', marginTop: spacing.md }]}>
+                                    Tap for details & device setup →
+                                </Text>
+
+                                {/* ── Sign action buttons ── */}
+                                {sign.status === 'assistance_requested' && (
+                                    <Pressable
+                                        onPress={(e) => { e.stopPropagation(); handleAcknowledgeSign(); }}
+                                        disabled={signActionLoading}
+                                        style={({ pressed }) => [
+                                            s.signActionBtn,
+                                            { backgroundColor: '#F59E0B' },
+                                            signActionLoading && { opacity: 0.5 },
+                                            pressed && { opacity: 0.8 },
+                                        ]}
+                                        accessibilityRole="button"
+                                        accessibilityLabel="Acknowledge assistance request"
+                                    >
+                                        {signActionLoading ? (
+                                            <ActivityIndicator size="small" color={colors.white} />
+                                        ) : (
+                                            <Text style={[typography.button, { color: colors.white }]}>
+                                                🙋  Acknowledge Request
+                                            </Text>
+                                        )}
+                                    </Pressable>
+                                )}
+                                {sign.status === 'assistance_in_progress' && (
+                                    <Pressable
+                                        onPress={(e) => { e.stopPropagation(); handleResolveSign(); }}
+                                        disabled={signActionLoading}
+                                        style={({ pressed }) => [
+                                            s.signActionBtn,
+                                            { backgroundColor: '#16A34A' },
+                                            signActionLoading && { opacity: 0.5 },
+                                            pressed && { opacity: 0.8 },
+                                        ]}
+                                        accessibilityRole="button"
+                                        accessibilityLabel="Mark assistance as resolved"
+                                    >
+                                        {signActionLoading ? (
+                                            <ActivityIndicator size="small" color={colors.white} />
+                                        ) : (
+                                            <Text style={[typography.button, { color: colors.white }]}>
+                                                ✅  Mark Resolved
+                                            </Text>
+                                        )}
+                                    </Pressable>
+                                )}
+                            </Pressable>
                         )}
                     </View>
 
@@ -393,6 +508,8 @@ export default function HomeScreen() {
                             </View>
                         )}
                     </View>
+
+
                 </View>
             </ScrollView>
         </View>
@@ -554,6 +671,16 @@ const s = StyleSheet.create({
     detailsGrid: {
         gap: spacing.md,
     },
+
+    /* Sign action buttons */
+    signActionBtn: {
+        marginTop: spacing.md,
+        paddingVertical: 14,
+        borderRadius: layout.borderRadiusSm,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+    },
+
     detailRow: {
         flexDirection: 'row',
         justifyContent: 'space-between',

@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from app.ai.infer import WaveClassifier
 from app.middleware.auth import CurrentUser, get_current_user, optional_auth
+from app.services import event_service, sign_service
 from app.utils.logger import logger
 
 router = APIRouter(prefix="/inference", tags=["inference"])
@@ -21,6 +22,11 @@ router = APIRouter(prefix="/inference", tags=["inference"])
 
 
 class ClassifyRequest(BaseModel):
+    sign_id: str = Field(
+        ...,
+        min_length=1,
+        description="The ID of the sign submitting the signal",
+    )
     samples: List[int] = Field(
         ...,
         min_length=512,
@@ -94,10 +100,41 @@ async def classify(
         )
 
     logger.info(
-        "Inference — user=%s label=%s confidence=%.4f",
+        "Inference — user=%s sign=%s label=%s confidence=%.4f",
         current_user.id if current_user else "anonymous",
+        payload.sign_id,
         result["label"],
         result["confidence"],
     )
+
+    # ── positive classification → update sign & notify ────────────────
+    if result["label"] == "wave":
+        try:
+            await sign_service.update_sign(
+                payload.sign_id, status="assistance_requested"
+            )
+            await event_service.create_event(
+                sign_id=payload.sign_id,
+                event_type="status_change",
+                data={
+                    "previous_status": "available",
+                    "new_status": "assistance_requested",
+                    "confidence": result["confidence"],
+                },
+                create_notification=True,
+                notification_title="Assistance Requested",
+                notification_body=(
+                    f"Sign {payload.sign_id} detected a wave gesture "
+                    f"(confidence {result['confidence']:.2%}). "
+                    "Assistance has been requested."
+                ),
+            )
+            logger.info("Sign %s set to assistance_requested", payload.sign_id)
+        except Exception:
+            logger.exception(
+                "Failed to update sign/notification for %s", payload.sign_id
+            )
+    # ──────────────────────────────────────────────────────────────────
+
     result["debug_graph"] = debug_graph_b64
     return result

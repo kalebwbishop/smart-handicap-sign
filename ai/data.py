@@ -163,5 +163,5 @@ if __name__ == "__main__":
     plt.title("Example signals from the synthetic dataset")
     plt.show()
 
-    print("Label 0: ", signal_0)
-    print("Label 1: ", signal_1)
+    print("Label 0: ", [int(MAX_VAL * x) for x in signal_0])
+    print("Label 1: ", [int(MAX_VAL * x) for x in signal_1])

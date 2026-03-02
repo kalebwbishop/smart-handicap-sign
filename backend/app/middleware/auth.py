@@ -51,6 +51,7 @@ async def get_current_user(request: Request) -> CurrentUser:
                 signing_key.key,
                 algorithms=["RS256"],
                 options={"verify_aud": False},
+                leeway=60,  # tolerate up to 60s clock skew
             )
             user_id = decoded.get("sub")
             if not user_id:

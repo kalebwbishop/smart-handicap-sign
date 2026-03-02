@@ -10,8 +10,12 @@ import {
     useWindowDimensions,
     Platform,
     ActivityIndicator,
+    Alert,
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
+import * as ExpoLinking from 'expo-linking';
 import { authAPI } from '@/api/api';
+import { useAuthStore } from '@/store/authStore';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 import { spacing, layout } from '@/theme/spacing';
@@ -168,6 +172,7 @@ const FACILITY_TYPES = [
 export default function LandingScreen() {
     const { isMobile } = useResponsive();
     const [isLoading, setIsLoading] = useState(false);
+    const setUser = useAuthStore((s) => s.setUser);
 
     // Demo form state
     const [form, setForm] = useState({
@@ -184,16 +189,36 @@ export default function LandingScreen() {
     const handleLogin = useCallback(async () => {
         setIsLoading(true);
         try {
-            const response = await authAPI.initiateLogin();
+            // Build a deep-link redirect URL using the app's scheme
+            const redirectUrl = ExpoLinking.createURL('callback');
+            const response = await authAPI.initiateLogin(redirectUrl);
             if (response.authorizationUrl) {
-                await Linking.openURL(response.authorizationUrl);
+                // Open in-app browser; it will close automatically when
+                // the backend redirects to our app scheme URL
+                const result = await WebBrowser.openAuthSessionAsync(
+                    response.authorizationUrl,
+                    redirectUrl,
+                );
+
+                if (result.type === 'success' && result.url) {
+                    // Parse the authorization code from the returned URL
+                    const parsed = ExpoLinking.parse(result.url);
+                    const code = parsed.queryParams?.code as string | undefined;
+
+                    if (code) {
+                        // Exchange the code for user + token
+                        const authResponse = await authAPI.handleCallback(code);
+                        await setUser(authResponse.user, authResponse.accessToken, authResponse.refreshToken);
+                    }
+                }
             }
         } catch (error) {
-            console.error(error);
+            console.error('Login error:', error);
+            Alert.alert('Login failed', 'Something went wrong during login. Please try again.');
         } finally {
             setIsLoading(false);
         }
-    }, []);
+    }, [setUser]);
 
     const scrollToDemo = useCallback(() => {
         // simple web anchor fallback – works on web

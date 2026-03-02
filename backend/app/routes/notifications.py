@@ -46,7 +46,7 @@ class NotificationOut(BaseModel):
 # ── CREATE /notifications ────────────────────────────────────────────
 
 
-@router.post("/", response_model=NotificationOut, status_code=201)
+@router.post("", response_model=NotificationOut, status_code=201)
 async def create_notification(
     notification: NotificationCreate,
     current_user: CurrentUser = Depends(get_current_user),
@@ -71,7 +71,7 @@ async def create_notification(
 # ── READ /notifications ─────────────────────────────────────────────
 
 
-@router.get("/", response_model=List[NotificationOut])
+@router.get("", response_model=List[NotificationOut])
 async def list_notifications(
     event_id: Optional[str] = Query(None, description="Filter by event ID"),
     read: Optional[bool] = Query(None, description="Filter by read status"),

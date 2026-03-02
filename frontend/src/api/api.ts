@@ -4,8 +4,9 @@ import apiClient from './client';
 
 // Auth API
 export const authAPI = {
-    initiateLogin: async (): Promise<LoginInitResponse> => {
-        const response = await apiClient.get<LoginInitResponse>('/auth/login');
+    initiateLogin: async (mobileRedirect?: string): Promise<LoginInitResponse> => {
+        const params = mobileRedirect ? `?mobile_redirect=${encodeURIComponent(mobileRedirect)}` : '';
+        const response = await apiClient.get<LoginInitResponse>(`/auth/login${params}`);
         console.log('response', response);
         return response;
     },
@@ -41,6 +42,21 @@ export const signAPI = {
 
     getMySign: async (): Promise<Sign> => {
         const response = await apiClient.get<Sign>('/signs/me');
+        return response;
+    },
+
+    updateSignStatus: async (signId: string, status: string): Promise<Sign> => {
+        const response = await apiClient.patch<Sign>(`/signs/${signId}`, { status });
+        return response;
+    },
+
+    acknowledgeSign: async (signId: string): Promise<Sign> => {
+        const response = await apiClient.post<Sign>(`/signs/${signId}/acknowledge`);
+        return response;
+    },
+
+    resolveSign: async (signId: string): Promise<Sign> => {
+        const response = await apiClient.post<Sign>(`/signs/${signId}/resolve`);
         return response;
     },
 };
