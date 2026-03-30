@@ -122,6 +122,7 @@ async def classify(
                     "confidence": result["confidence"],
                 },
                 create_notification=True,
+                notify_org=True,
                 notification_title="Assistance Requested",
                 notification_body=(
                     f"Sign {payload.sign_id} detected a wave gesture "

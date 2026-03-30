@@ -23,6 +23,7 @@ def _row_to_dict(row) -> dict:
     d = dict(row)
     d["id"] = str(d["id"])
     d["event_id"] = str(d["event_id"]) if d.get("event_id") else None
+    d["user_id"] = str(d["user_id"]) if d.get("user_id") else None
     return d
 
 
@@ -32,6 +33,7 @@ def _row_to_dict(row) -> dict:
 async def create_notification(
     *,
     event_id: Optional[str] = None,
+    user_id: Optional[str] = None,
     title: str,
     body: str,
     read: bool = False,
@@ -52,18 +54,52 @@ async def create_notification(
             raise ValueError(f"Event {event_id} not found")
 
     query = """
-        INSERT INTO notifications (event_id, title, body, read)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id, event_id, title, body, read,
+        INSERT INTO notifications (event_id, user_id, title, body, read)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id, event_id, user_id, title, body, read,
                   created_at, updated_at
     """
-    row = await pool.fetchrow(query, event_id, title, body, read)
+    row = await pool.fetchrow(query, event_id, user_id, title, body, read)
 
     if not row:
         raise RuntimeError("Failed to create notification")
 
-    logger.info(f"✅ Notification created: {row['id']}")
+    logger.info(f"✅ Notification created: {row['id']} for user {user_id}")
     return _row_to_dict(row)
+
+
+async def create_notifications_for_org(
+    *,
+    org_id: str,
+    event_id: Optional[str] = None,
+    title: str,
+    body: str,
+    pool: Optional[Pool] = None,
+) -> List[dict]:
+    """Fan out a notification to all members of an organization."""
+    pool = pool or await get_pool()
+
+    member_rows = await pool.fetch(
+        "SELECT user_id FROM organization_members WHERE organization_id = $1",
+        org_id,
+    )
+
+    notifications = []
+    for member in member_rows:
+        notif = await create_notification(
+            event_id=event_id,
+            user_id=str(member["user_id"]),
+            title=title,
+            body=body,
+            pool=pool,
+        )
+        notifications.append(notif)
+
+    logger.info(
+        "✅ Created %d notifications for org %s (event %s)",
+        len(notifications), org_id, event_id,
+    )
+    return notifications
 
 
 # ── list ─────────────────────────────────────────────────────────────
@@ -71,6 +107,7 @@ async def create_notification(
 
 async def list_notifications(
     *,
+    user_id: Optional[str] = None,
     event_id: Optional[str] = None,
     read: Optional[bool] = None,
     after: Optional[datetime] = None,
@@ -82,6 +119,11 @@ async def list_notifications(
     conditions: list[str] = []
     params: list = []
     idx = 1
+
+    if user_id is not None:
+        conditions.append(f"user_id = ${idx}")
+        params.append(user_id)
+        idx += 1
 
     if event_id is not None:
         conditions.append(f"event_id = ${idx}")
@@ -101,7 +143,7 @@ async def list_notifications(
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
     query = f"""
-        SELECT id, event_id, title, body, read,
+        SELECT id, event_id, user_id, title, body, read,
                created_at, updated_at
         FROM notifications
         {where}
@@ -118,11 +160,17 @@ async def list_notifications(
 # ── unread count ─────────────────────────────────────────────────────
 
 
-async def get_unread_count() -> int:
+async def get_unread_count(user_id: Optional[str] = None) -> int:
     pool = await get_pool()
-    count = await pool.fetchval(
-        "SELECT COUNT(*) FROM notifications WHERE read = FALSE"
-    )
+    if user_id:
+        count = await pool.fetchval(
+            "SELECT COUNT(*) FROM notifications WHERE read = FALSE AND user_id = $1",
+            user_id,
+        )
+    else:
+        count = await pool.fetchval(
+            "SELECT COUNT(*) FROM notifications WHERE read = FALSE"
+        )
     logger.info(f"Unread notifications count: {count}")
     return count
 
@@ -134,7 +182,7 @@ async def get_notification(notification_id: str) -> Optional[dict]:
     pool = await get_pool()
     row = await pool.fetchrow(
         """
-        SELECT id, event_id, title, body, read,
+        SELECT id, event_id, user_id, title, body, read,
                created_at, updated_at
         FROM notifications
         WHERE id = $1
@@ -184,7 +232,7 @@ async def update_notification(
     if not updates:
         row = await pool.fetchrow(
             """
-            SELECT id, event_id, title, body, read,
+            SELECT id, event_id, user_id, title, body, read,
                    created_at, updated_at
             FROM notifications WHERE id = $1
             """,
@@ -199,7 +247,7 @@ async def update_notification(
         UPDATE notifications
         SET {', '.join(updates)}
         WHERE id = ${idx}
-        RETURNING id, event_id, title, body, read,
+        RETURNING id, event_id, user_id, title, body, read,
                   created_at, updated_at
     """
     row = await pool.fetchrow(query, *params)
@@ -220,7 +268,7 @@ async def mark_as_read(notification_id: str) -> Optional[dict]:
         UPDATE notifications
         SET read = TRUE, updated_at = NOW()
         WHERE id = $1
-        RETURNING id, event_id, title, body, read,
+        RETURNING id, event_id, user_id, title, body, read,
                   created_at, updated_at
         """,
         notification_id,
@@ -230,11 +278,17 @@ async def mark_as_read(notification_id: str) -> Optional[dict]:
     return _row_to_dict(row) if row else None
 
 
-async def mark_all_as_read() -> int:
+async def mark_all_as_read(user_id: Optional[str] = None) -> int:
     pool = await get_pool()
-    result = await pool.execute(
-        "UPDATE notifications SET read = TRUE, updated_at = NOW() WHERE read = FALSE"
-    )
+    if user_id:
+        result = await pool.execute(
+            "UPDATE notifications SET read = TRUE, updated_at = NOW() WHERE read = FALSE AND user_id = $1",
+            user_id,
+        )
+    else:
+        result = await pool.execute(
+            "UPDATE notifications SET read = TRUE, updated_at = NOW() WHERE read = FALSE"
+        )
     count = int(result.split()[-1]) if result else 0
     logger.info(f"✅ Marked {count} notifications as read")
     return count

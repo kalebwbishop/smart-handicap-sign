@@ -266,7 +266,8 @@ export default function SignDetailScreen() {
                         )}
                     </View>
 
-                    {/* Device Setup Card */}
+                    {/* Device Setup Card (native only — requires direct ESP32 WiFi connection) */}
+                    {Platform.OS !== 'web' && (
                     <View style={s.card}>
                         <View style={s.cardHeader}>
                             <Text style={[typography.h3, { color: colors.textPrimary }]}>Device Setup</Text>
@@ -287,6 +288,7 @@ export default function SignDetailScreen() {
                             <Text style={[typography.button, { color: colors.white }]}>Setup Device WiFi</Text>
                         </Pressable>
                     </View>
+                    )}
                 </View>
             </ScrollView>
         </View>

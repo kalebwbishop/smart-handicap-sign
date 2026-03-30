@@ -276,19 +276,29 @@ export default function HomeScreen() {
                             {user ? `Hi, ${user.name?.split(' ')[0] || user.email}` : 'Dashboard'}
                         </Text>
                     </View>
-                    <Pressable
-                        onPress={handleLogout}
-                        disabled={isLoggingOut}
-                        style={({ pressed }) => [s.logoutBtn, pressed && { opacity: 0.7 }]}
-                        accessibilityRole="button"
-                        accessibilityLabel="Log out"
-                    >
-                        {isLoggingOut ? (
-                            <ActivityIndicator size="small" color={colors.white} />
-                        ) : (
-                            <Text style={[typography.bodySmall, { color: colors.white }]}>Log Out</Text>
-                        )}
-                    </Pressable>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <Pressable
+                            onPress={() => navigation.navigate('Organizations')}
+                            style={({ pressed }) => [s.logoutBtn, { backgroundColor: 'rgba(255,255,255,0.15)' }, pressed && { opacity: 0.7 }]}
+                            accessibilityRole="button"
+                            accessibilityLabel="Organizations"
+                        >
+                            <Text style={[typography.bodySmall, { color: colors.white }]}>🏢 Orgs</Text>
+                        </Pressable>
+                        <Pressable
+                            onPress={handleLogout}
+                            disabled={isLoggingOut}
+                            style={({ pressed }) => [s.logoutBtn, pressed && { opacity: 0.7 }]}
+                            accessibilityRole="button"
+                            accessibilityLabel="Log out"
+                        >
+                            {isLoggingOut ? (
+                                <ActivityIndicator size="small" color={colors.white} />
+                            ) : (
+                                <Text style={[typography.bodySmall, { color: colors.white }]}>Log Out</Text>
+                            )}
+                        </Pressable>
+                    </View>
                 </View>
             </View>
 

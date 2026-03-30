@@ -33,6 +33,7 @@ from app.middleware.error_handler import (
 from app.routes.auth import router as auth_router
 from app.routes.events import router as events_router
 from app.routes.notifications import router as notifications_router
+from app.routes.organizations import router as organizations_router
 from app.routes.signs import router as signs_router
 from app.routes.inference import router as inference_router
 from app.utils.logger import logger
@@ -143,6 +144,7 @@ API_PREFIX = "/api/v1"
 app.include_router(auth_router, prefix=API_PREFIX)
 app.include_router(events_router, prefix=API_PREFIX)
 app.include_router(notifications_router, prefix=API_PREFIX)
+app.include_router(organizations_router, prefix=API_PREFIX)
 app.include_router(signs_router, prefix=API_PREFIX)
 app.include_router(inference_router, prefix=API_PREFIX)
 

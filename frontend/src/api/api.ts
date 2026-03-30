@@ -1,4 +1,4 @@
-import { AuthResponse, LoginInitResponse, initiateLogoutResponse, User, Sign, SignNotification } from '../types/types';
+import { AuthResponse, LoginInitResponse, initiateLogoutResponse, User, Sign, SignNotification, Organization, OrgMember, OrgRole } from '../types/types';
 // Note: NotificationType was removed — notifications no longer carry a type field
 import apiClient from './client';
 
@@ -28,10 +28,57 @@ export const authAPI = {
     },
 };
 
+// Organization API
+export const organizationAPI = {
+    getOrganizations: async (): Promise<Organization[]> => {
+        const response = await apiClient.get<Organization[]>('/organizations');
+        return response;
+    },
+
+    getOrganization: async (orgId: string): Promise<Organization> => {
+        const response = await apiClient.get<Organization>(`/organizations/${orgId}`);
+        return response;
+    },
+
+    createOrganization: async (name: string): Promise<Organization> => {
+        const response = await apiClient.post<Organization>('/organizations', { name });
+        return response;
+    },
+
+    updateOrganization: async (orgId: string, name: string): Promise<Organization> => {
+        const response = await apiClient.patch<Organization>(`/organizations/${orgId}`, { name });
+        return response;
+    },
+
+    deleteOrganization: async (orgId: string): Promise<void> => {
+        await apiClient.delete(`/organizations/${orgId}`);
+    },
+
+    getMembers: async (orgId: string): Promise<OrgMember[]> => {
+        const response = await apiClient.get<OrgMember[]>(`/organizations/${orgId}/members`);
+        return response;
+    },
+
+    addMember: async (orgId: string, email: string, role: OrgRole = 'member'): Promise<OrgMember> => {
+        const response = await apiClient.post<OrgMember>(`/organizations/${orgId}/members`, { email, role });
+        return response;
+    },
+
+    updateMemberRole: async (orgId: string, userId: string, role: OrgRole): Promise<OrgMember> => {
+        const response = await apiClient.patch<OrgMember>(`/organizations/${orgId}/members/${userId}`, { role });
+        return response;
+    },
+
+    removeMember: async (orgId: string, userId: string): Promise<void> => {
+        await apiClient.delete(`/organizations/${orgId}/members/${userId}`);
+    },
+};
+
 // Sign API
 export const signAPI = {
-    getSigns: async (): Promise<Sign[]> => {
-        const response = await apiClient.get<Sign[]>('/signs');
+    getSigns: async (organizationId?: string): Promise<Sign[]> => {
+        const query = organizationId ? `?organization_id=${organizationId}` : '';
+        const response = await apiClient.get<Sign[]>(`/signs${query}`);
         return response;
     },
 
@@ -42,6 +89,15 @@ export const signAPI = {
 
     getMySign: async (): Promise<Sign> => {
         const response = await apiClient.get<Sign>('/signs/me');
+        return response;
+    },
+
+    createSign: async (name: string, location: string, organizationId?: string): Promise<Sign> => {
+        const response = await apiClient.post<Sign>('/signs', {
+            name,
+            location,
+            organization_id: organizationId,
+        });
         return response;
     },
 

@@ -9,12 +9,15 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 DROP TABLE IF EXISTS notifications CASCADE;
 DROP TABLE IF EXISTS events CASCADE;
 DROP TABLE IF EXISTS signs CASCADE;
+DROP TABLE IF EXISTS organization_members CASCADE;
+DROP TABLE IF EXISTS organizations CASCADE;
 DROP TABLE IF EXISTS profiles CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 
 -- Drop existing types
 DROP TYPE IF EXISTS event_type CASCADE;
 DROP TYPE IF EXISTS sign_status CASCADE;
+DROP TYPE IF EXISTS org_role CASCADE;
 
 
 -- ── Helper function (must be defined before triggers) ───────────────
@@ -75,6 +78,49 @@ COMMENT ON COLUMN profiles.display_name IS 'User-chosen display name (can differ
 COMMENT ON COLUMN profiles.bio IS 'User biography/description';
 
 
+-- ── Organizations ───────────────────────────────────────────────────
+
+CREATE TABLE organizations (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TRIGGER update_organizations_updated_at
+    BEFORE UPDATE ON organizations
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+COMMENT ON TABLE organizations IS 'Organizations that own signs and group users';
+
+
+-- ── Organization Members ────────────────────────────────────────────
+
+CREATE TYPE org_role AS ENUM ('owner', 'admin', 'member');
+
+CREATE TABLE organization_members (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role org_role NOT NULL DEFAULT 'member',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (organization_id, user_id)
+);
+
+CREATE INDEX idx_org_members_org ON organization_members(organization_id);
+CREATE INDEX idx_org_members_user ON organization_members(user_id);
+
+CREATE TRIGGER update_org_members_updated_at
+    BEFORE UPDATE ON organization_members
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+COMMENT ON TABLE organization_members IS 'Membership linking users to organizations with roles';
+COMMENT ON COLUMN organization_members.role IS 'owner: full control, admin: manage members/signs, member: view/acknowledge/resolve';
+
+
 -- ── Signs ───────────────────────────────────────────────────────────
 
 CREATE TYPE sign_status AS ENUM (
@@ -90,6 +136,7 @@ CREATE TYPE sign_status AS ENUM (
 
 CREATE TABLE signs (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    organization_id UUID REFERENCES organizations(id) ON DELETE SET NULL,
     name TEXT NOT NULL,
     location TEXT NOT NULL,
     status sign_status NOT NULL DEFAULT 'available',
@@ -98,6 +145,7 @@ CREATE TABLE signs (
 
 CREATE INDEX idx_signs_status ON signs(status);
 CREATE INDEX idx_signs_last_updated ON signs(last_updated);
+CREATE INDEX idx_signs_organization ON signs(organization_id);
 
 
 -- ── Events ──────────────────────────────────────────────────────────
@@ -137,6 +185,7 @@ COMMENT ON COLUMN events.data IS 'Arbitrary JSON payload with event-specific det
 
 CREATE TABLE IF NOT EXISTS notifications (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
     event_id UUID REFERENCES events(id) ON DELETE SET NULL,
     title TEXT NOT NULL,
     body TEXT NOT NULL,
@@ -145,16 +194,19 @@ CREATE TABLE IF NOT EXISTS notifications (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE INDEX idx_notifications_user ON notifications(user_id);
 CREATE INDEX idx_notifications_event ON notifications(event_id);
 CREATE INDEX idx_notifications_read ON notifications(read);
 CREATE INDEX idx_notifications_created_at ON notifications(created_at DESC);
+CREATE INDEX idx_notifications_user_unread ON notifications(user_id, read) WHERE read = FALSE;
 
 CREATE TRIGGER update_notifications_updated_at
     BEFORE UPDATE ON notifications
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
-COMMENT ON TABLE notifications IS 'Notifications, optionally tied to a sign event';
+COMMENT ON TABLE notifications IS 'Per-user notifications, optionally tied to a sign event';
+COMMENT ON COLUMN notifications.user_id IS 'The user this notification belongs to';
 COMMENT ON COLUMN notifications.event_id IS 'Optional FK to the event that triggered this notification';
 COMMENT ON COLUMN notifications.read IS 'Whether the notification has been read';
 

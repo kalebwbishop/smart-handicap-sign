@@ -40,19 +40,24 @@ async def create_event(
     create_notification: bool = False,
     notification_title: Optional[str] = None,
     notification_body: Optional[str] = None,
+    notify_org: bool = False,
 ) -> dict:
     """Create an event and optionally a linked notification.
+
+    When *notify_org* is True the notification is fanned out to every
+    member of the sign's organization.  Otherwise a single global
+    notification is created.
 
     Raises ValueError for business-rule violations (sign not found,
     missing notification_title, etc.).
     """
     pool = await get_pool()
 
-    # Verify the sign exists
-    sign_check = await pool.fetchrow(
-        "SELECT id FROM signs WHERE id = $1", sign_id
+    # Verify the sign exists and fetch its org
+    sign_row = await pool.fetchrow(
+        "SELECT id, organization_id FROM signs WHERE id = $1", sign_id
     )
-    if not sign_check:
+    if not sign_row:
         raise ValueError("Sign not found")
 
     if create_notification and not notification_title:
@@ -80,22 +85,38 @@ async def create_event(
     event_dict = _row_to_dict(row)
     logger.info(f"✅ Event created: {event_dict['id']}")
 
-    # Cross-domain: create a linked notification via the notification service
+    # Cross-domain: create linked notification(s)
     if create_notification:
         body = (
             notification_body
             if notification_body
             else f"{event_type} event on sign {sign_id}"
         )
-        notif = await notification_service.create_notification(
-            event_id=str(row["id"]),
-            title=notification_title,  # type: ignore[arg-type]  # validated non-None above
-            body=body,
-            pool=pool,
-        )
-        logger.info(
-            f"✅ Notification auto-created: {notif['id']} for event {event_dict['id']}"
-        )
+        org_id = str(sign_row["organization_id"]) if sign_row["organization_id"] else None
+
+        if notify_org and org_id:
+            notifs = await notification_service.create_notifications_for_org(
+                org_id=org_id,
+                event_id=str(row["id"]),
+                title=notification_title,
+                body=body,
+                pool=pool,
+            )
+            logger.info(
+                "✅ %d org notifications created for event %s",
+                len(notifs), event_dict["id"],
+            )
+        else:
+            notif = await notification_service.create_notification(
+                event_id=str(row["id"]),
+                title=notification_title,
+                body=body,
+                pool=pool,
+            )
+            logger.info(
+                "✅ Notification auto-created: %s for event %s",
+                notif["id"], event_dict["id"],
+            )
 
     return event_dict
 
@@ -179,7 +200,7 @@ async def get_event_notifications(event_id: str) -> List[dict]:
 
     rows = await pool.fetch(
         """
-        SELECT id, event_id, title, body, read,
+        SELECT id, event_id, user_id, title, body, read,
                created_at, updated_at
         FROM notifications
         WHERE event_id = $1
@@ -193,6 +214,7 @@ async def get_event_notifications(event_id: str) -> List[dict]:
         d = dict(row)
         d["id"] = str(d["id"])
         d["event_id"] = str(d["event_id"]) if d.get("event_id") else None
+        d["user_id"] = str(d["user_id"]) if d.get("user_id") else None
         result.append(d)
 
     logger.info(f"Retrieved {len(result)} notifications for event {event_id}")

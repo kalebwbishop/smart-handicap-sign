@@ -36,6 +36,7 @@ class NotificationUpdate(BaseModel):
 class NotificationOut(BaseModel):
     id: str
     event_id: Optional[str]
+    user_id: Optional[str] = None
     title: str
     body: str
     read: bool
@@ -80,9 +81,10 @@ async def list_notifications(
     limit: int = Query(100, ge=1, le=1000),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    """Retrieve notifications with optional filtering."""
+    """Retrieve notifications for the current user with optional filtering."""
     try:
         rows = await notification_service.list_notifications(
+            user_id=current_user.id,
             event_id=event_id,
             read=read,
             after=after,
@@ -100,9 +102,9 @@ async def list_notifications(
 async def unread_count(
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    """Get the count of unread notifications."""
+    """Get the count of unread notifications for the current user."""
     try:
-        count = await notification_service.get_unread_count()
+        count = await notification_service.get_unread_count(user_id=current_user.id)
         return {"unread_count": count}
 
     except Exception as e:
@@ -183,9 +185,9 @@ async def mark_as_read(
 async def mark_all_as_read(
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    """Mark all unread notifications as read."""
+    """Mark all unread notifications as read for the current user."""
     try:
-        count = await notification_service.mark_all_as_read()
+        count = await notification_service.mark_all_as_read(user_id=current_user.id)
         return {"marked_read": count}
 
     except Exception as e:

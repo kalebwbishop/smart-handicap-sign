@@ -40,6 +40,29 @@ export interface ApiResponse<T> {
     message?: string;
 }
 
+// ── Organization types ──────────────────────────────────────────────
+
+export type OrgRole = 'owner' | 'admin' | 'member';
+
+export interface Organization {
+    id: string;
+    name: string;
+    role?: OrgRole;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface OrgMember {
+    id: string;
+    organization_id: string;
+    user_id: string;
+    role: OrgRole;
+    email?: string;
+    user_name?: string;
+    created_at: string;
+    updated_at: string;
+}
+
 // ── Sign types ──────────────────────────────────────────────────────
 
 export type SignStatus = 'available' | 'assistance_requested' | 'assistance_in_progress' | 'offline' | 'error' | 'training_ready' | 'training_positive' | 'training_negative';
@@ -49,6 +72,7 @@ export interface Sign {
     name: string;
     location: string;
     status: SignStatus;
+    organization_id?: string | null;
     lastUpdated: string;
     last_updated?: string;
 }
@@ -58,6 +82,7 @@ export interface Sign {
 export interface SignNotification {
     id: string;
     event_id: string | null;
+    user_id: string | null;
     title: string;
     body: string;
     read: boolean;

@@ -5,7 +5,7 @@ from datetime import datetime
 from enum import Enum
 
 from app.middleware.auth import CurrentUser, get_current_user, optional_auth
-from app.services import event_service, sign_service
+from app.services import event_service, sign_service, organization_service
 from app.utils.logger import logger
 
 router = APIRouter(prefix="/signs", tags=["signs"])
@@ -31,6 +31,7 @@ class SignStatus(str, Enum):
 class SignCreate(BaseModel):
     name: str = Field(..., description="Display name for the sign")
     location: str = Field(..., description="Physical location of the sign")
+    organization_id: Optional[str] = Field(None, description="Organization this sign belongs to")
     status: Optional[SignStatus] = Field(
         default=SignStatus.available,
         description="Current status of the sign"
@@ -41,6 +42,7 @@ class SignUpdate(BaseModel):
     name: Optional[str] = Field(None, description="Display name for the sign")
     location: Optional[str] = Field(None, description="Physical location of the sign")
     status: Optional[SignStatus] = Field(None, description="Current status of the sign")
+    organization_id: Optional[str] = Field(None, description="Organization this sign belongs to")
 
 
 class SignOut(BaseModel):
@@ -49,6 +51,7 @@ class SignOut(BaseModel):
     location: str
     status: SignStatus
     last_updated: datetime
+    organization_id: Optional[str] = None
 
 
 # ── CREATE /signs ────────────────────────────────────────────────────
@@ -59,15 +62,23 @@ async def create_sign(
     sign: SignCreate,
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    """Create a new sign."""
+    """Create a new sign. If organization_id is provided, validates membership."""
     try:
+        if sign.organization_id:
+            role = await organization_service.get_user_role(sign.organization_id, current_user.id)
+            if role not in ("owner", "admin"):
+                raise HTTPException(status_code=403, detail="Must be org owner or admin to assign signs")
+
         result = await sign_service.create_sign(
             name=sign.name,
             location=sign.location,
             status=sign.status.value if sign.status else SignStatus.available.value,
+            organization_id=sign.organization_id,
         )
         return SignOut(**result)
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to create sign: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -79,14 +90,17 @@ async def create_sign(
 @router.get("", response_model=List[SignOut])
 async def list_signs(
     status: Optional[SignStatus] = Query(None, description="Filter by status"),
+    organization_id: Optional[str] = Query(None, description="Filter by organization"),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    """Retrieve all signs with optional filtering."""
+    """Retrieve signs scoped to the current user's organizations."""
     try:
         rows = await sign_service.list_signs(
             status=status.value if status else None,
+            organization_id=organization_id,
+            user_id=current_user.id,
             skip=skip,
             limit=limit,
         )
@@ -158,6 +172,7 @@ async def update_sign(
             name=sign.name,
             location=sign.location,
             status=sign.status.value if sign.status else None,
+            organization_id=sign.organization_id,
         )
         if result is None:
             raise HTTPException(status_code=404, detail="Sign not found")
@@ -203,6 +218,7 @@ async def acknowledge_sign(
                 "acknowledged_by": current_user.id,
             },
             create_notification=True,
+            notify_org=True,
             notification_title="Assistance Acknowledged",
             notification_body=(
                 f"Sign {sign_id} assistance request has been acknowledged."
@@ -254,6 +270,7 @@ async def resolve_sign(
                 "resolved_by": current_user.id,
             },
             create_notification=True,
+            notify_org=True,
             notification_title="Assistance Resolved",
             notification_body=(
                 f"Sign {sign_id} has been resolved and is now available."
