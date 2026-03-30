@@ -13,7 +13,7 @@ const linking: LinkingOptions<RootStackParamList> = {
     prefixes: [Linking.createURL('/'), 'http://localhost:8081/', 'https://localhost:8081/'],
     config: {
         screens: {
-            LoginScreen: 'login',
+            LandingScreen: '',
             Home: {
                 path: 'home',
                 parse: {

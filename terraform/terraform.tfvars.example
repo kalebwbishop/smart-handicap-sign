@@ -1,0 +1,14 @@
+resource_group_name = "res000_0_4e69310cb4464d47"
+domain_name         = "smarthandicapsign.deploy-box.com"
+vm_size             = "Standard_B2s"
+admin_username      = "azureuser"
+ssh_public_key_path = "~/.ssh/id_rsa.pub"
+
+github_repo_url    = "https://github.com/kalebwbishop/smart-handicap-sign.git"
+github_repo_branch = "main"
+
+workos_api_key   = ""
+workos_client_id = ""
+
+tls_fullchain_path = "../certs/fullchain.pem"
+tls_privkey_path   = "../certs/privkey.pem"

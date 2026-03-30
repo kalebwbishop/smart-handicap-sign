@@ -1,0 +1,103 @@
+#cloud-config
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - ca-certificates
+  - curl
+  - gnupg
+
+write_files:
+  - path: /opt/smart-handicap-sign/backend/.env
+    permissions: "0600"
+    content: |
+      PORT=8000
+      ENVIRONMENT=production
+      LOG_LEVEL=info
+      POSTGRES_CONNECTION_STRING=postgresql://postgres:postgres@db:5432/shs
+      FRONTEND_URL=https://${domain_name}
+      WORKOS_API_KEY=${workos_api_key}
+      WORKOS_CLIENT_ID=${workos_client_id}
+      WORKOS_REDIRECT_URI=https://${domain_name}/api/v1/auth/callback
+      CORS_ORIGIN=https://${domain_name}
+
+  - path: /opt/smart-handicap-sign/certs/fullchain.pem
+    permissions: "0600"
+    content: |
+      ${indent(6, tls_fullchain)}
+
+  - path: /opt/smart-handicap-sign/certs/privkey.pem
+    permissions: "0600"
+    content: |
+      ${indent(6, tls_privkey)}
+
+  - path: /opt/smart-handicap-sign/setup.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+      APP_DIR="/opt/smart-handicap-sign"
+      REPO_DIR="$APP_DIR/repo"
+
+      # Install Docker
+      install -m 0755 -d /etc/apt/keyrings
+      curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
+        -o /etc/apt/keyrings/docker.asc
+      chmod a+r /etc/apt/keyrings/docker.asc
+      echo \
+        "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+        https://download.docker.com/linux/ubuntu \
+        $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+        > /etc/apt/sources.list.d/docker.list
+      apt-get update
+      apt-get install -y docker-ce docker-ce-cli containerd.io \
+        docker-buildx-plugin docker-compose-plugin
+      systemctl enable docker
+      usermod -aG docker ${admin_username}
+
+      # Clone repository
+      git clone --branch ${github_repo_branch} ${github_repo_url} "$REPO_DIR"
+
+      # Place .env file
+      cp "$APP_DIR/backend/.env" "$REPO_DIR/backend/.env"
+
+      # Obtain TLS certificate via Let's Encrypt (HTTP-01)
+      apt-get install -y certbot
+      certbot certonly --standalone --non-interactive --agree-tos \
+        --email kalebwbishop@gmail.com \
+        -d "${domain_name}" \
+        --preferred-challenges http-01
+
+      CERT_LIVE="/etc/letsencrypt/live/${domain_name}"
+      mkdir -p "$REPO_DIR/certs"
+      if [ -d "$CERT_LIVE" ]; then
+        cp "$CERT_LIVE/fullchain.pem" "$REPO_DIR/certs/fullchain.pem"
+        cp "$CERT_LIVE/privkey.pem"   "$REPO_DIR/certs/privkey.pem"
+      else
+        cp "$APP_DIR/certs/fullchain.pem" "$REPO_DIR/certs/fullchain.pem"
+        cp "$APP_DIR/certs/privkey.pem"   "$REPO_DIR/certs/privkey.pem"
+      fi
+
+      # Patch docker-compose.yml for production domain
+      cd "$REPO_DIR"
+      sed -i "s|EXPO_PUBLIC_API_URL: \"\"|EXPO_PUBLIC_API_URL: \"https://${domain_name}\"|" docker-compose.yml
+      sed -i "s|CORS_ORIGIN: http://localhost|CORS_ORIGIN: https://${domain_name}|" docker-compose.yml
+      sed -i "s|FRONTEND_URL: http://localhost|FRONTEND_URL: https://${domain_name}|" docker-compose.yml
+      sed -i "s|WORKOS_REDIRECT_URI: http://localhost|WORKOS_REDIRECT_URI: https://${domain_name}|" docker-compose.yml
+
+      # Start the application
+      docker compose up --build -d
+
+      # Wait for DB, then run migrations
+      for i in $(seq 1 30); do
+        if docker compose exec -T db pg_isready -U postgres > /dev/null 2>&1; then
+          break
+        fi
+        sleep 2
+      done
+      docker compose exec -T db psql -U postgres -d shs \
+        < "$REPO_DIR/database/schemas/shs_schema.sql"
+
+runcmd:
+  - bash /opt/smart-handicap-sign/setup.sh >> /var/log/smart-handicap-sign-setup.log 2>&1

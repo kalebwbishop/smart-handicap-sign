@@ -64,3 +64,16 @@ coverage/
 tmp/
 temp/
 *.tmp
+
+# Terraform
+terraform/terraform.tfvars
+terraform/.terraform/
+terraform/*.tfstate*
+
+# TLS Certificates
+certs/
+
+# Environment
+.env.cert
+
+.sfdx/
