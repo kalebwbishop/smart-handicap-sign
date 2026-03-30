@@ -3,7 +3,7 @@ import Storage from '../utils/storage';
 
 // Get API URL from environment variable
 // Use LAN IP so physical devices can reach the backend
-const API_URL = process.env.API_URL || 'http://192.168.4.35:8000/api/v1';
+const API_URL = process.env.EXPO_PUBLIC_API_URL || '/api/v1';
 // const API_URL = process.env.API_URL || 'https://res007-0-8a1a2ecf605e412c-dev.redground-500683d1.eastus.azurecontainerapps.io/api/v1';
 
 class ApiClient {

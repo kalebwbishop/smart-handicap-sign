@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Union
+import ssl
 
 import jwt as pyjwt
 from jwt import PyJWKClient
@@ -16,7 +17,11 @@ def _get_jwks_client() -> PyJWKClient:
     """Return a cached JWKS client for verifying WorkOS access tokens."""
     workos = get_workos_client()
     jwks_url = workos.user_management.get_jwks_url()
-    return PyJWKClient(jwks_url)
+    # Allow unverified SSL for local/corporate proxy environments
+    ssl_context = ssl.create_default_context()
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_NONE
+    return PyJWKClient(jwks_url, ssl_context=ssl_context)
 
 
 @dataclass
