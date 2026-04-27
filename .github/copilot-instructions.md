@@ -1,4 +1,4 @@
-# Copilot Instructions — Smart Handicap Sign
+# Copilot Instructions — Hazard Hero
 
 IoT accessibility system: ESP32 with photoresistor detects wave gestures near handicap parking signs, a PyTorch 1D CNN classifies the signal, and a React Native app lets staff monitor signs and acknowledge assistance requests.
 
@@ -83,6 +83,7 @@ docker compose up -d     # postgres, pgadmin, redis, backend, web
 - **ML inference:** `app/ai/` contains an embedded copy of WaveDetector — keep in sync with `ai/` root module.
 - **`optional_auth` dependency** for endpoints that work with or without auth (e.g., `/inference/classify`, `GET /signs/{sign_id}/status`).
 - **`redirect_slashes=False`** on the FastAPI app — trailing slashes will 404 (e.g., `/api/v1/signs/` fails, `/api/v1/signs` works).
+- **SSL bypass:** When `ENVIRONMENT != "cloud"`, SSL verification is disabled globally (stdlib `ssl` + `httpx` patched). This is for corporate proxy environments — don't add redundant `verify=False` flags.
 
 ### API routes (all under `/api/v1`)
 
@@ -90,8 +91,10 @@ docker compose up -d     # postgres, pgadmin, redis, backend, web
 - `/signs/*` — CRUD + acknowledge/resolve workflow + lightweight status polling (used by ESP32)
 - `/events/*` — Sign event log
 - `/notifications/*` — Push notification management
+- `/organizations/*` — Organization CRUD, member management, role-based access (owner/admin/member)
 - `/inference/classify` — POST 512-int signal → wave/non-wave classification (optional auth)
-- `GET /health` — DB connectivity check
+- `GET /health` — DB connectivity check (mounted at root, not under `/api/v1`)
+- `GET /api/v1/status` — API version and uptime check
 
 ## Frontend (`frontend/`)
 
@@ -103,7 +106,7 @@ docker compose up -d     # postgres, pgadmin, redis, backend, web
 - **Axios interceptors:** Auto-inject bearer token, silent refresh on 401.
 - **Cross-platform storage:** `src/utils/storage.tsx` uses `expo-secure-store` on native, `react-secure-storage` on web (lazy-loaded to avoid crashing iOS).
 - **ESP32 direct communication:** `src/api/espApi.ts` talks to ESP32 AP at `http://192.168.4.1` (no auth, no backend).
-- **Design system:** Custom tokens in `src/theme/` (colors with WCAG AA palette, spacing, typography).
+- **Design system:** Custom tokens in `src/theme/` (colors with WCAG AA palette, spacing, typography). See `frontend/inspo/DESIGN.md` for the full design reference (Composio-inspired dark theme with specific color palette, typography, and component patterns).
 - **External dependency:** `deploy-box-ui` is a locally linked library at `../../deploy-box-react-native-library`.
 
 ## AI Module (`ai/`)
@@ -130,7 +133,7 @@ docker compose up -d     # postgres, pgadmin, redis, backend, web
 
 PostgreSQL 15 with `uuid-ossp`. UUID primary keys. Most tables have `created_at`/`updated_at` triggers, except `signs` which only has `last_updated`.
 
-Tables: `users`, `profiles`, `signs` (with status enum), `events` (with type enum + JSONB data), `notifications`
+Tables: `users`, `profiles`, `organizations`, `organization_members` (many-to-many users↔orgs with `org_role` enum: owner/admin/member), `signs` (with status enum), `events` (with type enum + JSONB data), `notifications`
 
 Custom enums: `sign_status` (8 values), `event_type` (4 values)
 
@@ -143,7 +146,8 @@ Schema auto-loaded by Docker entrypoint from `database/schemas/shs_schema.sql`.
 
 ## Known Quirks
 
-- Codebase evolved from a "Social Media Stack" template — naming artifacts remain: `social-stack` in root `package.json`, `social_stack_dev` default DB name in settings, `title="Social Media API"` in `backend/app/main.py`, Docker container names prefixed `social-stack-*`.
+- **External dependency:** `deploy-box-ui` is a locally linked library at `../../deploy-box-react-native-library`. Frontend builds will fail if this directory doesn't exist.
+- Codebase was originally a "Social Media Stack" template, then renamed "Smart Handicap Sign", then "Hazard Hero". Some infrastructure identifiers still use older naming (e.g., Docker image `kalebwbishop/shs:2`, DB name `shs`, network aliases `shs-backend`/`shs-frontend`, terraform resource names with `smart-handicap-sign`, cloud-init paths at `/opt/smart-handicap-sign/`). These are intentionally left as-is to avoid breaking deployed infrastructure.
 - Frontend `bable.config.js` has a filename typo (should be `babel.config.js`).
 - `docker-compose.yml` has a broken `mobile` service referencing a nonexistent `./mobile` directory.
 - `database/seeds/dev_data.sql` references old schema columns (`password_hash`, `is_verified`) that no longer exist — seeding will fail.

@@ -7,7 +7,7 @@ variable "resource_group_name" {
 variable "domain_name" {
   description = "Domain name for the application"
   type        = string
-  default     = "smarthandicapsign.deploy-box.com"
+  default     = "hazardhero.deploy-box.com"
 }
 
 variable "vm_size" {

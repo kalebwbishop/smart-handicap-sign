@@ -1,6 +1,6 @@
-# Social Media Stack
+# Hazard Hero
 
-A comprehensive full-stack social media application platform built with React Native, Node.js, PostgreSQL, WorkOS, Azure Storage, and Redis.
+An IoT accessibility system for smart handicap parking sign management, built with React Native, FastAPI, PostgreSQL, WorkOS, and Azure.
 
 ## Features
 
@@ -27,7 +27,7 @@ A comprehensive full-stack social media application platform built with React Na
 
 1. **Clone and Install**
    ```bash
-   cd social_stack
+   cd smart-handicap-sign
    npm install # Root dependencies
    cd backend && npm install
    cd ../frontend && npm install
@@ -61,7 +61,7 @@ A comprehensive full-stack social media application platform built with React Na
 ## Project Structure
 
 ```
-social_stack/
+smart-handicap-sign/
 ├── backend/
 │   ├── src/
 │   │   ├── config/          # WorkOS, Azure, Redis configuration

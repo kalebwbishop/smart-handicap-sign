@@ -128,6 +128,7 @@ async def list_events(
     *,
     sign_id: Optional[str] = None,
     event_type: Optional[str] = None,
+    user_id: Optional[str] = None,
     skip: int = 0,
     limit: int = 100,
 ) -> List[dict]:
@@ -138,23 +139,32 @@ async def list_events(
     idx = 1
 
     if sign_id is not None:
-        conditions.append(f"sign_id = ${idx}")
+        conditions.append(f"e.sign_id = ${idx}")
         params.append(sign_id)
         idx += 1
 
     if event_type is not None:
-        conditions.append(f"type = ${idx}")
+        conditions.append(f"e.type = ${idx}")
         params.append(event_type)
+        idx += 1
+
+    if user_id is not None:
+        conditions.append(
+            f"e.sign_id IN (SELECT s.id FROM signs s "
+            f"WHERE s.organization_id IN "
+            f"(SELECT organization_id FROM organization_members WHERE user_id = ${idx}))"
+        )
+        params.append(user_id)
         idx += 1
 
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
     query = f"""
-        SELECT id, sign_id, type, data,
-               created_at, updated_at
-        FROM events
+        SELECT e.id, e.sign_id, e.type, e.data,
+               e.created_at, e.updated_at
+        FROM events e
         {where}
-        ORDER BY created_at DESC
+        ORDER BY e.created_at DESC
         OFFSET ${idx} LIMIT ${idx + 1}
     """
     params.extend([skip, limit])

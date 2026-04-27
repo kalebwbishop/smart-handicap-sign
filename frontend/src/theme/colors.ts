@@ -1,43 +1,65 @@
 /**
- * Smart Handicap Sign – Design System Colors
+ * Hazard Hero – Design System Colors
  *
- * Palette: Deep blue, white, light gray with accessible green accent.
- * All color pairs meet WCAG AA contrast requirements.
+ * Apple-inspired palette: light neutral canvases, restrained blue accents,
+ * near-black ink for text, and purposeful surface stepping.
+ * See DESIGN.md for full specification.
  */
 
 export const colors = {
-  /** Primary brand – deep blue */
-  primary: '#0F2B46',
-  primaryLight: '#1A3D5C',
+  /** Brand – Apple Action Blue */
+  primary: '#0071e3',
+  primaryLight: '#2997ff',
 
-  /** Accent – accessible green (4.58:1 on white, passes AA-large) */
-  accent: '#1A7F37',
-  accentHover: '#15692D',
+  /** Accent – action & link semantics only */
+  accent: '#0071e3',
+  accentHover: '#0066cc',
 
-  /** Neutrals */
-  white: '#FFFFFF',
-  offWhite: '#F7F8FA',
-  grayLight: '#F0F2F5',
-  grayMid: '#D1D5DB',
-  grayDark: '#6B7280',
-  textPrimary: '#111827',
-  textSecondary: '#4B5563',
-  textMuted: '#9CA3AF',
+  /** Surfaces */
+  white: '#ffffff',
+  offWhite: '#f5f5f7',         // Pale Apple Gray – main light surface
+  grayLight: '#f5f5f7',        // Level 0 base background
+  grayMid: '#ffffff',           // Interactive surfaces, card backgrounds
+  grayDark: '#86868b',          // Mid Border Gray
+
+  /** Text on light */
+  textPrimary: '#1d1d1f',      // Near-Black Ink
+  textSecondary: '#6e6e73',    // Secondary Neutral Gray
+  textMuted: '#86868b',        // Mid-tone muted text
+
+  /** CTA */
+  ctaPrimary: '#0071e3',       // Apple Action Blue
+  ctaPrimaryText: '#ffffff',
+  ctaSecondary: '#1d1d1f',     // Dark fill action
+  ctaSecondaryText: '#ffffff',
+
+  /** Sections */
+  heroBackground: '#000000',   // Absolute Black
+  heroText: '#ffffff',
+  sectionAlt: '#f5f5f7',       // Pale Apple Gray
+  footerBackground: '#f5f5f7',
+  footerText: '#6e6e73',
 
   /** Semantic */
-  ctaPrimary: '#1A7F37',
-  ctaPrimaryText: '#FFFFFF',
-  ctaSecondary: '#0F2B46',
-  ctaSecondaryText: '#0F2B46',
+  negative: '#ff3b30',
+  warning: '#ff9500',
+  announcement: '#2997ff',
 
-  /** Section backgrounds */
-  heroBackground: '#0F2B46',
-  heroText: '#FFFFFF',
-  sectionAlt: '#F0F2F5',
-  footerBackground: '#0B1D30',
-  footerText: '#D1D5DB',
-
-  /** Misc */
-  divider: '#E5E7EB',
+  /** Borders & misc */
+  divider: '#d2d2d7',          // Soft Border Gray
+  borderSubtle: '#d2d2d7',
   shadow: 'rgba(0,0,0,0.08)',
+  shadowMedium: 'rgba(0,0,0,0.04)',
+
+  /** Card surface */
+  card: '#ffffff',
+
+  /** Dark surfaces (for dark-context modules) */
+  graphiteA: '#272729',
+  graphiteB: '#262629',
+  graphiteC: '#28282b',
+  graphiteD: '#2a2a2c',
+
+  /** Utility */
+  utilityDarkGray: '#424245',
 } as const;

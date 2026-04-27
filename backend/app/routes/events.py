@@ -5,10 +5,29 @@ from datetime import datetime
 from enum import Enum
 
 from app.middleware.auth import CurrentUser, get_current_user
-from app.services import event_service
+from app.services import event_service, sign_service, organization_service
 from app.utils.logger import logger
 
 router = APIRouter(prefix="/events", tags=["events"])
+
+
+# ── authorization helpers ────────────────────────────────────────────
+
+
+async def _require_event_access(event_id: str, user_id: str) -> dict:
+    """Fetch an event and verify the user has access via the sign's org.
+
+    Returns the event dict. Raises HTTPException on not-found or forbidden.
+    """
+    event = await event_service.get_event(event_id)
+    if not event:
+        raise HTTPException(status_code=404, detail="Event not found")
+    sign = await sign_service.get_sign(event["sign_id"])
+    if sign and sign.get("organization_id"):
+        role = await organization_service.get_user_role(sign["organization_id"], user_id)
+        if role is None:
+            raise HTTPException(status_code=403, detail="Not a member of this sign's organization")
+    return event
 
 
 # ── enums ────────────────────────────────────────────────────────────
@@ -71,6 +90,15 @@ async def create_event(
 ):
     """Create a new event for a sign, optionally creating a notification."""
     try:
+        # Verify the user has access to the sign
+        sign = await sign_service.get_sign(event.sign_id)
+        if not sign:
+            raise HTTPException(status_code=404, detail="Sign not found")
+        if sign.get("organization_id"):
+            role = await organization_service.get_user_role(sign["organization_id"], current_user.id)
+            if role is None:
+                raise HTTPException(status_code=403, detail="Not a member of this sign's organization")
+
         result = await event_service.create_event(
             sign_id=event.sign_id,
             event_type=event.type.value,
@@ -81,6 +109,8 @@ async def create_event(
         )
         return EventOut(**result)
 
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(
             status_code=404 if "not found" in str(e).lower() else 400,
@@ -102,11 +132,12 @@ async def list_events(
     limit: int = Query(100, ge=1, le=1000),
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    """Retrieve events with optional filtering."""
+    """Retrieve events with optional filtering, scoped to the user's organizations."""
     try:
         rows = await event_service.list_events(
             sign_id=sign_id,
             event_type=type.value if type else None,
+            user_id=current_user.id,
             skip=skip,
             limit=limit,
         )
@@ -124,10 +155,8 @@ async def get_event(
 ):
     """Retrieve a specific event by ID."""
     try:
-        result = await event_service.get_event(event_id)
-        if not result:
-            raise HTTPException(status_code=404, detail="Event not found")
-        return EventOut(**result)
+        event = await _require_event_access(event_id, current_user.id)
+        return EventOut(**event)
 
     except HTTPException:
         raise
@@ -146,8 +175,11 @@ async def get_event_notifications(
 ):
     """Retrieve all notifications linked to a specific event."""
     try:
+        await _require_event_access(event_id, current_user.id)
         return await event_service.get_event_notifications(event_id)
 
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
@@ -166,6 +198,8 @@ async def update_event(
 ):
     """Update a specific event."""
     try:
+        await _require_event_access(event_id, current_user.id)
+
         result = await event_service.update_event(
             event_id,
             event_type=event.type.value if event.type else None,
@@ -192,6 +226,8 @@ async def delete_event(
 ):
     """Delete a specific event and its linked notifications."""
     try:
+        await _require_event_access(event_id, current_user.id)
+
         deleted = await event_service.delete_event(event_id)
         if not deleted:
             raise HTTPException(status_code=404, detail="Event not found")

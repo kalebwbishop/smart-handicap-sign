@@ -1,3 +1,4 @@
+console.log('[APP] App.tsx module evaluating...');
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo } from 'react';
 import { NavigationContainer, LinkingOptions } from '@react-navigation/native';
@@ -8,6 +9,7 @@ import * as Linking from 'expo-linking';
 import { authAPI } from './src/api/api';
 import { useAuthStore } from './src/store/authStore';
 import { AuthResponse } from './src/types/types';
+console.log('[APP] All App.tsx imports resolved');
 
 const linking: LinkingOptions<RootStackParamList> = {
     prefixes: [Linking.createURL('/'), 'http://localhost:8081/', 'https://localhost:8081/'],
@@ -40,6 +42,7 @@ function useQueryParam(name: string) {
 }
 
 export default function App() {
+    console.log('[APP] App() rendering');
 
     const code = useQueryParam("code");
     const [processedCode, setProcessedCode] = React.useState<string | null>(null);
@@ -81,26 +84,17 @@ export default function App() {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: Platform.OS === 'web' ? '#f3f4f6' : '#fff', // Light grey background for web
+        backgroundColor: '#f5f5f7',
         alignItems: 'center',
         justifyContent: 'center',
     },
     appContainer: {
         flex: 1,
         width: '100%',
-        backgroundColor: '#fff',
+        backgroundColor: '#f5f5f7',
     },
     webAppContainer: {
-        // maxWidth: 480, // Restrict width on web
         height: '100%',
-        shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: 2,
-        },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-        elevation: 5,
     },
 });
 

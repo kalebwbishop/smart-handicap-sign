@@ -1,4 +1,4 @@
--- Smart Handicap Sign Database Schema
+-- Hazard Hero Database Schema
 -- Description: Schema for handicap sign management with WorkOS authentication
 
 
@@ -6,6 +6,7 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Drop existing tables to ensure clean schema update
+DROP TABLE IF EXISTS push_tokens CASCADE;
 DROP TABLE IF EXISTS notifications CASCADE;
 DROP TABLE IF EXISTS events CASCADE;
 DROP TABLE IF EXISTS signs CASCADE;
@@ -38,6 +39,7 @@ CREATE TABLE IF NOT EXISTS users (
     workos_user_id VARCHAR(255) UNIQUE NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     name VARCHAR(255) NOT NULL,
+    avatar_url TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -209,4 +211,21 @@ COMMENT ON TABLE notifications IS 'Per-user notifications, optionally tied to a 
 COMMENT ON COLUMN notifications.user_id IS 'The user this notification belongs to';
 COMMENT ON COLUMN notifications.event_id IS 'Optional FK to the event that triggered this notification';
 COMMENT ON COLUMN notifications.read IS 'Whether the notification has been read';
+
+
+-- ── Push Tokens ─────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS push_tokens (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expo_push_token TEXT NOT NULL UNIQUE,
+    device_id TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_push_tokens_user_id ON push_tokens(user_id);
+
+COMMENT ON TABLE push_tokens IS 'Expo push notification tokens per user/device';
+COMMENT ON COLUMN push_tokens.expo_push_token IS 'Unique Expo push token string';
+COMMENT ON COLUMN push_tokens.device_id IS 'Optional client-supplied device identifier';
 

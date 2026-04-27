@@ -18,22 +18,32 @@ export default function LoginScreen() {
     const hasAutoTriggered = useRef(false);
 
     const handleLogin = useCallback(async () => {
+        console.log('[LOGIN] handleLogin pressed');
         setIsLoading(true);
         try {
             const redirectUrl = ExpoLinking.createURL('callback');
+            console.log('[LOGIN] redirectUrl:', redirectUrl);
+            console.log('[LOGIN] Calling authAPI.initiateLogin...');
             const response = await authAPI.initiateLogin(redirectUrl);
+            console.log('[LOGIN] initiateLogin response:', JSON.stringify(response)?.substring(0, 200));
             if (response.authorizationUrl) {
+                console.log('[LOGIN] Opening auth session:', response.authorizationUrl?.substring(0, 80));
                 const result = await WebBrowser.openAuthSessionAsync(
                     response.authorizationUrl,
                     redirectUrl,
                 );
+                console.log('[LOGIN] Auth session result type:', result.type);
 
                 if (result.type === 'success' && result.url) {
+                    console.log('[LOGIN] Success URL:', result.url?.substring(0, 100));
                     const parsed = ExpoLinking.parse(result.url);
                     const code = parsed.queryParams?.code as string | undefined;
+                    console.log('[LOGIN] Parsed code:', code ? `${code.substring(0, 10)}...` : 'none');
 
                     if (code) {
+                        console.log('[LOGIN] Exchanging code...');
                         const authResponse = await authAPI.handleCallback(code);
+                        console.log('[LOGIN] Exchange success, user:', authResponse?.user?.email);
                         await setUser(
                             authResponse.user,
                             authResponse.accessToken,
@@ -41,9 +51,12 @@ export default function LoginScreen() {
                         );
                     }
                 }
+            } else {
+                console.warn('[LOGIN] No authorizationUrl in response');
             }
-        } catch (error) {
-            console.error('Login error:', error);
+        } catch (error: any) {
+            console.error('[LOGIN] Error:', error?.message);
+            console.error('[LOGIN] Error details:', error?.response?.status, error?.response?.data);
             Alert.alert('Login failed', 'Something went wrong during login. Please try again.');
         } finally {
             setIsLoading(false);
@@ -62,7 +75,7 @@ export default function LoginScreen() {
         <View style={s.container}>
             <View style={s.content}>
                 <Text style={s.icon}>♿</Text>
-                <Text style={s.title}>Smart Handicap Sign</Text>
+                <Text style={s.title}>Hazard Hero</Text>
                 <Text style={s.subtitle}>Sign in to manage your signs</Text>
 
                 <Pressable
@@ -84,7 +97,7 @@ export default function LoginScreen() {
 const s = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.primary,
+        backgroundColor: colors.grayLight,
         justifyContent: 'center',
         alignItems: 'center',
     },
@@ -104,16 +117,15 @@ const s = StyleSheet.create({
     },
     subtitle: {
         ...typography.body,
-        color: colors.white,
-        opacity: 0.85,
+        color: colors.textSecondary,
         textAlign: 'center',
         marginBottom: spacing.xl,
     },
     button: {
-        backgroundColor: colors.white,
-        paddingVertical: spacing.md,
+        backgroundColor: colors.ctaPrimary,
+        paddingVertical: 12,
         paddingHorizontal: spacing.xl,
-        borderRadius: 12,
+        borderRadius: 9999,
         minWidth: 200,
         alignItems: 'center',
     },
@@ -121,8 +133,7 @@ const s = StyleSheet.create({
         opacity: 0.85,
     },
     buttonText: {
-        ...typography.body,
-        color: colors.primary,
-        fontWeight: '700',
+        ...typography.button,
+        color: colors.ctaPrimaryText,
     },
 });

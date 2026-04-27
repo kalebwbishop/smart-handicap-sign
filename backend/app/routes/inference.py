@@ -7,7 +7,7 @@ import matplotlib
 
 matplotlib.use("Agg")  # headless backend – no GUI needed
 import matplotlib.pyplot as plt
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from app.ai.infer import WaveClassifier
@@ -16,6 +16,9 @@ from app.services import event_service, sign_service
 from app.utils.logger import logger
 
 router = APIRouter(prefix="/inference", tags=["inference"])
+
+# Server-side classification threshold — not user-controllable
+WAVE_THRESHOLD = 0.5
 
 
 # ── request / response models ────────────────────────────────────────
@@ -31,13 +34,7 @@ class ClassifyRequest(BaseModel):
         ...,
         min_length=512,
         max_length=512,
-        description="Exactly 512 integers in the range 0-65535",
-    )
-    threshold: Optional[float] = Field(
-        default=0.5,
-        ge=0.0,
-        le=1.0,
-        description="Decision boundary (default 0.5)",
+        description="Exactly 512 integers in the range 0-4095 (ESP32 12-bit ADC)",
     )
 
 
@@ -68,29 +65,30 @@ def _get_classifier() -> WaveClassifier:
 async def classify(
     payload: ClassifyRequest,
     current_user: CurrentUser = Depends(optional_auth),
+    debug: bool = Query(False, description="Include a base64-encoded debug graph of the input signal"),
 ):
     """Classify a 512-int signal as **wave** or **non-wave**."""
     clf = _get_classifier()
 
     try:
-        # ── debug graph of input samples ──────────────────────────────
-        fig, ax = plt.subplots(figsize=(10, 3))
-        ax.plot(payload.samples, linewidth=0.8)
-        ax.set_title("Input Samples (512-point signal)")
-        ax.set_xlabel("Sample index")
-        ax.set_ylabel("Value")
-        ax.set_xlim(0, len(payload.samples) - 1)
-        fig.tight_layout()
+        debug_graph_b64 = None
+        if debug:
+            fig, ax = plt.subplots(figsize=(10, 3))
+            ax.plot(payload.samples, linewidth=0.8)
+            ax.set_title("Input Samples (512-point signal)")
+            ax.set_xlabel("Sample index")
+            ax.set_ylabel("Value")
+            ax.set_xlim(0, len(payload.samples) - 1)
+            fig.tight_layout()
 
-        buf = io.BytesIO()
-        fig.savefig(buf, format="png", dpi=100)
-        plt.close(fig)
-        buf.seek(0)
-        debug_graph_b64 = base64.b64encode(buf.read()).decode()
-        logger.debug("Debug graph generated for %d samples", len(payload.samples))
-        # ──────────────────────────────────────────────────────────────
+            buf = io.BytesIO()
+            fig.savefig(buf, format="png", dpi=100)
+            plt.close(fig)
+            buf.seek(0)
+            debug_graph_b64 = base64.b64encode(buf.read()).decode()
+            logger.debug("Debug graph generated for %d samples", len(payload.samples))
 
-        result = clf.classify(payload.samples, threshold=payload.threshold)
+        result = clf.classify(payload.samples, threshold=WAVE_THRESHOLD)
     except ValueError as exc:
         from fastapi.responses import JSONResponse
 

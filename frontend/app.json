@@ -1,8 +1,9 @@
 {
   "expo": {
-    "name": "MobileStack",
-    "slug": "mobile-stack",
-    "scheme": "smarthandicapsign",
+    "name": "Hazard Hero",
+    "slug": "hazard-hero",
+    "owner": "deploy-box",
+    "scheme": "hazardhero",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -17,26 +18,33 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.mobilestack.app"
+      "bundleIdentifier": "com.hazardhero.app"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.mobilestack.app"
+      "package": "com.hazardhero.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "updates": {
+      "enabled": false
+    },
+    "runtimeVersion": {
+      "policy": "sdkVersion"
+    },
     "extra": {
       "eas": {
-        "projectId": ""
+        "projectId": "f9109ef7-abbf-4301-a064-3f1376aa9456"
       }
     },
     "plugins": [
       "expo-secure-store",
-      "expo-font"
+      "expo-font",
+      "expo-notifications"
     ]
   }
 }

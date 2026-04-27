@@ -1,7 +1,18 @@
+import React, { useEffect, useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
-import { View, StyleSheet, Platform } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Alert, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { useAuthStore } from '@/store/authStore';
+import { colors } from '@/theme/colors';
+import {
+    useFonts,
+    Montserrat_300Light,
+    Montserrat_400Regular,
+    Montserrat_500Medium,
+    Montserrat_600SemiBold,
+    Montserrat_700Bold,
+} from '@expo-google-fonts/montserrat';
 
 const queryClient = new QueryClient({
     defaultOptions: {
@@ -13,36 +24,54 @@ const queryClient = new QueryClient({
 });
 
 export default function RootLayout() {
+    const [appReady, setAppReady] = useState(false);
+    const restoreSession = useAuthStore((s) => s.restoreSession);
+    const sessionExpiredMessage = useAuthStore((s) => s.sessionExpiredMessage);
+
+    const [fontsLoaded] = useFonts({
+        Montserrat_300Light,
+        Montserrat_400Regular,
+        Montserrat_500Medium,
+        Montserrat_600SemiBold,
+        Montserrat_700Bold,
+    });
+
+    useEffect(() => {
+        restoreSession().finally(() => setAppReady(true));
+    }, []);
+
+    useEffect(() => {
+        if (sessionExpiredMessage) {
+            if (Platform.OS === 'web') {
+                // eslint-disable-next-line no-restricted-globals
+                (globalThis as any).alert?.(sessionExpiredMessage);
+            } else {
+                Alert.alert('Session Expired', sessionExpiredMessage);
+            }
+        }
+    }, [sessionExpiredMessage]);
+
+    if (!appReady || !fontsLoaded) {
+        return (
+            <View style={s.splash}>
+                <ActivityIndicator size="large" color={colors.primary} />
+            </View>
+        );
+    }
+
     return (
         <QueryClientProvider client={queryClient}>
-                    <Stack screenOptions={{ headerShown: false }} />
-                    <StatusBar style="auto" />
+            <Stack screenOptions={{ headerShown: false }} />
+            <StatusBar style="light" />
         </QueryClientProvider>
     );
 }
 
-const styles = StyleSheet.create({
-    container: {
+const s = StyleSheet.create({
+    splash: {
         flex: 1,
-        backgroundColor: Platform.OS === 'web' ? '#f3f4f6' : '#fff',
-        alignItems: 'center',
+        backgroundColor: colors.grayLight,
         justifyContent: 'center',
-    },
-    appContainer: {
-        flex: 1,
-        width: '100%',
-        backgroundColor: '#fff',
-    },
-    webAppContainer: {
-        maxWidth: 480,
-        height: '100%',
-        shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: 2,
-        },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-        elevation: 5,
+        alignItems: 'center',
     },
 });

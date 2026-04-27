@@ -1,7 +1,12 @@
 import { Redirect } from 'expo-router';
+import { useAuthStore } from '@/store/authStore';
 
 export default function Index() {
-    // In a real app, we'd check if the user is authenticated here
-    // For now, let's redirect to LoginScreen or Feed
+    const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+
+    if (isAuthenticated) {
+        return <Redirect href="/home" />;
+    }
+
     return <Redirect href="/login" />;
 }

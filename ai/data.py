@@ -17,6 +17,9 @@ import torch
 from torch.utils.data import Dataset
 
 MAX_VAL = 2**16 - 1  # 65535
+# NOTE: Synthetic training data uses a 16-bit range (0–65535).  The real
+# ESP32 hardware ADC is 12-bit (0–4095).  The backend inference code
+# (backend/app/ai/infer.py) normalises by 4095 to match the hardware.
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────

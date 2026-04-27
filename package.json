@@ -1,7 +1,7 @@
 {
-  "name": "social-stack",
+  "name": "hazard-hero",
   "version": "1.0.0",
-  "description": "modular social stack for cross platform mobile development of social media based applications",
+  "description": "IoT accessibility system for smart handicap parking sign management — Hazard Hero",
   "private": true,
   "workspaces": [
     "frontend",
@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "dev:frontend": "npm run android --workspace=frontend",
+    "dev:frontend": "npm run start --workspace=frontend",
     "dev:backend": "npm run dev --workspace=backend",
     "build": "npm run build --workspaces",
     "build:frontend": "npm run build --workspace=frontend",
@@ -31,11 +31,12 @@
     "npm": ">=9.0.0"
   },
   "keywords": [
+    "iot",
+    "accessibility",
+    "handicap-parking",
+    "fastapi",
     "react-native",
-    "expo",
-    "express",
     "postgresql",
-    "mobile",
     "typescript"
   ],
   "author": "",

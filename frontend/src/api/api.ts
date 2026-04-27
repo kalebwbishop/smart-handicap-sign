@@ -4,10 +4,9 @@ import apiClient from './client';
 
 // Auth API
 export const authAPI = {
-    initiateLogin: async (mobileRedirect?: string): Promise<LoginInitResponse> => {
-        const params = mobileRedirect ? `?mobile_redirect=${encodeURIComponent(mobileRedirect)}` : '';
+    initiateLogin: async (redirectUri?: string): Promise<LoginInitResponse> => {
+        const params = redirectUri ? `?redirect_uri=${encodeURIComponent(redirectUri)}` : '';
         const response = await apiClient.get<LoginInitResponse>(`/auth/login${params}`);
-        console.log('response', response);
         return response;
     },
 
@@ -18,8 +17,8 @@ export const authAPI = {
     },
 
     getCurrentUser: async (): Promise<User> => {
-        const response = await apiClient.get<User>('/auth/me');
-        return response;
+        const response = await apiClient.get<{ user: User }>('/auth/me');
+        return response.user;
     },
 
     initiateLogout: async (): Promise<initiateLogoutResponse> => {
@@ -115,6 +114,10 @@ export const signAPI = {
         const response = await apiClient.post<Sign>(`/signs/${signId}/resolve`);
         return response;
     },
+
+    deleteSign: async (signId: string): Promise<void> => {
+        await apiClient.delete(`/signs/${signId}`);
+    },
 };
 
 // Notification API
@@ -142,4 +145,12 @@ export const notificationAPI = {
         const response = await apiClient.post<{ marked_read: number }>('/notifications/read-all');
         return response;
     },
+};
+
+// Push Token API
+export const pushTokenAPI = {
+    register: (expo_push_token: string, device_id?: string) =>
+        apiClient.post('/push-tokens', { expo_push_token, device_id }).then(r => r.data),
+    unregister: (expo_push_token: string) =>
+        apiClient.delete('/push-tokens', { data: { expo_push_token } }),
 };

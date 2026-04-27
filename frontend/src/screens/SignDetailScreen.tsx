@@ -7,6 +7,7 @@ import {
     Platform,
     ScrollView,
     ActivityIndicator,
+    Alert,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -22,14 +23,14 @@ import { signAPI } from '@/api/api';
  * ────────────────────────────────────────────── */
 
 const STATUS_CONFIG: Record<SignStatus, { color: string; label: string }> = {
-    available: { color: '#16A34A', label: 'Available' },
-    assistance_requested: { color: '#DC2626', label: 'Assistance Requested' },
-    assistance_in_progress: { color: '#F59E0B', label: 'Assistance In Progress' },
-    offline: { color: colors.grayDark, label: 'Offline' },
-    error: { color: '#F59E0B', label: 'Error' },
-    training_ready: { color: '#8B5CF6', label: 'Training Ready' },
-    training_positive: { color: '#2563EB', label: 'Training – Positive' },
-    training_negative: { color: '#EA580C', label: 'Training – Negative' },
+    available: { color: '#34C759', label: 'Available' },
+    assistance_requested: { color: '#FF3B30', label: 'Assistance Requested' },
+    assistance_in_progress: { color: '#FF9500', label: 'Assistance In Progress' },
+    offline: { color: '#8E8E93', label: 'Offline' },
+    error: { color: '#FF9500', label: 'Error' },
+    training_ready: { color: '#AF52DE', label: 'Training Ready' },
+    training_positive: { color: '#007AFF', label: 'Training – Positive' },
+    training_negative: { color: '#FF6B35', label: 'Training – Negative' },
 };
 
 function timeAgo(iso: string): string {
@@ -58,6 +59,7 @@ export default function SignDetailScreen() {
     const route = useRoute<RouteProp<RootStackParamList, 'SignDetail'>>();
     const [currentSign, setCurrentSign] = useState<Sign>(route.params.sign);
     const [updating, setUpdating] = useState(false);
+    const [removing, setRemoving] = useState(false);
 
     const statusConfig = STATUS_CONFIG[currentSign.status];
 
@@ -76,31 +78,43 @@ export default function SignDetailScreen() {
         }
     }, [currentSign.id]);
 
+    const handleRemoveSign = useCallback(() => {
+        Alert.alert(
+            'Remove Sign',
+            `This will disassociate "${currentSign.name}" from your account and reset it to factory settings. This action cannot be undone.`,
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Remove',
+                    style: 'destructive',
+                    onPress: async () => {
+                        setRemoving(true);
+                        try {
+                            await signAPI.deleteSign(currentSign.id);
+                            navigation.goBack();
+                        } catch (err) {
+                            console.error('[SignDetail] Failed to remove sign:', err);
+                            Alert.alert('Error', 'Failed to remove sign. Please try again.');
+                            setRemoving(false);
+                        }
+                    },
+                },
+            ],
+        );
+    }, [currentSign.id, currentSign.name, navigation]);
+
     return (
         <View style={s.root}>
-            {/* Header */}
-            <View style={s.header}>
-                <View style={s.headerInner}>
-                    <Pressable
-                        onPress={() => navigation.goBack()}
-                        style={({ pressed }) => [s.backBtn, pressed && { opacity: 0.7 }]}
-                        accessibilityRole="button"
-                        accessibilityLabel="Go back"
-                    >
-                        <Text style={[typography.body, { color: colors.white }]}>← Back</Text>
-                    </Pressable>
-                    <Text style={[typography.h4, { color: colors.heroText }]}>{currentSign.name}</Text>
-                    <View style={{ width: 60 }} />
-                </View>
-            </View>
-
             <ScrollView style={s.scrollView} contentContainerStyle={s.scrollContent}>
                 <View style={s.content}>
                     {/* Sign Status Card */}
                     <View style={s.card}>
-                        <View style={s.cardHeader}>
-                            <Text style={[typography.h3, { color: colors.textPrimary }]}>Sign Status</Text>
-                            <Text style={[typography.bodySmall, { color: colors.textMuted }]}>
+                        <View style={{ marginBottom: spacing.md }}>
+                            <Text style={[typography.h3, { color: colors.textPrimary }]}>{currentSign.name}</Text>
+                            <Text style={[typography.bodySmall, { color: colors.textSecondary, marginTop: 2 }]}>
+                                {currentSign.location}
+                            </Text>
+                            <Text style={[typography.bodySmall, { color: colors.textMuted, marginTop: 2 }]}>
                                 Updated {timeAgo(currentSign.lastUpdated)}
                             </Text>
                         </View>
@@ -112,12 +126,6 @@ export default function SignDetailScreen() {
                                     {statusConfig.label}
                                 </Text>
                             </View>
-                            <Text style={{ fontSize: 56, marginTop: spacing.sm }}>♿</Text>
-                        </View>
-
-                        <View style={s.detailsGrid}>
-                            <DetailRow label="Sign Name" value={currentSign.name} />
-                            <DetailRow label="Location" value={currentSign.location} />
                         </View>
                     </View>
 
@@ -220,7 +228,7 @@ export default function SignDetailScreen() {
                                     accessibilityRole="button"
                                     accessibilityLabel="Exit training mode"
                                 >
-                                    <Text style={[typography.bodySmall, { color: '#DC2626', fontWeight: '600' }]}>
+                                    <Text style={[typography.bodySmall, { color: colors.negative, fontWeight: '700' }]}>
                                         Exit Training Mode
                                     </Text>
                                 </Pressable>
@@ -285,10 +293,36 @@ export default function SignDetailScreen() {
                             accessibilityRole="button"
                             accessibilityLabel="Setup device WiFi"
                         >
-                            <Text style={[typography.button, { color: colors.white }]}>Setup Device WiFi</Text>
+                            <Text style={[typography.button, { color: colors.ctaPrimaryText }]}>Setup Device WiFi</Text>
                         </Pressable>
                     </View>
                     )}
+
+                    {/* Remove Sign */}
+                    <View style={[s.card, { borderColor: 'rgba(255,59,48,0.2)', borderWidth: 1 }]}>
+                        <Text style={[typography.h3, { color: '#FF3B30' }]}>Remove Sign</Text>
+                        <Text style={[typography.bodySmall, { color: colors.textSecondary, marginTop: spacing.sm, marginBottom: spacing.md }]}>
+                            Disassociate this sign from your account and reset it to factory settings.
+                        </Text>
+                        <Pressable
+                            onPress={handleRemoveSign}
+                            disabled={removing}
+                            style={({ pressed }) => [
+                                s.actionBtn,
+                                { backgroundColor: '#FF3B30' },
+                                removing && { opacity: 0.5 },
+                                pressed && { opacity: 0.8 },
+                            ]}
+                            accessibilityRole="button"
+                            accessibilityLabel="Remove sign and reset to factory"
+                        >
+                            {removing ? (
+                                <ActivityIndicator size="small" color={colors.white} />
+                            ) : (
+                                <Text style={[typography.button, { color: colors.white }]}>Remove Sign</Text>
+                            )}
+                        </Pressable>
+                    </View>
                 </View>
             </ScrollView>
         </View>
@@ -303,7 +337,7 @@ function DetailRow({ label, value }: { label: string; value: string }) {
     return (
         <View style={s.detailRow}>
             <Text style={[typography.bodySmall, { color: colors.textMuted }]}>{label}</Text>
-            <Text style={[typography.body, { color: colors.textPrimary, fontWeight: '600' }]}>
+            <Text style={[typography.body, { color: colors.textPrimary, fontWeight: '700' }]}>
                 {value}
             </Text>
         </View>
@@ -319,27 +353,6 @@ const s = StyleSheet.create({
         flex: 1,
         backgroundColor: colors.grayLight,
     },
-    header: {
-        backgroundColor: colors.primary,
-        paddingTop: Platform.OS === 'web' ? spacing.lg : 56,
-        paddingBottom: spacing.lg,
-        paddingHorizontal: layout.contentPadding,
-    },
-    headerInner: {
-        maxWidth: layout.maxWidth,
-        width: '100%',
-        alignSelf: 'center',
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    },
-    backBtn: {
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        borderRadius: layout.borderRadiusSm,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.25)',
-    },
     scrollView: {
         flex: 1,
     },
@@ -354,12 +367,18 @@ const s = StyleSheet.create({
         gap: spacing.lg,
     },
     card: {
-        backgroundColor: colors.white,
-        borderRadius: layout.borderRadius,
+        backgroundColor: colors.card,
+        borderRadius: layout.borderRadiusMd,
         padding: spacing.xl,
         ...Platform.select({
-            web: { boxShadow: `0 1px 8px ${colors.shadow}` },
-            default: { elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 6 },
+            web: { boxShadow: '0 2px 12px rgba(0,0,0,0.08)' },
+            default: {
+                elevation: 3,
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.08,
+                shadowRadius: 12,
+            },
         }),
     },
     cardHeader: {
@@ -372,7 +391,6 @@ const s = StyleSheet.create({
         borderRadius: layout.borderRadius,
         padding: spacing.xl,
         alignItems: 'center',
-        marginBottom: spacing.lg,
     },
     statusIconRow: {
         flexDirection: 'row',
@@ -396,9 +414,9 @@ const s = StyleSheet.create({
         borderBottomColor: colors.divider,
     },
     actionBtn: {
-        backgroundColor: colors.accent,
+        backgroundColor: colors.ctaPrimary,
         paddingVertical: 14,
-        borderRadius: layout.borderRadiusSm,
+        borderRadius: layout.borderRadiusPill,
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -406,7 +424,7 @@ const s = StyleSheet.create({
     /* Training mode */
     trainingBtn: {
         paddingVertical: 14,
-        borderRadius: layout.borderRadiusSm,
+        borderRadius: layout.borderRadiusPill,
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -420,7 +438,7 @@ const s = StyleSheet.create({
         gap: spacing.sm,
         paddingVertical: spacing.sm,
         paddingHorizontal: spacing.lg,
-        borderRadius: 20,
+        borderRadius: layout.borderRadiusPill,
         marginBottom: spacing.md,
     },
     exitTrainingBtn: {
@@ -428,7 +446,7 @@ const s = StyleSheet.create({
         alignSelf: 'center',
         paddingVertical: spacing.sm,
         paddingHorizontal: spacing.md,
-        borderRadius: layout.borderRadiusSm,
-        backgroundColor: '#DC262614',
+        borderRadius: layout.borderRadiusPill,
+        backgroundColor: 'rgba(255,59,48,0.08)',
     },
 });

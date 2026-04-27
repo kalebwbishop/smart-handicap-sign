@@ -12,6 +12,8 @@ from typing import List, Optional
 from asyncpg import Pool
 
 from app.config.database import get_pool
+from app.services import push_token_service
+from app.services.expo_push import send_push_notifications
 from app.utils.logger import logger
 
 
@@ -38,6 +40,7 @@ async def create_notification(
     body: str,
     read: bool = False,
     pool: Optional[Pool] = None,
+    _send_push: bool = True,
 ) -> dict:
     """Insert a new notification and return the created row as a dict.
 
@@ -64,8 +67,29 @@ async def create_notification(
     if not row:
         raise RuntimeError("Failed to create notification")
 
-    logger.info(f"✅ Notification created: {row['id']} for user {user_id}")
-    return _row_to_dict(row)
+    notification = _row_to_dict(row)
+    logger.info(f"✅ Notification created: {notification['id']} for user {user_id}")
+
+    # Fire-and-forget push notification
+    if _send_push and user_id is not None:
+        try:
+            token_rows = await push_token_service.get_tokens_for_user(
+                user_id, pool=pool
+            )
+            tokens = [t["expo_push_token"] for t in token_rows]
+            await send_push_notifications(
+                tokens,
+                title,
+                body,
+                data={
+                    "event_id": event_id,
+                    "notification_id": notification["id"],
+                },
+            )
+        except Exception as e:
+            logger.error("Push send failed for user %s: %s", user_id, e)
+
+    return notification
 
 
 async def create_notifications_for_org(
@@ -92,6 +116,7 @@ async def create_notifications_for_org(
             title=title,
             body=body,
             pool=pool,
+            _send_push=False,
         )
         notifications.append(notif)
 
@@ -99,6 +124,23 @@ async def create_notifications_for_org(
         "✅ Created %d notifications for org %s (event %s)",
         len(notifications), org_id, event_id,
     )
+
+    # Fire-and-forget push notifications for all org members at once
+    try:
+        user_ids = [str(m["user_id"]) for m in member_rows]
+        token_rows = await push_token_service.get_tokens_for_users(
+            user_ids, pool=pool
+        )
+        tokens = [t["expo_push_token"] for t in token_rows]
+        await send_push_notifications(
+            tokens,
+            title,
+            body,
+            data={"event_id": event_id, "org_id": org_id},
+        )
+    except Exception as e:
+        logger.error("Push send failed for org %s: %s", org_id, e)
+
     return notifications
 
 

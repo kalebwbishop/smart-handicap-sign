@@ -21,15 +21,19 @@ services:
       - redis_data:/data
 
   backend:
-    build: ./backend
+    build:
+      context: ..
+      dockerfile: smart-handicap-sign/backend/dockerfile
     restart: unless-stopped
     env_file: ./backend/.env
+    ports:
+      - "8000:8000"
     environment:
       POSTGRES_CONNECTION_STRING: postgresql://postgres:postgres@db:5432/shs
-      CORS_ORIGIN: https://shs.deploy-box.com
-      FRONTEND_URL: https://shs.deploy-box.com
-      WORKOS_REDIRECT_URI: https://shs.deploy-box.com/api/v1/auth/callback
-      ENVIRONMENT: production
+      CORS_ORIGIN: http://localhost:3000,http://localhost:8081,https://tqr9vxj0-8081.usw3.devtunnels.ms
+      FRONTEND_URL: https://tqr9vxj0-8081.usw3.devtunnels.ms
+      WORKOS_REDIRECT_URI: https://tqr9vxj0-8081.usw3.devtunnels.ms/api/v1/auth/callback
+      ENVIRONMENT: development
     depends_on:
       db:
         condition: service_healthy
@@ -41,10 +45,13 @@ services:
 
   frontend:
     build:
-      context: ./frontend
+      context: ..
+      dockerfile: smart-handicap-sign/frontend/dockerfile
       args:
-        EXPO_PUBLIC_API_URL: ""
+        EXPO_PUBLIC_API_URL: "http://localhost:8000"
     restart: unless-stopped
+    ports:
+      - "3000:3000"
     depends_on:
       - backend
     networks:

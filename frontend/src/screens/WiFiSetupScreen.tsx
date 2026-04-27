@@ -135,7 +135,7 @@ export default function WiFiSetupScreen() {
                     accessibilityLabel={`Select ${item.ssid}`}
                 >
                     <View style={s.networkInfo}>
-                        <Text style={[typography.body, { color: colors.textPrimary, fontWeight: '600' }]}>
+                        <Text style={[typography.body, { color: colors.textPrimary, fontWeight: '700' }]}>
                             {item.ssid}
                         </Text>
                         <Text style={[typography.bodySmall, { color: colors.textMuted }]}>
@@ -153,25 +153,6 @@ export default function WiFiSetupScreen() {
 
     return (
         <View style={s.root}>
-            {/* Header */}
-            <View style={s.header}>
-                <View style={s.headerInner}>
-                    <Pressable
-                        onPress={() => navigation.goBack()}
-                        style={({ pressed }) => [s.backBtn, pressed && { opacity: 0.7 }]}
-                        accessibilityRole="button"
-                        accessibilityLabel="Go back"
-                    >
-                        <Text style={[typography.body, { color: colors.white }]}>← Back</Text>
-                    </Pressable>
-                    <View style={{ flex: 1, alignItems: 'center' }}>
-                        <Text style={[typography.label, { color: colors.accent }]}>SMART HANDICAP SIGN</Text>
-                        <Text style={[typography.h4, { color: colors.heroText, marginTop: 2 }]}>WiFi Setup</Text>
-                    </View>
-                    <View style={{ width: 60 }} />
-                </View>
-            </View>
-
             <ScrollView style={s.scrollView} contentContainerStyle={s.scrollContent}>
                 <View style={s.content}>
                     {success ? (
@@ -206,7 +187,7 @@ export default function WiFiSetupScreen() {
                                     style={({ pressed }) => [s.primaryBtn, pressed && { opacity: 0.8 }]}
                                     accessibilityRole="button"
                                 >
-                                    <Text style={[typography.button, { color: colors.white }]}>Done</Text>
+                                    <Text style={[typography.button, { color: colors.ctaPrimaryText }]}>Done</Text>
                                 </Pressable>
                             </View>
                         </View>
@@ -232,15 +213,15 @@ export default function WiFiSetupScreen() {
                                 accessibilityRole="button"
                             >
                                 {checking ? (
-                                    <ActivityIndicator size="small" color={colors.white} />
+                                    <ActivityIndicator size="small" color={colors.ctaPrimaryText} />
                                 ) : (
-                                    <Text style={[typography.button, { color: colors.white }]}>
+                                    <Text style={[typography.button, { color: colors.ctaPrimaryText }]}>
                                         I'm Connected — Check Device
                                     </Text>
                                 )}
                             </Pressable>
                             {checkError && (
-                                <Text style={[typography.bodySmall, { color: '#DC2626', marginTop: spacing.sm }]}>
+                                <Text style={[typography.bodySmall, { color: colors.negative, marginTop: spacing.sm }]}>
                                     {checkError}
                                 </Text>
                             )}
@@ -278,9 +259,9 @@ export default function WiFiSetupScreen() {
                                     accessibilityRole="button"
                                 >
                                     {scanning ? (
-                                        <ActivityIndicator size="small" color={colors.primary} />
+                                        <ActivityIndicator size="small" color={colors.textPrimary} />
                                     ) : (
-                                        <Text style={[typography.button, { color: colors.primary }]}>
+                                        <Text style={[typography.button, { color: colors.textPrimary }]}>
                                             {networks.length > 0 ? 'Rescan Networks' : 'Scan Networks'}
                                         </Text>
                                     )}
@@ -290,7 +271,7 @@ export default function WiFiSetupScreen() {
                                     <Text
                                         style={[
                                             typography.bodySmall,
-                                            { color: '#DC2626', marginTop: spacing.sm },
+                                            { color: colors.negative, marginTop: spacing.sm },
                                         ]}
                                     >
                                         {scanError}
@@ -358,9 +339,9 @@ export default function WiFiSetupScreen() {
                                         accessibilityRole="button"
                                     >
                                         {configuring ? (
-                                            <ActivityIndicator size="small" color={colors.white} />
+                                            <ActivityIndicator size="small" color={colors.ctaPrimaryText} />
                                         ) : (
-                                            <Text style={[typography.button, { color: colors.white }]}>
+                                            <Text style={[typography.button, { color: colors.ctaPrimaryText }]}>
                                                 Save & Connect
                                             </Text>
                                         )}
@@ -370,7 +351,7 @@ export default function WiFiSetupScreen() {
                                         <Text
                                             style={[
                                                 typography.bodySmall,
-                                                { color: '#DC2626', marginTop: spacing.sm },
+                                                { color: colors.negative, marginTop: spacing.sm },
                                             ]}
                                         >
                                             {configError}
@@ -433,17 +414,17 @@ const s = StyleSheet.create({
 
     /* Card */
     card: {
-        backgroundColor: colors.white,
+        backgroundColor: colors.card,
         borderRadius: layout.borderRadius,
         padding: spacing.xl,
         ...Platform.select({
-            web: { boxShadow: `0 1px 8px ${colors.shadow}` },
+            web: { boxShadow: '0px 8px 8px rgba(0,0,0,0.3)' },
             default: {
-                elevation: 2,
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 1 },
-                shadowOpacity: 0.06,
-                shadowRadius: 6,
+                elevation: 8,
+                shadowColor: colors.shadowMedium,
+                shadowOffset: { width: 0, height: 8 },
+                shadowOpacity: 1,
+                shadowRadius: 8,
             },
         }),
     },
@@ -451,19 +432,18 @@ const s = StyleSheet.create({
     /* Buttons */
     primaryBtn: {
         marginTop: spacing.md,
-        backgroundColor: colors.accent,
+        backgroundColor: colors.ctaPrimary,
         paddingVertical: 14,
-        borderRadius: layout.borderRadiusSm,
+        borderRadius: layout.borderRadiusPill,
         alignItems: 'center',
         justifyContent: 'center',
     },
     secondaryBtn: {
         paddingVertical: 14,
-        borderRadius: layout.borderRadiusSm,
+        borderRadius: layout.borderRadiusPill,
         alignItems: 'center',
         justifyContent: 'center',
-        borderWidth: 1.5,
-        borderColor: colors.primary,
+        backgroundColor: colors.grayMid,
     },
 
     /* Network list */
@@ -481,7 +461,7 @@ const s = StyleSheet.create({
         borderBottomColor: colors.divider,
     },
     networkRowSelected: {
-        backgroundColor: colors.accent + '14',
+        backgroundColor: 'rgba(24,119,242,0.08)',
         borderLeftWidth: 3,
         borderLeftColor: colors.accent,
     },
@@ -494,10 +474,8 @@ const s = StyleSheet.create({
         marginBottom: spacing.sm,
     },
     input: {
-        backgroundColor: colors.offWhite,
-        borderWidth: 1,
-        borderColor: colors.divider,
-        borderRadius: layout.borderRadiusSm,
+        backgroundColor: colors.grayMid,
+        borderRadius: layout.borderRadiusPill,
         padding: spacing.md,
         fontSize: 16,
         color: colors.textPrimary,

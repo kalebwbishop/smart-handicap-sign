@@ -10,6 +10,22 @@ from app.utils.logger import logger
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 
+# ── authorization helpers ────────────────────────────────────────────
+
+
+async def _require_notification_ownership(notification_id: str, user_id: str) -> dict:
+    """Fetch a notification and verify the current user owns it.
+
+    Returns the notification dict. Raises HTTPException on not-found or forbidden.
+    """
+    notif = await notification_service.get_notification(notification_id)
+    if not notif:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    if notif.get("user_id") and notif["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Not your notification")
+    return notif
+
+
 # ── request / response models ────────────────────────────────────────
 
 
@@ -52,10 +68,11 @@ async def create_notification(
     notification: NotificationCreate,
     current_user: CurrentUser = Depends(get_current_user),
 ):
-    """Create a new notification."""
+    """Create a new notification for the current user."""
     try:
         result = await notification_service.create_notification(
             event_id=notification.event_id,
+            user_id=current_user.id,
             title=notification.title,
             body=notification.body,
             read=notification.read if notification.read is not None else False,
@@ -119,9 +136,7 @@ async def get_notification(
 ):
     """Retrieve a specific notification by ID."""
     try:
-        result = await notification_service.get_notification(notification_id)
-        if not result:
-            raise HTTPException(status_code=404, detail="Notification not found")
+        result = await _require_notification_ownership(notification_id, current_user.id)
         return NotificationOut(**result)
 
     except HTTPException:
@@ -142,6 +157,7 @@ async def update_notification(
 ):
     """Update a specific notification."""
     try:
+        await _require_notification_ownership(notification_id, current_user.id)
         result = await notification_service.update_notification(
             notification_id,
             title=notification.title,
@@ -169,6 +185,7 @@ async def mark_as_read(
 ):
     """Mark a single notification as read."""
     try:
+        await _require_notification_ownership(notification_id, current_user.id)
         result = await notification_service.mark_as_read(notification_id)
         if not result:
             raise HTTPException(status_code=404, detail="Notification not found")
@@ -205,6 +222,7 @@ async def delete_notification(
 ):
     """Delete a specific notification."""
     try:
+        await _require_notification_ownership(notification_id, current_user.id)
         deleted = await notification_service.delete_notification(notification_id)
         if not deleted:
             raise HTTPException(status_code=404, detail="Notification not found")

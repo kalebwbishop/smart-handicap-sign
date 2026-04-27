@@ -28,13 +28,9 @@ export default class Storage {
 
     static async getKey(key: string) {
         if (Platform.OS === "web") {
-            const result = getSecureLocalStorage().getItem(key);
-            console.log(result);
-            return result;
+            return getSecureLocalStorage().getItem(key);
         } else {
-            const result = await expoStorage.getItemAsync(key);
-            console.log(result);
-            return result;
+            return await expoStorage.getItemAsync(key);
         }
     }
 }

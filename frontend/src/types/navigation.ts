@@ -7,4 +7,6 @@ export type RootStackParamList = {
     SignDetail: { sign: Sign };
     WiFiSetup: undefined;
     Organizations: undefined;
+    SetupGuide: undefined;
+    Feedback: undefined;
 };

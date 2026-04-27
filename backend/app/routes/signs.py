@@ -11,6 +11,24 @@ from app.utils.logger import logger
 router = APIRouter(prefix="/signs", tags=["signs"])
 
 
+# ── authorization helpers ────────────────────────────────────────────
+
+
+async def _require_sign_access(sign_id: str, user_id: str) -> dict:
+    """Fetch a sign and verify the user has access via org membership.
+
+    Returns the sign dict. Raises HTTPException on not-found or forbidden.
+    """
+    sign = await sign_service.get_sign(sign_id)
+    if not sign:
+        raise HTTPException(status_code=404, detail="Sign not found")
+    if sign.get("organization_id"):
+        role = await organization_service.get_user_role(sign["organization_id"], user_id)
+        if role is None:
+            raise HTTPException(status_code=403, detail="Not a member of this sign's organization")
+    return sign
+
+
 # ── enums ────────────────────────────────────────────────────────────
 
 
@@ -111,6 +129,27 @@ async def list_signs(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/me", response_model=SignOut)
+async def get_my_sign(
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """Return the first sign belonging to the current user's organizations."""
+    try:
+        rows = await sign_service.list_signs(
+            user_id=current_user.id,
+            limit=1,
+        )
+        if not rows:
+            raise HTTPException(status_code=404, detail="No sign found for your organizations")
+        return SignOut(**rows[0])
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to retrieve user sign: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/{sign_id}", response_model=SignOut)
 async def get_sign(
     sign_id: str,
@@ -118,10 +157,8 @@ async def get_sign(
 ):
     """Retrieve a specific sign by ID."""
     try:
-        result = await sign_service.get_sign(sign_id)
-        if not result:
-            raise HTTPException(status_code=404, detail="Sign not found")
-        return SignOut(**result)
+        sign = await _require_sign_access(sign_id, current_user.id)
+        return SignOut(**sign)
 
     except HTTPException:
         raise
@@ -167,6 +204,8 @@ async def update_sign(
 ):
     """Update a specific sign."""
     try:
+        await _require_sign_access(sign_id, current_user.id)
+
         result = await sign_service.update_sign(
             sign_id,
             name=sign.name,
@@ -195,9 +234,7 @@ async def acknowledge_sign(
 ):
     """Acknowledge an assistance request, moving the sign to *assistance_in_progress*."""
     try:
-        sign = await sign_service.get_sign(sign_id)
-        if not sign:
-            raise HTTPException(status_code=404, detail="Sign not found")
+        sign = await _require_sign_access(sign_id, current_user.id)
 
         if sign["status"] != "assistance_requested":
             raise HTTPException(
@@ -245,9 +282,7 @@ async def resolve_sign(
 ):
     """Mark assistance as complete, returning the sign to *available*."""
     try:
-        sign = await sign_service.get_sign(sign_id)
-        if not sign:
-            raise HTTPException(status_code=404, detail="Sign not found")
+        sign = await _require_sign_access(sign_id, current_user.id)
 
         if sign["status"] not in ("assistance_requested", "assistance_in_progress"):
             raise HTTPException(
@@ -297,6 +332,8 @@ async def delete_sign(
 ):
     """Delete a specific sign."""
     try:
+        await _require_sign_access(sign_id, current_user.id)
+
         deleted = await sign_service.delete_sign(sign_id)
         if not deleted:
             raise HTTPException(status_code=404, detail="Sign not found")

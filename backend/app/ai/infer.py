@@ -6,7 +6,7 @@ Usage
 As a library (inside the backend service):
     from app.ai.infer import WaveClassifier
     clf = WaveClassifier()
-    result = clf.classify([12345, 54321, ...])   # list of 512 ints (0-65535)
+    result = clf.classify([1234, 3210, ...])   # list of 512 ints (0-4095)
     print(result)  # {"label": "wave", "confidence": 0.97}
 """
 
@@ -20,7 +20,10 @@ import torch
 from app.ai.model import WaveDetector
 
 SEQ_LEN = 512
-MAX_VAL = 2**16 - 1  # 65535
+# ESP32 ADC is configured for 12-bit resolution (0–4095).
+# The synthetic training data uses a 0–65535 range, but real hardware
+# samples arrive in 0–4095 so we normalise by the 12-bit maximum here.
+MAX_VAL = 2**12 - 1  # 4095
 
 DEFAULT_CHECKPOINT = os.path.join(os.path.dirname(__file__), "checkpoints", "best.pt")
 
@@ -47,7 +50,7 @@ class WaveClassifier:
         Parameters
         ----------
         signal : list[int] | ndarray
-            Exactly 512 integers in the range 0-65535.
+            Exactly 512 integers in the range 0-4095 (ESP32 12-bit ADC).
         threshold : float
             Decision boundary (default 0.5).
 

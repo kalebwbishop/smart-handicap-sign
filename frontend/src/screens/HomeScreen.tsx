@@ -3,14 +3,16 @@ import {
     View,
     Text,
     ScrollView,
-    TextInput,
     Pressable,
     StyleSheet,
     Linking,
     ActivityIndicator,
     Platform,
     RefreshControl,
+    Modal,
+    Alert,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuthStore } from '@/store/authStore';
@@ -19,7 +21,7 @@ import { Sign, SignNotification, SignStatus } from '@/types/types';
 import { RootStackParamList } from '@/types/navigation';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
-import { spacing, layout } from '@/theme/spacing';
+import { spacing, layout, shadows } from '@/theme/spacing';
 
 /* ──────────────────────────────────────────────
  * Constants
@@ -32,14 +34,14 @@ const POLL_INTERVAL_MS = 30_000; // 30 seconds
  * ────────────────────────────────────────────── */
 
 const STATUS_CONFIG: Record<SignStatus, { color: string; label: string; icon: string }> = {
-    available: { color: '#16A34A', label: 'Available', icon: '🟢' },
-    assistance_requested: { color: '#DC2626', label: 'Assistance Requested', icon: '🔴' },
-    assistance_in_progress: { color: '#F59E0B', label: 'Assistance In Progress', icon: '🟡' },
-    offline: { color: colors.grayDark, label: 'Offline', icon: '⚪' },
-    error: { color: '#F59E0B', label: 'Error', icon: '🟡' },
-    training_ready: { color: '#8B5CF6', label: 'Training Ready', icon: '🟣' },
-    training_positive: { color: '#2563EB', label: 'Training – Positive', icon: '🔵' },
-    training_negative: { color: '#EA580C', label: 'Training – Negative', icon: '🟠' },
+    available: { color: '#34C759', label: 'Available', icon: '🟢' },
+    assistance_requested: { color: '#FF3B30', label: 'Assistance Requested', icon: '🔴' },
+    assistance_in_progress: { color: '#FF9500', label: 'Assistance In Progress', icon: '🟡' },
+    offline: { color: '#8E8E93', label: 'Offline', icon: '⚪' },
+    error: { color: '#FF9500', label: 'Error', icon: '🟡' },
+    training_ready: { color: '#AF52DE', label: 'Training Ready', icon: '🟣' },
+    training_positive: { color: '#007AFF', label: 'Training – Positive', icon: '🔵' },
+    training_negative: { color: '#FF6B35', label: 'Training – Negative', icon: '🟠' },
 };
 
 
@@ -62,8 +64,10 @@ function timeAgo(iso: string): string {
 export default function HomeScreen() {
     const { user, logout } = useAuthStore();
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+    const insets = useSafeAreaInsets();
     const [isLoggingOut, setIsLoggingOut] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
+    const [menuVisible, setMenuVisible] = useState(false);
 
     // Sign state
     const [sign, setSign] = useState<Sign | null>(null);
@@ -74,11 +78,6 @@ export default function HomeScreen() {
     const [notifications, setNotifications] = useState<SignNotification[]>([]);
     const [notifLoading, setNotifLoading] = useState(true);
     const lastPollTime = useRef<string | null>(null);
-
-    // Feedback state
-    const [feedbackText, setFeedbackText] = useState('');
-    const [feedbackSubmitted, setFeedbackSubmitted] = useState(false);
-    const [feedbackLoading, setFeedbackLoading] = useState(false);
 
     /* ── Data fetching ── */
 
@@ -171,18 +170,6 @@ export default function HomeScreen() {
 
     /* ── Actions ── */
 
-    const handleLogout = useCallback(async () => {
-        setIsLoggingOut(true);
-        try {
-            const logoutUrl = await logout();
-            if (logoutUrl) await Linking.openURL(logoutUrl);
-        } catch (error) {
-            console.error('[HomeScreen] Logout error:', error);
-        } finally {
-            setIsLoggingOut(false);
-        }
-    }, [logout]);
-
     const handleAcknowledge = useCallback(async (notifId: string) => {
         // Optimistic update
         setNotifications((prev) =>
@@ -210,21 +197,6 @@ export default function HomeScreen() {
             );
         }
     }, [notifications]);
-
-    const handleSubmitFeedback = useCallback(async () => {
-        if (!feedbackText.trim()) return;
-        setFeedbackLoading(true);
-        try {
-            // await apiClient.post('/feedback', { message: feedbackText });
-            console.log('[Feedback]', feedbackText);
-            setFeedbackSubmitted(true);
-            setFeedbackText('');
-        } catch (err) {
-            console.error('[HomeScreen] Feedback error:', err);
-        } finally {
-            setFeedbackLoading(false);
-        }
-    }, [feedbackText]);
 
     const [signActionLoading, setSignActionLoading] = useState(false);
 
@@ -265,42 +237,125 @@ export default function HomeScreen() {
     const statusConfig = sign ? STATUS_CONFIG[sign.status] : null;
     const unacknowledgedCount = notifications.filter((n) => !n.read).length;
 
+    const userInitial = user?.name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || '?';
+
+    const handleDeleteAccount = useCallback(() => {
+        Alert.alert(
+            'Delete Account',
+            'Are you sure you want to permanently delete your account? This cannot be undone.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            // await apiClient.delete('/auth/account');
+                            await logout();
+                        } catch (err) {
+                            console.error('[HomeScreen] Delete account error:', err);
+                        }
+                    },
+                },
+            ],
+        );
+    }, [logout]);
+
     return (
         <View style={s.root}>
             {/* ── Header ── */}
-            <View style={s.header}>
+            <View style={[s.header, { paddingTop: insets.top + spacing.sm }]}>
                 <View style={s.headerInner}>
-                    <View>
-                        <Text style={[typography.label, { color: colors.accent }]}>SMART HANDICAP SIGN</Text>
-                        <Text style={[typography.h4, { color: colors.heroText, marginTop: 2 }]}>
-                            {user ? `Hi, ${user.name?.split(' ')[0] || user.email}` : 'Dashboard'}
-                        </Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
-                        <Pressable
-                            onPress={() => navigation.navigate('Organizations')}
-                            style={({ pressed }) => [s.logoutBtn, { backgroundColor: 'rgba(255,255,255,0.15)' }, pressed && { opacity: 0.7 }]}
-                            accessibilityRole="button"
-                            accessibilityLabel="Organizations"
-                        >
-                            <Text style={[typography.bodySmall, { color: colors.white }]}>🏢 Orgs</Text>
-                        </Pressable>
-                        <Pressable
-                            onPress={handleLogout}
-                            disabled={isLoggingOut}
-                            style={({ pressed }) => [s.logoutBtn, pressed && { opacity: 0.7 }]}
-                            accessibilityRole="button"
-                            accessibilityLabel="Log out"
-                        >
-                            {isLoggingOut ? (
-                                <ActivityIndicator size="small" color={colors.white} />
-                            ) : (
-                                <Text style={[typography.bodySmall, { color: colors.white }]}>Log Out</Text>
-                            )}
-                        </Pressable>
-                    </View>
+                    <Text style={[typography.h4, { color: colors.textPrimary }]}>
+                        {user ? `Hi, ${user.name?.split(' ')[0] || user.email}` : 'Dashboard'}
+                    </Text>
+                    <Pressable
+                        onPress={() => setMenuVisible(true)}
+                        style={({ pressed }) => [s.avatar, pressed && { opacity: 0.7 }]}
+                        accessibilityRole="button"
+                        accessibilityLabel="Open menu"
+                    >
+                        <Text style={s.avatarText}>{userInitial}</Text>
+                    </Pressable>
                 </View>
             </View>
+
+            {/* ── Menu Modal ── */}
+            <Modal
+                visible={menuVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setMenuVisible(false)}
+            >
+                <Pressable style={s.menuOverlay} onPress={() => setMenuVisible(false)}>
+                    <View style={[s.menuSheet, { paddingTop: insets.top + spacing.sm }]}>
+                        <Pressable onPress={() => {}} style={{ width: '100%' }}>
+                            {/* User info */}
+                            <View style={s.menuUserRow}>
+                                <View style={s.avatarLarge}>
+                                    <Text style={s.avatarLargeText}>{userInitial}</Text>
+                                </View>
+                                <View style={{ flex: 1, marginLeft: spacing.md }}>
+                                    <Text style={[typography.h4, { color: colors.textPrimary }]} numberOfLines={1}>
+                                        {user?.name || 'User'}
+                                    </Text>
+                                    <Text style={[typography.bodySmall, { color: colors.textSecondary }]} numberOfLines={1}>
+                                        {user?.email}
+                                    </Text>
+                                </View>
+                            </View>
+
+                            <View style={s.menuDivider} />
+
+                            {/* Menu items */}
+                            {Platform.OS !== 'web' && (
+                                <MenuItem
+                                    icon="➕"
+                                    label="Add Sign"
+                                    onPress={() => { setMenuVisible(false); navigation.navigate('SetupGuide'); }}
+                                />
+                            )}
+                            <MenuItem
+                                icon="🏢"
+                                label="Organizations"
+                                onPress={() => { setMenuVisible(false); navigation.navigate('Organizations'); }}
+                            />
+                            <MenuItem
+                                icon="💬"
+                                label="Send Feedback"
+                                onPress={() => { setMenuVisible(false); navigation.navigate('Feedback'); }}
+                            />
+
+                            <View style={s.menuDivider} />
+
+                            <MenuItem
+                                icon="🚪"
+                                label={isLoggingOut ? 'Logging out…' : 'Log Out'}
+                                onPress={async () => {
+                                    setMenuVisible(false);
+                                    setIsLoggingOut(true);
+                                    try { await logout(); } catch {} finally { setIsLoggingOut(false); }
+                                }}
+                            />
+                            <MenuItem
+                                icon="🗑️"
+                                label="Delete Account"
+                                destructive
+                                onPress={() => { setMenuVisible(false); handleDeleteAccount(); }}
+                            />
+
+                            <View style={{ height: spacing.lg }} />
+
+                            <Pressable
+                                onPress={() => setMenuVisible(false)}
+                                style={({ pressed }) => [s.menuCloseBtn, pressed && { opacity: 0.7 }]}
+                            >
+                                <Text style={[typography.button, { color: colors.textSecondary }]}>Close</Text>
+                            </Pressable>
+                        </Pressable>
+                    </View>
+                </Pressable>
+            </Modal>
 
             <ScrollView
                 style={s.scrollView}
@@ -319,10 +374,27 @@ export default function HomeScreen() {
                             </View>
                         ) : signError || !sign || !statusConfig ? (
                             <View style={s.emptyState}>
-                                <Text style={{ fontSize: 32 }}>⚠️</Text>
-                                <Text style={[typography.body, { color: colors.textMuted, marginTop: spacing.sm }]}>
-                                    {signError || 'No sign data available.'}
+                                <View style={s.infoIcon}>
+                                    <Text style={s.infoIconText}>i</Text>
+                                </View>
+                                <Text style={[typography.body, { color: colors.textMuted, marginTop: spacing.sm, textAlign: 'center' }]}>
+                                    No signs linked to your account yet.
                                 </Text>
+                                <Text style={[typography.bodySmall, { color: colors.textMuted, marginTop: spacing.xs, textAlign: 'center' }]}>
+                                    {Platform.OS === 'web'
+                                        ? 'Open the mobile app to connect a new sign.'
+                                        : 'Connect your SmartSign to get started.'}
+                                </Text>
+                                {Platform.OS !== 'web' && (
+                                    <Pressable
+                                        onPress={() => navigation.navigate('SetupGuide')}
+                                        style={({ pressed }) => [s.guideBtn, pressed && { opacity: 0.8 }]}
+                                        accessibilityRole="button"
+                                        accessibilityLabel="Show setup guide"
+                                    >
+                                        <Text style={[typography.button, { color: colors.ctaPrimaryText }]}>Show me how</Text>
+                                    </Pressable>
+                                )}
                             </View>
                         ) : (
                             <Pressable
@@ -331,9 +403,12 @@ export default function HomeScreen() {
                                 accessibilityRole="button"
                                 accessibilityLabel={`View details for ${sign.name}`}
                             >
-                                <View style={s.cardHeader}>
-                                    <Text style={[typography.h3, { color: colors.textPrimary }]}>Your Sign</Text>
-                                    <Text style={[typography.bodySmall, { color: colors.textMuted }]}>
+                                <View style={{ marginBottom: spacing.md }}>
+                                    <Text style={[typography.h3, { color: colors.textPrimary }]}>{sign.name}</Text>
+                                    <Text style={[typography.bodySmall, { color: colors.textSecondary, marginTop: 2 }]}>
+                                        {sign.location}
+                                    </Text>
+                                    <Text style={[typography.bodySmall, { color: colors.textMuted, marginTop: 2 }]}>
                                         Updated {timeAgo(sign.lastUpdated)}
                                     </Text>
                                 </View>
@@ -346,18 +421,7 @@ export default function HomeScreen() {
                                             {statusConfig.label}
                                         </Text>
                                     </View>
-                                    <Text style={{ fontSize: 56, marginTop: spacing.sm }}>♿</Text>
                                 </View>
-
-                                {/* Sign details */}
-                                <View style={s.detailsGrid}>
-                                    <DetailRow label="Sign Name" value={sign.name} />
-                                    <DetailRow label="Location" value={sign.location} />
-                                </View>
-
-                                <Text style={[typography.bodySmall, { color: colors.accent, textAlign: 'center', marginTop: spacing.md }]}>
-                                    Tap for details & device setup →
-                                </Text>
 
                                 {/* ── Sign action buttons ── */}
                                 {sign.status === 'assistance_requested' && (
@@ -366,7 +430,7 @@ export default function HomeScreen() {
                                         disabled={signActionLoading}
                                         style={({ pressed }) => [
                                             s.signActionBtn,
-                                            { backgroundColor: '#F59E0B' },
+                                            { backgroundColor: '#FF9500' },
                                             signActionLoading && { opacity: 0.5 },
                                             pressed && { opacity: 0.8 },
                                         ]}
@@ -388,7 +452,7 @@ export default function HomeScreen() {
                                         disabled={signActionLoading}
                                         style={({ pressed }) => [
                                             s.signActionBtn,
-                                            { backgroundColor: '#16A34A' },
+                                            { backgroundColor: '#34C759' },
                                             signActionLoading && { opacity: 0.5 },
                                             pressed && { opacity: 0.8 },
                                         ]}
@@ -428,7 +492,7 @@ export default function HomeScreen() {
                                     accessibilityRole="button"
                                     accessibilityLabel="Acknowledge all notifications"
                                 >
-                                    <Text style={[typography.bodySmall, { color: colors.accent, fontWeight: '600' }]}>
+                                    <Text style={[typography.bodySmall, { color: colors.primary, fontWeight: '700' }]}>
                                         Acknowledge All
                                     </Text>
                                 </Pressable>
@@ -455,71 +519,6 @@ export default function HomeScreen() {
                         )}
                     </View>
 
-                    {/* ── Feedback ── */}
-                    <View style={s.card}>
-                        <View style={s.cardHeader}>
-                            <Text style={[typography.h3, { color: colors.textPrimary }]}>Send Feedback</Text>
-                            <Text style={{ fontSize: 20 }}>💬</Text>
-                        </View>
-
-                        {feedbackSubmitted ? (
-                            <View style={s.feedbackSuccess}>
-                                <Text style={{ fontSize: 32 }}>✅</Text>
-                                <Text style={[typography.body, { color: colors.textPrimary, fontWeight: '600', marginTop: spacing.sm }]}>
-                                    Thanks for your feedback!
-                                </Text>
-                                <Text style={[typography.bodySmall, { color: colors.textSecondary, marginTop: 4, textAlign: 'center' }]}>
-                                    Your input helps us improve the Smart Handicap Sign.
-                                </Text>
-                                <Pressable
-                                    onPress={() => setFeedbackSubmitted(false)}
-                                    style={({ pressed }) => [s.feedbackNewBtn, pressed && { opacity: 0.7 }]}
-                                    accessibilityRole="button"
-                                    accessibilityLabel="Send another feedback"
-                                >
-                                    <Text style={[typography.bodySmall, { color: colors.accent, fontWeight: '600' }]}>
-                                        Send Another
-                                    </Text>
-                                </Pressable>
-                            </View>
-                        ) : (
-                            <View>
-                                <Text style={[typography.bodySmall, { color: colors.textSecondary, marginBottom: spacing.sm }]}>
-                                    Let us know about issues, ideas, or anything else.
-                                </Text>
-                                <TextInput
-                                    style={s.feedbackInput}
-                                    value={feedbackText}
-                                    onChangeText={setFeedbackText}
-                                    placeholder="What's on your mind?"
-                                    placeholderTextColor={colors.textMuted}
-                                    multiline
-                                    numberOfLines={4}
-                                    textAlignVertical="top"
-                                    accessibilityLabel="Feedback message"
-                                />
-                                <Pressable
-                                    onPress={handleSubmitFeedback}
-                                    disabled={!feedbackText.trim() || feedbackLoading}
-                                    style={({ pressed }) => [
-                                        s.feedbackSubmitBtn,
-                                        (!feedbackText.trim() || feedbackLoading) && { opacity: 0.5 },
-                                        pressed && { opacity: 0.8 },
-                                    ]}
-                                    accessibilityRole="button"
-                                    accessibilityLabel="Submit feedback"
-                                >
-                                    {feedbackLoading ? (
-                                        <ActivityIndicator size="small" color={colors.white} />
-                                    ) : (
-                                        <Text style={[typography.button, { color: colors.white }]}>Submit Feedback</Text>
-                                    )}
-                                </Pressable>
-                            </View>
-                        )}
-                    </View>
-
-
                 </View>
             </ScrollView>
         </View>
@@ -530,11 +529,26 @@ export default function HomeScreen() {
  * Sub-components
  * ────────────────────────────────────────────── */
 
+function MenuItem({ icon, label, onPress, destructive }: { icon: string; label: string; onPress: () => void; destructive?: boolean }) {
+    return (
+        <Pressable
+            onPress={onPress}
+            style={({ pressed }) => [s.menuItem, pressed && { backgroundColor: colors.offWhite }]}
+            accessibilityRole="button"
+        >
+            <Text style={{ fontSize: 18, marginRight: spacing.md }}>{icon}</Text>
+            <Text style={[typography.body, { color: destructive ? colors.negative : colors.textPrimary }]}>
+                {label}
+            </Text>
+        </Pressable>
+    );
+}
+
 function DetailRow({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
     return (
         <View style={s.detailRow}>
             <Text style={[typography.bodySmall, { color: colors.textMuted }]}>{label}</Text>
-            <Text style={[typography.body, { color: valueColor || colors.textPrimary, fontWeight: '600' }]}>
+            <Text style={[typography.body, { color: valueColor || colors.textPrimary, fontWeight: '700' }]}>
                 {value}
             </Text>
         </View>
@@ -556,7 +570,7 @@ function NotificationRow({
                     <Text
                         style={[
                             typography.body,
-                            { fontWeight: '600', color: colors.textPrimary, flex: 1 },
+                            { fontWeight: '700', color: colors.textPrimary, flex: 1 },
                             notification.read && { color: colors.textMuted },
                         ]}
                         numberOfLines={1}
@@ -584,7 +598,7 @@ function NotificationRow({
                         accessibilityRole="button"
                         accessibilityLabel={`Acknowledge: ${notification.title}`}
                     >
-                        <Text style={[typography.bodySmall, { color: colors.accent, fontWeight: '600' }]}>
+                        <Text style={[typography.bodySmall, { color: colors.primary, fontWeight: '700' }]}>
                             Acknowledge
                         </Text>
                     </Pressable>
@@ -601,15 +615,16 @@ function NotificationRow({
 const s = StyleSheet.create({
     root: {
         flex: 1,
-        backgroundColor: colors.grayLight,
+        backgroundColor: colors.offWhite,
     },
 
-    /* Header */
+    /* Header – light surface with subtle bottom border */
     header: {
-        backgroundColor: colors.primary,
-        paddingTop: Platform.OS === 'web' ? spacing.lg : 56,
-        paddingBottom: spacing.lg,
+        backgroundColor: colors.white,
+        paddingBottom: spacing.sm,
         paddingHorizontal: layout.contentPadding,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: colors.divider,
     },
     headerInner: {
         maxWidth: layout.maxWidth,
@@ -619,12 +634,79 @@ const s = StyleSheet.create({
         justifyContent: 'space-between',
         alignItems: 'center',
     },
-    logoutBtn: {
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
+    avatar: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: colors.ctaPrimary,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    avatarText: {
+        color: colors.white,
+        fontSize: 16,
+        fontWeight: '700',
+    },
+
+    /* Menu modal */
+    menuOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.35)',
+        justifyContent: 'flex-start',
+    },
+    menuSheet: {
+        backgroundColor: colors.white,
+        paddingHorizontal: layout.contentPadding,
+        paddingBottom: spacing.xl,
+        borderBottomLeftRadius: layout.borderRadiusXl,
+        borderBottomRightRadius: layout.borderRadiusXl,
+        ...shadows.elevated,
+    },
+    menuUserRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: spacing.lg,
+    },
+    avatarLarge: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: colors.ctaPrimary,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    avatarLargeText: {
+        color: colors.white,
+        fontSize: 22,
+        fontWeight: '700',
+    },
+    menuDivider: {
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: colors.divider,
+        marginVertical: spacing.xs,
+    },
+    menuItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 14,
+        paddingHorizontal: spacing.sm,
         borderRadius: layout.borderRadiusSm,
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.25)',
+    },
+    menuCloseBtn: {
+        alignItems: 'center',
+        paddingVertical: 12,
+        borderRadius: layout.borderRadiusPill,
+        backgroundColor: colors.offWhite,
+    },
+
+    /* Setup guide CTA */
+    guideBtn: {
+        marginTop: spacing.lg,
+        paddingVertical: 12,
+        paddingHorizontal: spacing.xl,
+        borderRadius: layout.borderRadiusPill,
+        backgroundColor: colors.ctaPrimary,
+        alignSelf: 'center',
     },
 
     /* Scroll */
@@ -642,14 +724,20 @@ const s = StyleSheet.create({
         gap: spacing.lg,
     },
 
-    /* Card */
+    /* Card – white surface, subtle shadow, rounded 16px */
     card: {
-        backgroundColor: colors.white,
-        borderRadius: layout.borderRadius,
+        backgroundColor: colors.card,
+        borderRadius: layout.borderRadiusMd,
         padding: spacing.xl,
         ...Platform.select({
-            web: { boxShadow: `0 1px 8px ${colors.shadow}` },
-            default: { elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 6 },
+            web: { boxShadow: '0 2px 12px rgba(0,0,0,0.08)' },
+            default: {
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.08,
+                shadowRadius: 12,
+                elevation: 3,
+            },
         }),
     },
     cardHeader: {
@@ -659,12 +747,11 @@ const s = StyleSheet.create({
         marginBottom: spacing.lg,
     },
 
-    /* Status banner */
+    /* Status banner – tinted background, rounded */
     statusBanner: {
         borderRadius: layout.borderRadius,
         padding: spacing.xl,
         alignItems: 'center',
-        marginBottom: spacing.lg,
     },
     statusIconRow: {
         flexDirection: 'row',
@@ -672,9 +759,9 @@ const s = StyleSheet.create({
         gap: spacing.sm,
     },
     statusDot: {
-        width: 16,
-        height: 16,
-        borderRadius: 8,
+        width: 14,
+        height: 14,
+        borderRadius: 7,
     },
 
     /* Details grid */
@@ -682,11 +769,11 @@ const s = StyleSheet.create({
         gap: spacing.md,
     },
 
-    /* Sign action buttons */
+    /* Sign action buttons – capsule shape */
     signActionBtn: {
         marginTop: spacing.md,
         paddingVertical: 14,
-        borderRadius: layout.borderRadiusSm,
+        borderRadius: layout.borderRadiusPill,
         alignItems: 'center' as const,
         justifyContent: 'center' as const,
     },
@@ -707,8 +794,8 @@ const s = StyleSheet.create({
         gap: spacing.sm,
     },
     badge: {
-        backgroundColor: '#DC2626',
-        borderRadius: 10,
+        backgroundColor: '#FF3B30',
+        borderRadius: layout.borderRadiusCircle,
         minWidth: 22,
         height: 22,
         paddingHorizontal: 6,
@@ -722,14 +809,14 @@ const s = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'flex-start',
         padding: spacing.md,
-        borderRadius: layout.borderRadiusSm,
+        borderRadius: layout.borderRadius,
         backgroundColor: colors.offWhite,
         borderLeftWidth: 3,
-        borderLeftColor: colors.accent,
+        borderLeftColor: colors.primary,
     },
     notifRowAcked: {
-        borderLeftColor: colors.grayMid,
-        opacity: 0.7,
+        borderLeftColor: colors.divider,
+        opacity: 0.6,
     },
     notifBody: {
         flex: 1,
@@ -743,8 +830,8 @@ const s = StyleSheet.create({
         alignSelf: 'flex-start',
         paddingVertical: 4,
         paddingHorizontal: spacing.sm,
-        borderRadius: 4,
-        backgroundColor: colors.accent + '14',
+        borderRadius: layout.borderRadiusPill,
+        backgroundColor: 'rgba(0,113,227,0.10)',
     },
 
     /* Empty */
@@ -752,36 +839,18 @@ const s = StyleSheet.create({
         alignItems: 'center',
         paddingVertical: spacing.xl,
     },
-
-    /* Feedback */
-    feedbackInput: {
-        backgroundColor: colors.offWhite,
-        borderWidth: 1,
-        borderColor: colors.divider,
-        borderRadius: layout.borderRadiusSm,
-        padding: spacing.md,
-        minHeight: 100,
-        fontSize: 16,
-        color: colors.textPrimary,
-        lineHeight: 22,
-    },
-    feedbackSubmitBtn: {
-        marginTop: spacing.md,
-        backgroundColor: colors.accent,
-        paddingVertical: 14,
-        borderRadius: layout.borderRadiusSm,
+    infoIcon: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: 'rgba(0,113,227,0.10)',
         alignItems: 'center',
         justifyContent: 'center',
     },
-    feedbackSuccess: {
-        alignItems: 'center',
-        paddingVertical: spacing.lg,
-    },
-    feedbackNewBtn: {
-        marginTop: spacing.md,
-        paddingVertical: spacing.sm,
-        paddingHorizontal: spacing.md,
-        borderRadius: layout.borderRadiusSm,
-        backgroundColor: colors.accent + '14',
+    infoIconText: {
+        fontSize: 18,
+        fontWeight: '700' as const,
+        fontStyle: 'italic' as const,
+        color: colors.primary,
     },
 });

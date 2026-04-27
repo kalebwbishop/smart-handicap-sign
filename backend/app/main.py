@@ -30,12 +30,13 @@ from app.middleware.error_handler import (
     app_error_handler,
     generic_error_handler,
 )
-from app.routes.auth import router as auth_router
+from app.config.auth import build_auth_router
 from app.routes.events import router as events_router
 from app.routes.notifications import router as notifications_router
 from app.routes.organizations import router as organizations_router
 from app.routes.signs import router as signs_router
 from app.routes.inference import router as inference_router
+from app.routes.push_tokens import router as push_tokens_router
 from app.utils.logger import logger
 
 
@@ -64,7 +65,7 @@ async def lifespan(app: FastAPI):
 settings = get_settings()
 
 app = FastAPI(
-    title="Social Media API",
+    title="Hazard Hero API",
     version="2.0.0",
     lifespan=lifespan,
     redirect_slashes=False,
@@ -132,7 +133,7 @@ async def health():
 @app.get("/api/v1/status")
 async def status():
     return {
-        "message": "Social Media API is running",
+        "message": "Hazard Hero API is running",
         "version": "2.0.0",
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
@@ -141,12 +142,14 @@ async def status():
 # ── routes ───────────────────────────────────────────────────────────
 
 API_PREFIX = "/api/v1"
+auth_router = build_auth_router()
 app.include_router(auth_router, prefix=API_PREFIX)
 app.include_router(events_router, prefix=API_PREFIX)
 app.include_router(notifications_router, prefix=API_PREFIX)
 app.include_router(organizations_router, prefix=API_PREFIX)
 app.include_router(signs_router, prefix=API_PREFIX)
 app.include_router(inference_router, prefix=API_PREFIX)
+app.include_router(push_tokens_router, prefix=API_PREFIX)
 
 
 # ── 404 catch-all ────────────────────────────────────────────────────

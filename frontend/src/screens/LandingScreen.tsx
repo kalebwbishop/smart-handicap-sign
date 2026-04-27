@@ -10,11 +10,7 @@ import {
     useWindowDimensions,
     Platform,
     ActivityIndicator,
-    Alert,
 } from 'react-native';
-import * as WebBrowser from 'expo-web-browser';
-import * as ExpoLinking from 'expo-linking';
-import { authAPI } from '@/api/api';
 import { useAuthStore } from '@/store/authStore';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
@@ -41,7 +37,7 @@ interface SectionContainerProps {
     style?: object;
 }
 
-function SectionContainer({ background = colors.white, children, style }: SectionContainerProps) {
+function SectionContainer({ background = 'transparent', children, style }: SectionContainerProps) {
     return (
         <View style={[s.section, { backgroundColor: background }, style]}>
             <View style={s.sectionInner}>{children}</View>
@@ -86,12 +82,12 @@ function CTAButton({ label, onPress, variant = 'primary', loading }: CTAButtonPr
             ]}
         >
             {loading ? (
-                <ActivityIndicator color={isPrimary ? colors.ctaPrimaryText : colors.ctaSecondary} />
+                <ActivityIndicator color={isPrimary ? colors.ctaPrimaryText : colors.ctaSecondaryText} />
             ) : (
                 <Text
                     style={[
                         typography.button,
-                        { color: isPrimary ? colors.ctaPrimaryText : colors.ctaSecondary },
+                        { color: isPrimary ? colors.ctaPrimaryText : colors.ctaSecondaryText },
                     ]}
                 >
                     {label}
@@ -171,8 +167,8 @@ const FACILITY_TYPES = [
 
 export default function LandingScreen() {
     const { isMobile } = useResponsive();
+    const login = useAuthStore((s) => s.login);
     const [isLoading, setIsLoading] = useState(false);
-    const setUser = useAuthStore((s) => s.setUser);
 
     // Demo form state
     const [form, setForm] = useState({
@@ -189,36 +185,13 @@ export default function LandingScreen() {
     const handleLogin = useCallback(async () => {
         setIsLoading(true);
         try {
-            // Build a deep-link redirect URL using the app's scheme
-            const redirectUrl = ExpoLinking.createURL('callback');
-            const response = await authAPI.initiateLogin(redirectUrl);
-            if (response.authorizationUrl) {
-                // Open in-app browser; it will close automatically when
-                // the backend redirects to our app scheme URL
-                const result = await WebBrowser.openAuthSessionAsync(
-                    response.authorizationUrl,
-                    redirectUrl,
-                );
-
-                if (result.type === 'success' && result.url) {
-                    // Parse the authorization code from the returned URL
-                    const parsed = ExpoLinking.parse(result.url);
-                    const code = parsed.queryParams?.code as string | undefined;
-
-                    if (code) {
-                        // Exchange the code for user + token
-                        const authResponse = await authAPI.handleCallback(code);
-                        await setUser(authResponse.user, authResponse.accessToken, authResponse.refreshToken);
-                    }
-                }
-            }
+            await login();
         } catch (error) {
             console.error('Login error:', error);
-            Alert.alert('Login failed', 'Something went wrong during login. Please try again.');
         } finally {
             setIsLoading(false);
         }
-    }, [setUser]);
+    }, [login]);
 
     const scrollToDemo = useCallback(() => {
         // simple web anchor fallback – works on web
@@ -240,18 +213,39 @@ export default function LandingScreen() {
 
     return (
         <ScrollView style={s.root} contentContainerStyle={s.rootContent}>
+            {/* ───── Header ───── */}
+            <View style={s.header}>
+                <View style={s.headerInner}>
+                    <View style={s.headerBrand}>
+                        <Text style={{ fontSize: 24 }}>♿</Text>
+                        <Text style={s.headerTitle}>Hazard Hero</Text>
+                    </View>
+                    <Pressable
+                        onPress={handleLogin}
+                        disabled={isLoading}
+                        style={({ pressed }) => [s.headerLoginBtn, pressed && { opacity: 0.85 }]}
+                    >
+                        {isLoading ? (
+                            <ActivityIndicator color={colors.ctaPrimaryText} size="small" />
+                        ) : (
+                            <Text style={s.headerLoginText}>LOG IN</Text>
+                        )}
+                    </Pressable>
+                </View>
+            </View>
+
             {/* ───── 1. Hero ───── */}
             <View style={[s.hero]}>
                 <View style={s.sectionInner}>
                     <View style={[s.heroInner, !isMobile && s.heroInnerRow]}>
                         <View style={[s.heroText, !isMobile && { flex: 1 }]}>
-                            <Text style={[typography.label, { color: colors.accent, marginBottom: spacing.sm }]}>
-                                SMART HANDICAP SIGN
+                            <Text style={[typography.label, { color: colors.primary, marginBottom: spacing.sm }]}>
+                                HAZARD HERO
                             </Text>
                             <Text style={[typography.h1, { color: colors.heroText }]} accessibilityRole="header">
                                 Smarter Accessible Parking Starts Here
                             </Text>
-                            <Text style={[typography.bodyLarge, { color: colors.grayMid, marginTop: spacing.md }]}>
+                            <Text style={[typography.bodyLarge, { color: colors.textSecondary, marginTop: spacing.md }]}>
                                 Real-time handicap parking visibility for hospitals, campuses, and public facilities.
                             </Text>
                             <View style={[s.heroCTARow, isMobile && { flexDirection: 'column' }]}>
@@ -302,7 +296,7 @@ export default function LandingScreen() {
                                 Smart Sign
                             </Text>
                             <View style={s.solutionDiagramRow}>
-                                <View style={[s.solutionDot, { backgroundColor: colors.accent }]} />
+                                <View style={[s.solutionDot, { backgroundColor: colors.primary }]} />
                                 <Text style={[typography.bodySmall, { color: colors.textSecondary }]}>Sensor</Text>
                                 <View style={s.solutionLine} />
                                 <View style={[s.solutionDot, { backgroundColor: colors.primary }]} />
@@ -313,7 +307,7 @@ export default function LandingScreen() {
                     <View style={[s.solutionFeatures, isMobile && { flex: 0 }]}>
                         {FEATURES.map((f) => (
                             <View key={f} style={s.featureRow}>
-                                <Text style={[typography.body, { color: colors.accent }]}>✓</Text>
+                                <Text style={[typography.body, { color: colors.primary }]}>✓</Text>
                                 <Text style={[typography.body, { color: colors.textPrimary, marginLeft: spacing.sm, flex: 1 }]}>
                                     {f}
                                 </Text>
@@ -360,7 +354,7 @@ export default function LandingScreen() {
 
             {/* ───── 6. Benefits ───── */}
             <SectionContainer background={colors.grayLight}>
-                <SectionHeading>Why Facilities Choose Smart Handicap Sign</SectionHeading>
+                <SectionHeading>Why Facilities Choose Hazard Hero</SectionHeading>
                 <View style={s.benefitsList}>
                     {BENEFITS.map((b) => (
                         <View key={b} style={s.benefitRow}>
@@ -378,7 +372,7 @@ export default function LandingScreen() {
                     <Text
                         style={[
                             typography.bodyLarge,
-                            { color: colors.grayMid, textAlign: 'center', maxWidth: 560, alignSelf: 'center', marginBottom: spacing.xl },
+                            { color: colors.textSecondary, textAlign: 'center', maxWidth: 560, alignSelf: 'center', marginBottom: spacing.xl },
                         ]}
                     >
                         We're currently partnering with hospitals and public facilities to pilot and gather feedback.
@@ -390,7 +384,7 @@ export default function LandingScreen() {
                             <Text style={[typography.h3, { color: colors.white, marginTop: spacing.md }]}>
                                 Thank you!
                             </Text>
-                            <Text style={[typography.body, { color: colors.grayMid, marginTop: spacing.sm, textAlign: 'center' }]}>
+                            <Text style={[typography.body, { color: colors.textSecondary, marginTop: spacing.sm, textAlign: 'center' }]}>
                                 We'll be in touch soon to schedule your demo.
                             </Text>
                         </View>
@@ -448,14 +442,14 @@ export default function LandingScreen() {
                 <View style={s.sectionInner}>
                     <View style={[s.footerInner, isMobile && { flexDirection: 'column', alignItems: 'center' }]}>
                         <View style={[s.footerBrand, isMobile && { alignItems: 'center', marginBottom: spacing.lg }]}>
-                            <Text style={[typography.h4, { color: colors.white }]}>♿ Smart Handicap Sign</Text>
+                            <Text style={[typography.h4, { color: colors.white }]}>♿ Hazard Hero</Text>
                             <Text style={[typography.bodySmall, { color: colors.footerText, marginTop: spacing.xs }]}>
                                 Smarter parking. Better access.
                             </Text>
                         </View>
                         <View style={[s.footerLinks, isMobile && { alignItems: 'center' }]}>
-                            <Pressable onPress={() => Linking.openURL('mailto:hello@smarthandicapsign.com')}>
-                                <Text style={[typography.bodySmall, s.footerLink]}>hello@smarthandicapsign.com</Text>
+                            <Pressable onPress={() => Linking.openURL('mailto:hello@hazardhero.com')}>
+                                <Text style={[typography.bodySmall, s.footerLink]}>hello@hazardhero.com</Text>
                             </Pressable>
                             <Pressable onPress={() => Linking.openURL('tel:+15551234567')}>
                                 <Text style={[typography.bodySmall, s.footerLink]}>(555) 123-4567</Text>
@@ -465,7 +459,7 @@ export default function LandingScreen() {
                     </View>
                     <View style={s.footerDivider} />
                     <Text style={[typography.bodySmall, { color: colors.textMuted, textAlign: 'center' }]}>
-                        © {new Date().getFullYear()} Smart Handicap Sign. All rights reserved.
+                        © {new Date().getFullYear()} Hazard Hero. All rights reserved.
                     </Text>
                 </View>
             </View>
@@ -510,10 +504,45 @@ function FormField({ label, value, onChangeText, placeholder, keyboardType = 'de
 const s = StyleSheet.create({
     root: {
         flex: 1,
-        backgroundColor: colors.white,
+        backgroundColor: colors.grayLight,
     },
     rootContent: {
         flexGrow: 1,
+    },
+
+    /* ── Header ── */
+    header: {
+        backgroundColor: colors.offWhite,
+        paddingVertical: 12,
+        paddingHorizontal: spacing.contentPadding,
+        ...(Platform.OS === 'web' ? { position: 'sticky' as any, top: 0, zIndex: 100 } : {}),
+    },
+    headerInner: {
+        maxWidth: layout.maxWidth,
+        width: '100%',
+        alignSelf: 'center',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+    },
+    headerBrand: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    headerTitle: {
+        ...typography.h3,
+        color: colors.textPrimary,
+    },
+    headerLoginBtn: {
+        backgroundColor: colors.ctaPrimary,
+        paddingVertical: 8,
+        paddingHorizontal: 24,
+        borderRadius: 9999,
+    },
+    headerLoginText: {
+        ...typography.button,
+        color: colors.ctaPrimaryText,
     },
 
     /* Section wrapper */
@@ -533,7 +562,7 @@ const s = StyleSheet.create({
 
     /* ── Hero ── */
     hero: {
-        backgroundColor: colors.heroBackground,
+        backgroundColor: colors.grayLight,
         paddingVertical: spacing.section + 20,
         paddingHorizontal: spacing.contentPadding,
     },
@@ -561,22 +590,24 @@ const s = StyleSheet.create({
     heroMockup: {
         width: 280,
         height: 340,
-        backgroundColor: colors.primaryLight,
+        backgroundColor: colors.card,
         borderRadius: layout.borderRadiusLg,
         alignItems: 'center',
         justifyContent: 'center',
         borderWidth: 3,
-        borderColor: 'rgba(255,255,255,0.15)',
+        borderColor: colors.borderSubtle,
     },
     heroMockupIndicator: {
         marginTop: spacing.lg,
-        backgroundColor: colors.accent,
+        backgroundColor: 'rgba(24,119,242,0.12)',
         paddingHorizontal: spacing.lg,
         paddingVertical: spacing.sm,
         borderRadius: layout.borderRadiusSm,
         flexDirection: 'row',
         alignItems: 'center',
         gap: spacing.sm,
+        borderWidth: 1,
+        borderColor: colors.primary,
     },
     heroMockupDot: {
         width: 12,
@@ -589,7 +620,7 @@ const s = StyleSheet.create({
     ctaButton: {
         paddingHorizontal: spacing.xl,
         paddingVertical: 14,
-        borderRadius: layout.borderRadiusSm,
+        borderRadius: layout.borderRadiusPill,
         alignItems: 'center',
         justifyContent: 'center',
         minWidth: 180,
@@ -599,8 +630,8 @@ const s = StyleSheet.create({
     },
     ctaOutline: {
         backgroundColor: 'transparent',
-        borderWidth: 2,
-        borderColor: colors.grayMid,
+        borderWidth: 1,
+        borderColor: colors.borderSubtle,
     },
 
     /* ── Cards ── */
@@ -613,20 +644,16 @@ const s = StyleSheet.create({
     },
     card: {
         flex: 1,
-        backgroundColor: colors.white,
+        backgroundColor: colors.card,
         borderRadius: layout.borderRadius,
         padding: spacing.xl,
         alignItems: 'center',
         ...Platform.select({
             web: {
-                boxShadow: `0 2px 12px ${colors.shadow}`,
+                boxShadow: '0px 8px 8px rgba(0,0,0,0.3)',
             },
             default: {
-                elevation: 2,
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.08,
-                shadowRadius: 8,
+                elevation: 4,
             },
         }),
     },
@@ -641,11 +668,9 @@ const s = StyleSheet.create({
     },
 
     iconCircle: {
-        backgroundColor: colors.offWhite,
+        backgroundColor: colors.grayMid,
         alignItems: 'center',
         justifyContent: 'center',
-        borderWidth: 1,
-        borderColor: colors.divider,
     },
 
     /* ── Steps ── */
@@ -653,7 +678,7 @@ const s = StyleSheet.create({
         width: 32,
         height: 32,
         borderRadius: 16,
-        backgroundColor: colors.primary,
+        backgroundColor: 'rgba(24,119,242,0.12)',
         alignItems: 'center',
         justifyContent: 'center',
         marginBottom: spacing.sm,
@@ -672,12 +697,18 @@ const s = StyleSheet.create({
     solutionDiagram: {
         width: '100%',
         maxWidth: 360,
-        backgroundColor: colors.offWhite,
+        backgroundColor: colors.card,
         borderRadius: layout.borderRadiusLg,
         padding: spacing.xl,
         alignItems: 'center',
-        borderWidth: 1,
-        borderColor: colors.divider,
+        ...Platform.select({
+            web: {
+                boxShadow: '0px 8px 24px rgba(0,0,0,0.5)',
+            },
+            default: {
+                elevation: 8,
+            },
+        }),
     },
     solutionDiagramRow: {
         flexDirection: 'row',
@@ -718,11 +749,17 @@ const s = StyleSheet.create({
     useCaseCard: {
         width: '30%',
         minWidth: 200,
-        backgroundColor: colors.offWhite,
+        backgroundColor: colors.card,
         borderRadius: layout.borderRadius,
         padding: spacing.xl,
-        borderWidth: 1,
-        borderColor: colors.divider,
+        ...Platform.select({
+            web: {
+                boxShadow: '0px 8px 8px rgba(0,0,0,0.3)',
+            },
+            default: {
+                elevation: 4,
+            },
+        }),
     },
     useCaseCardMobile: {
         width: '100%',
@@ -743,7 +780,7 @@ const s = StyleSheet.create({
         width: 8,
         height: 8,
         borderRadius: 4,
-        backgroundColor: colors.accent,
+        backgroundColor: colors.primary,
     },
 
     /* ── Form ── */
@@ -762,14 +799,12 @@ const s = StyleSheet.create({
         minWidth: 200,
     },
     formLabel: {
-        color: colors.grayMid,
+        color: colors.textSecondary,
         marginBottom: spacing.xs,
     },
     formInput: {
-        backgroundColor: 'rgba(255,255,255,0.1)',
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.2)',
-        borderRadius: layout.borderRadiusSm,
+        backgroundColor: colors.grayMid,
+        borderRadius: layout.borderRadiusLg,
         paddingHorizontal: spacing.md,
         paddingVertical: 12,
         color: colors.white,
@@ -785,12 +820,12 @@ const s = StyleSheet.create({
         top: 70,
         left: 0,
         right: 0,
-        backgroundColor: colors.white,
-        borderRadius: layout.borderRadiusSm,
+        backgroundColor: colors.grayMid,
+        borderRadius: layout.borderRadius,
         zIndex: 10,
         ...Platform.select({
             web: {
-                boxShadow: `0 4px 16px rgba(0,0,0,0.15)`,
+                boxShadow: '0px 8px 24px rgba(0,0,0,0.5)',
             },
             default: {
                 elevation: 8,
@@ -827,7 +862,7 @@ const s = StyleSheet.create({
     },
     footerDivider: {
         height: 1,
-        backgroundColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: colors.divider,
         marginVertical: spacing.lg,
     },
 });

@@ -22,7 +22,7 @@ if (!POSTGRES_CONNECTION_STRING) {
 async function runMigrations() {
     const client = new Client({
         connectionString: POSTGRES_CONNECTION_STRING,
-        ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined
+        ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: true } : undefined
     });
 
     try {

@@ -1,8 +1,17 @@
 FROM node:20-alpine AS build
 WORKDIR /app
-COPY package*.json ./
-RUN npm install
-COPY . .
+
+# Copy shared RN package source
+COPY deploy-box-react-native /shared/deploy-box-react-native
+
+# Copy frontend source and install deps (without the local file: dep first)
+COPY smart-handicap-sign/frontend/package*.json ./
+# Remove the local file: dep for initial install, then copy the package in manually
+RUN sed -i '/"deploy-box-react-native"/d' package.json \
+    && npm install \
+    && cp -r /shared/deploy-box-react-native node_modules/deploy-box-react-native
+
+COPY smart-handicap-sign/frontend/ .
 ARG EXPO_PUBLIC_API_URL=""
 ENV EXPO_PUBLIC_API_URL=$EXPO_PUBLIC_API_URL
 RUN npx expo export --platform web
