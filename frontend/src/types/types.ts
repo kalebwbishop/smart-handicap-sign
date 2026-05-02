@@ -63,20 +63,6 @@ export interface OrgMember {
     updated_at: string;
 }
 
-// ── Sign types ──────────────────────────────────────────────────────
-
-export type SignStatus = 'available' | 'assistance_requested' | 'assistance_in_progress' | 'offline' | 'error' | 'training_ready' | 'training_positive' | 'training_negative';
-
-export interface Sign {
-    id: string;
-    name: string;
-    location: string;
-    status: SignStatus;
-    organization_id?: string | null;
-    lastUpdated: string;
-    last_updated?: string;
-}
-
 // ── Notification types ──────────────────────────────────────────────
 
 export interface SignNotification {

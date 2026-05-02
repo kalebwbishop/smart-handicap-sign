@@ -1,4 +1,4 @@
-import { AuthResponse, LoginInitResponse, initiateLogoutResponse, User, Sign, SignNotification, Organization, OrgMember, OrgRole } from '../types/types';
+import { AuthResponse, LoginInitResponse, initiateLogoutResponse, User, SignNotification, Organization, OrgMember, OrgRole } from '../types/types';
 // Note: NotificationType was removed — notifications no longer carry a type field
 import apiClient from './client';
 
@@ -73,53 +73,6 @@ export const organizationAPI = {
     },
 };
 
-// Sign API
-export const signAPI = {
-    getSigns: async (organizationId?: string): Promise<Sign[]> => {
-        const query = organizationId ? `?organization_id=${organizationId}` : '';
-        const response = await apiClient.get<Sign[]>(`/signs${query}`);
-        return response;
-    },
-
-    getSign: async (signId: string): Promise<Sign> => {
-        const response = await apiClient.get<Sign>(`/signs/${signId}`);
-        return response;
-    },
-
-    getMySign: async (): Promise<Sign> => {
-        const response = await apiClient.get<Sign>('/signs/me');
-        return response;
-    },
-
-    createSign: async (name: string, location: string, organizationId?: string): Promise<Sign> => {
-        const response = await apiClient.post<Sign>('/signs', {
-            name,
-            location,
-            organization_id: organizationId,
-        });
-        return response;
-    },
-
-    updateSignStatus: async (signId: string, status: string): Promise<Sign> => {
-        const response = await apiClient.patch<Sign>(`/signs/${signId}`, { status });
-        return response;
-    },
-
-    acknowledgeSign: async (signId: string): Promise<Sign> => {
-        const response = await apiClient.post<Sign>(`/signs/${signId}/acknowledge`);
-        return response;
-    },
-
-    resolveSign: async (signId: string): Promise<Sign> => {
-        const response = await apiClient.post<Sign>(`/signs/${signId}/resolve`);
-        return response;
-    },
-
-    deleteSign: async (signId: string): Promise<void> => {
-        await apiClient.delete(`/signs/${signId}`);
-    },
-};
-
 // Notification API
 export const notificationAPI = {
     getNotifications: async (params?: { after?: string; read?: boolean }): Promise<SignNotification[]> => {
@@ -150,7 +103,7 @@ export const notificationAPI = {
 // Push Token API
 export const pushTokenAPI = {
     register: (expo_push_token: string, device_id?: string) =>
-        apiClient.post('/push-tokens', { expo_push_token, device_id }).then(r => r.data),
+        apiClient.post('/push-tokens', { expo_push_token, device_id }),
     unregister: (expo_push_token: string) =>
         apiClient.delete('/push-tokens', { data: { expo_push_token } }),
 };

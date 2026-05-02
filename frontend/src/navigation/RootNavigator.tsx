@@ -6,10 +6,18 @@ import LandingScreen from '../screens/LandingScreen';
 import LoginScreen from '../screens/LoginScreen';
 import HomeScreen from '../screens/HomeScreen';
 import WiFiSetupScreen from '../screens/WiFiSetupScreen';
-import SignDetailScreen from '../screens/SignDetailScreen';
 import OrganizationScreen from '../screens/OrganizationScreen';
 import SetupGuideScreen from '../screens/SetupGuideScreen';
 import FeedbackScreen from '../screens/FeedbackScreen';
+import PreferencesScreen from '../screens/PreferencesScreen';
+import NotificationDetailScreen from '../screens/NotificationDetailScreen';
+import DeviceListScreen from '../screens/DeviceListScreen';
+import DeviceDetailScreen from '../screens/DeviceDetailScreen';
+import ClaimValidateScreen from '../screens/ClaimValidateScreen';
+import ClaimAssignScreen from '../screens/ClaimAssignScreen';
+import ClaimPhotosScreen from '../screens/ClaimPhotosScreen';
+import ClaimConfirmScreen from '../screens/ClaimConfirmScreen';
+import QRScanScreen from '../screens/QRScanScreen';
 import { useAuthStore } from '../store/authStore';
 import { ActivityIndicator, Platform, View } from 'react-native';
 import { colors } from '../theme/colors';
@@ -78,11 +86,6 @@ export default function RootNavigator() {
                             options={{ title: '', headerShown: false }}
                         />
                         <Stack.Screen
-                            name="SignDetail"
-                            component={SignDetailScreen}
-                            options={{ title: 'Sign Details' }}
-                        />
-                        <Stack.Screen
                             name="Organizations"
                             component={OrganizationScreen}
                             options={{ title: 'Organizations' }}
@@ -91,6 +94,51 @@ export default function RootNavigator() {
                             name="Feedback"
                             component={FeedbackScreen}
                             options={{ title: 'Send Feedback' }}
+                        />
+                        <Stack.Screen
+                            name="Preferences"
+                            component={PreferencesScreen}
+                            options={{ title: 'Preferences' }}
+                        />
+                        <Stack.Screen
+                            name="NotificationDetail"
+                            component={NotificationDetailScreen}
+                            options={{ title: 'Notification' }}
+                        />
+                        <Stack.Screen
+                            name="DeviceList"
+                            component={DeviceListScreen}
+                            options={{ title: 'Devices', headerShown: false }}
+                        />
+                        <Stack.Screen
+                            name="DeviceDetail"
+                            component={DeviceDetailScreen}
+                            options={{ title: 'Device Details' }}
+                        />
+                        <Stack.Screen
+                            name="ClaimValidate"
+                            component={ClaimValidateScreen}
+                            options={{ title: 'Verify Device' }}
+                        />
+                        <Stack.Screen
+                            name="ClaimAssign"
+                            component={ClaimAssignScreen}
+                            options={{ title: 'Assign Device' }}
+                        />
+                        <Stack.Screen
+                            name="ClaimPhotos"
+                            component={ClaimPhotosScreen}
+                            options={{ title: 'Installation Photos' }}
+                        />
+                        <Stack.Screen
+                            name="ClaimConfirm"
+                            component={ClaimConfirmScreen}
+                            options={{ title: 'Confirm Activation' }}
+                        />
+                        <Stack.Screen
+                            name="QRScan"
+                            component={QRScanScreen}
+                            options={{ title: 'Scan QR Code' }}
                         />
                         {Platform.OS !== 'web' && (
                             <Stack.Screen
