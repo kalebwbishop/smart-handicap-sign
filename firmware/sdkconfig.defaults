@@ -1,0 +1,42 @@
+# Hazard Hero Firmware — ESP-IDF sdkconfig defaults
+# Target: ESP32-WROOM-32 (4MB flash, no PSRAM)
+
+# Flash configuration
+CONFIG_ESPTOOLPY_FLASHMODE_DIO=y
+CONFIG_ESPTOOLPY_FLASHFREQ_40M=y
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
+
+# CPU
+CONFIG_ESP_DEFAULT_CPU_FREQ_240=y
+
+# Partition table — custom OTA layout
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# WiFi
+CONFIG_ESP_WIFI_ENABLED=y
+
+# HTTP server (for SoftAP provisioning)
+CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
+CONFIG_HTTPD_MAX_URI_LEN=512
+
+# HTTP client
+CONFIG_ESP_HTTP_CLIENT_ENABLE_HTTPS=y
+
+# Watchdog — 30 second timeout (matches MicroPython config)
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=30
+
+# NVS
+CONFIG_NVS_ENCRYPTION=n
+
+# Logging — INFO level for production, DEBUG for development
+CONFIG_LOG_DEFAULT_LEVEL_INFO=y
+
+# FreeRTOS
+CONFIG_FREERTOS_HZ=1000
+
+# Compiler optimization — size (saves flash, important for OTA slots)
+CONFIG_COMPILER_OPTIMIZATION_SIZE=y
+
+# lwIP — reduce buffer count to save RAM
+CONFIG_LWIP_MAX_SOCKETS=8
