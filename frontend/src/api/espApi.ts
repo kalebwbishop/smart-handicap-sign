@@ -20,6 +20,10 @@ export interface EspStatus {
     ap_active: boolean;
 }
 
+export type ProvisioningCode =
+    | { claimId: string; setupCode?: never }
+    | { setupCode: string; claimId?: never };
+
 async function espFetch<T>(path: string, options?: RequestInit): Promise<T> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -64,9 +68,20 @@ export async function scanNetworks(): Promise<WifiNetwork[]> {
 }
 
 /** Send WiFi credentials to the ESP32. It will save them and reboot. */
-export async function configureWifi(ssid: string, password: string): Promise<void> {
+export async function configureWifi(ssid: string, password: string, code: ProvisioningCode): Promise<void> {
+    const hasClaimId = 'claimId' in code && code.claimId.trim().length > 0;
+    const hasSetupCode = 'setupCode' in code && code.setupCode.trim().length > 0;
+
+    if (hasClaimId === hasSetupCode) {
+        throw new Error('Provide exactly one setup or claim code.');
+    }
+
     await espFetch<{ ok: boolean }>('/configure', {
         method: 'POST',
-        body: JSON.stringify({ ssid, password }),
+        body: JSON.stringify({
+            ssid,
+            password,
+            ...(hasClaimId ? { claim_id: code.claimId.trim() } : { setup_code: code.setupCode.trim() }),
+        }),
     });
 }

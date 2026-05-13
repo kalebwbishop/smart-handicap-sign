@@ -18,7 +18,66 @@ import { typography } from '@/theme/typography';
 import { spacing, layout } from '@/theme/spacing';
 import { checkEspStatus, scanNetworks, configureWifi, WifiNetwork } from '@/api/espApi';
 
-const TOTAL_STEPS = 5;
+const TOTAL_STEPS = 6;
+
+const LIGHT_GUIDE = [
+    {
+        status: 'available',
+        label: 'Available',
+        meaning: 'Slow heartbeat — the sign is online and idle.',
+        pattern: '1 second on, 2 seconds off',
+        color: '#34c759',
+    },
+    {
+        status: 'assistance_requested',
+        label: 'Assistance requested',
+        meaning: 'Fast blink — a person needs help.',
+        pattern: '200 ms on, 200 ms off',
+        color: colors.warning,
+    },
+    {
+        status: 'assistance_in_progress',
+        label: 'Assistance in progress',
+        meaning: 'Double flash — staff acknowledged the request.',
+        pattern: '2 quick blinks, then a pause',
+        color: colors.primary,
+    },
+    {
+        status: 'offline',
+        label: 'Offline',
+        meaning: 'Light off — the sign is not connected.',
+        pattern: 'No blink',
+        color: colors.textMuted,
+    },
+    {
+        status: 'error',
+        label: 'Error',
+        meaning: 'Triple burst — the sign hit a network or device error.',
+        pattern: '3 rapid blinks, then a pause',
+        color: colors.negative,
+    },
+    {
+        status: 'training_ready',
+        label: 'Training ready',
+        meaning: 'Medium pulse — ready for training or setup.',
+        pattern: '500 ms on, 500 ms off',
+        color: colors.announcement,
+    },
+    {
+        status: 'training_positive',
+        label: 'Training positive',
+        meaning: 'Solid on — training classified the signal as a wave.',
+        pattern: 'Stays on',
+        color: '#34c759',
+    },
+    {
+        status: 'training_negative',
+        label: 'Training negative',
+        meaning: 'Very fast blink — training classified the signal as no wave.',
+        pattern: '100 ms on, 100 ms off',
+        color: colors.warning,
+    },
+] as const;
 
 /* ──────────────────────────────────────────────
  * Helpers
@@ -45,7 +104,7 @@ export default function SetupGuideScreen() {
     const insets = useSafeAreaInsets();
     const [current, setCurrent] = useState(0);
 
-    // WiFi states (steps 2-3)
+    // WiFi states (steps 3-4)
     const [checking, setChecking] = useState(false);
     const [connected, setConnected] = useState(false);
     const [checkError, setCheckError] = useState<string | null>(null);
@@ -95,11 +154,11 @@ export default function SetupGuideScreen() {
         try {
             await configureWifi(selectedSsid, password);
             setWifiDone(true);
-            setCurrent(4); // jump to final step
+            setCurrent(5); // jump to final step
         } catch (err: any) {
             if (err.message?.includes('Network request failed') || err.message?.includes('Could not reach')) {
                 setWifiDone(true);
-                setCurrent(4);
+                setCurrent(5);
             } else {
                 setConfigError(err.message || 'Configuration failed.');
             }
@@ -111,13 +170,13 @@ export default function SetupGuideScreen() {
     /* ── Navigation helpers ── */
 
     const canGoNext = () => {
-        if (current === 2 && !connected) return false; // must verify connection first
-        if (current === 3 && !wifiDone) return false;  // must configure wifi first
+        if (current === 3 && !connected) return false; // must verify connection first
+        if (current === 4 && !wifiDone) return false;  // must configure wifi first
         return current < TOTAL_STEPS - 1;
     };
 
     const goNext = () => {
-        if (current === 2 && !connected) return;
+        if (current === 3 && !connected) return;
         if (current < TOTAL_STEPS - 1) setCurrent((c) => c + 1);
     };
 
@@ -141,19 +200,51 @@ export default function SetupGuideScreen() {
                 return renderInfoStep(
                     '🔌',
                     'Power on the SmartSign',
-                    'Plug in your SmartSign device and wait a few seconds. The LED will blink blue to indicate it\'s in pairing mode.',
+                    'Plug in your SmartSign device and wait a few seconds. The next screen explains each blink pattern you might see.',
                 );
 
-            /* Step 2 – Connect to sign WiFi */
+            /* Step 2 – Blinking light guide */
             case 1:
+                return (
+                    <ScrollView
+                        style={{ flex: 1 }}
+                        contentContainerStyle={s.scrollContent}
+                        keyboardShouldPersistTaps="handled"
+                    >
+                        <Text style={s.stepLabel}>Step 2 of {TOTAL_STEPS}</Text>
+                        <Text style={[s.title, { textAlign: 'left' }]}>Blinking light guide</Text>
+                        <Text style={[s.body, { textAlign: 'left', maxWidth: undefined }]}>
+                            Use this quick reference to see what each light pattern means on the sign.
+                        </Text>
+
+                        <View style={s.guideCard}>
+                            {LIGHT_GUIDE.map((item, index) => (
+                                <View
+                                    key={item.status}
+                                    style={[s.guideRow, index !== LIGHT_GUIDE.length - 1 && s.guideRowDivider]}
+                                >
+                                    <View style={[s.guideDot, { backgroundColor: item.color }]} />
+                                    <View style={s.guideText}>
+                                        <Text style={s.guideTitle}>{item.label}</Text>
+                                        <Text style={s.guideMeaning}>{item.meaning}</Text>
+                                        <Text style={s.guidePattern}>{item.pattern}</Text>
+                                    </View>
+                                </View>
+                            ))}
+                        </View>
+                    </ScrollView>
+                );
+
+            /* Step 3 – Connect to sign WiFi */
+            case 2:
                 return renderInfoStep(
                     '📶',
                     'Connect to the sign\'s WiFi',
                     'Open your phone\'s WiFi settings and connect to the network named "SmartSign-XXXX". No password is needed.',
                 );
 
-            /* Step 3 – Verify connection */
-            case 2:
+            /* Step 4 – Verify connection */
+            case 3:
                 return (
                     <View style={s.content}>
                         <Text style={s.icon}>{checkError ? '⚠️' : '🔗'}</Text>
@@ -191,15 +282,15 @@ export default function SetupGuideScreen() {
                     </View>
                 );
 
-            /* Step 4 – Scan & configure WiFi */
-            case 3:
+            /* Step 5 – Scan & configure WiFi */
+            case 4:
                 return (
                     <ScrollView
                         style={{ flex: 1 }}
                         contentContainerStyle={s.scrollContent}
                         keyboardShouldPersistTaps="handled"
                     >
-                        <Text style={s.stepLabel}>Step 4 of {TOTAL_STEPS}</Text>
+                        <Text style={s.stepLabel}>Step 5 of {TOTAL_STEPS}</Text>
                         <Text style={[s.title, { textAlign: 'left' }]}>Configure WiFi</Text>
                         <Text style={[s.body, { textAlign: 'left', maxWidth: undefined }]}>
                             Scan for nearby networks, pick one, and enter the password.
@@ -279,8 +370,8 @@ export default function SetupGuideScreen() {
                     </ScrollView>
                 );
 
-            /* Step 5 – Done */
-            case 4:
+            /* Step 6 – Done */
+            case 5:
                 return renderInfoStep(
                     '✅',
                     'You\'re all set!',
@@ -304,8 +395,8 @@ export default function SetupGuideScreen() {
             {/* Step content */}
             {renderStep()}
 
-            {/* Navigation buttons — hide on step 4 (WiFi configure) since it auto-advances */}
-            {current !== 3 && (
+            {/* Navigation buttons — hide on step 5 (WiFi configure) since it auto-advances */}
+            {current !== 4 && (
                 <View style={s.navRow}>
                     {isFirst ? (
                         <Pressable
@@ -409,6 +500,47 @@ const s = StyleSheet.create({
         textAlign: 'center',
         lineHeight: 24,
         maxWidth: 340,
+    },
+
+    guideCard: {
+        marginTop: spacing.xl,
+        backgroundColor: colors.offWhite,
+        borderRadius: layout.borderRadiusSm,
+        paddingHorizontal: spacing.md,
+        overflow: 'hidden',
+    },
+    guideRow: {
+        flexDirection: 'row',
+        gap: spacing.md,
+        paddingVertical: spacing.md,
+    },
+    guideRowDivider: {
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: colors.divider,
+    },
+    guideDot: {
+        width: 12,
+        height: 12,
+        borderRadius: 6,
+        marginTop: 4,
+    },
+    guideText: {
+        flex: 1,
+    },
+    guideTitle: {
+        ...typography.body,
+        color: colors.textPrimary,
+        fontWeight: '700',
+    },
+    guideMeaning: {
+        ...typography.bodySmall,
+        color: colors.textSecondary,
+        marginTop: 2,
+    },
+    guidePattern: {
+        ...typography.bodySmall,
+        color: colors.textMuted,
+        marginTop: 2,
     },
 
     /* Buttons */

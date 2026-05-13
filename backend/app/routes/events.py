@@ -5,6 +5,8 @@ from datetime import datetime
 from enum import Enum
 
 from app.middleware.auth import CurrentUser, get_current_user
+# TODO: sign_service is deprecated — migrate authorization checks to use
+# the device registration model (device_service) and remove this import.
 from app.services import event_service, sign_service, organization_service
 from app.utils.logger import logger
 

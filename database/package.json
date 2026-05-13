@@ -6,6 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "migrate": "ts-node scripts/migrate.ts",
+    "migrate:v2": "ts-node scripts/migrate_v2.ts",
     "seed": "ts-node scripts/seed.ts"
   },
   "keywords": [],

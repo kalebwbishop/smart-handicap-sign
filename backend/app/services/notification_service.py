@@ -25,6 +25,7 @@ def _row_to_dict(row) -> dict:
     d = dict(row)
     d["id"] = str(d["id"])
     d["event_id"] = str(d["event_id"]) if d.get("event_id") else None
+    d["device_event_id"] = str(d["device_event_id"]) if d.get("device_event_id") else None
     d["user_id"] = str(d["user_id"]) if d.get("user_id") else None
     return d
 
@@ -35,6 +36,7 @@ def _row_to_dict(row) -> dict:
 async def create_notification(
     *,
     event_id: Optional[str] = None,
+    device_event_id: Optional[str] = None,
     user_id: Optional[str] = None,
     title: str,
     body: str,
@@ -46,6 +48,9 @@ async def create_notification(
 
     Accepts an optional *pool* so callers that already hold a connection /
     transaction can pass it in, avoiding an extra pool acquisition.
+
+    Either *event_id* (legacy v1 events) or *device_event_id* (v2 device
+    events) may be provided to link the notification to the originating event.
     """
     pool = pool or await get_pool()
 
@@ -56,13 +61,20 @@ async def create_notification(
         if not event_check:
             raise ValueError(f"Event {event_id} not found")
 
+    if device_event_id is not None:
+        event_check = await pool.fetchrow(
+            "SELECT id FROM device_events WHERE id = $1::uuid", device_event_id
+        )
+        if not event_check:
+            raise ValueError(f"Device event {device_event_id} not found")
+
     query = """
-        INSERT INTO notifications (event_id, user_id, title, body, read)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, event_id, user_id, title, body, read,
+        INSERT INTO notifications (event_id, device_event_id, user_id, title, body, read)
+        VALUES ($1, $2::uuid, $3, $4, $5, $6)
+        RETURNING id, event_id, device_event_id, user_id, title, body, read,
                   created_at, updated_at
     """
-    row = await pool.fetchrow(query, event_id, user_id, title, body, read)
+    row = await pool.fetchrow(query, event_id, device_event_id, user_id, title, body, read)
 
     if not row:
         raise RuntimeError("Failed to create notification")
@@ -96,6 +108,7 @@ async def create_notifications_for_org(
     *,
     org_id: str,
     event_id: Optional[str] = None,
+    device_event_id: Optional[str] = None,
     title: str,
     body: str,
     pool: Optional[Pool] = None,
@@ -112,6 +125,7 @@ async def create_notifications_for_org(
     for member in member_rows:
         notif = await create_notification(
             event_id=event_id,
+            device_event_id=device_event_id,
             user_id=str(member["user_id"]),
             title=title,
             body=body,

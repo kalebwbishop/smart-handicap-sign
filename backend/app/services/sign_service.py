@@ -1,5 +1,12 @@
 """
 Sign service – all sign-related database operations.
+
+DEPRECATED: The signs system has been replaced by the device registration
+system (see services/device_service.py and routes/device_claims.py).
+This module is kept only because routes/events.py and routes/inference.py
+still call get_sign() and update_sign() for authorization and status
+updates.  Once those callers are migrated to the device model, delete
+this file and the ``signs`` database table.
 """
 
 from typing import List, Optional

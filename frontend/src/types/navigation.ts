@@ -38,5 +38,6 @@ export type RootStackParamList = {
     };
     DeviceList: undefined;
     DeviceDetail: { serial_number: string };
+    InferenceDebug: undefined;
     QRScan: undefined;
 };

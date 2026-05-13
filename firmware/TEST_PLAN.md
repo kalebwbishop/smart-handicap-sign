@@ -31,14 +31,36 @@ This plan validates the ESP-IDF firmware integration on real ESP32 hardware when
 - Clear WiFi credentials from NVS and reboot.
 - Expected: device starts SoftAP with `SmartSign-XXXX` SSID.
 - Query `http://192.168.4.1/status` and verify `ap_active=true`.
+- Expected: `/status` does not include Wi-Fi password, auth token, setup/claim code, verifier hash, or verifier salt.
 - Query `http://192.168.4.1/scan` and verify nearby SSIDs are returned and sorted reasonably.
-- POST valid credentials to `/configure` and confirm the board reboots.
+- POST `/configure` without `claim_id` or `setup_code`; expected: `400`, no Wi-Fi credential write.
+- POST `/configure` with both `claim_id` and `setup_code`; expected: `400`, no Wi-Fi credential write.
+- POST `/configure` with an invalid code; expected: generic `401` or `403`, no Wi-Fi credential write.
+- POST valid credentials plus exactly one valid `claim_id` or `setup_code` and confirm the board reboots.
 - Expected after reboot: station connects successfully using saved credentials.
+- Expected: success and error responses never include Wi-Fi password, auth token, setup/claim code, verifier hash, or verifier salt.
+
+### 3a. Provisioning Abuse And Accessibility Validation
+- Submit 5 invalid setup/claim codes in the current boot session.
+- Expected: `/configure` returns `429` for further credential-write attempts for 5 minutes.
+- Expected: no Wi-Fi credentials are written during lockout.
+- Provision revoked or expired verifier metadata, then submit the formerly valid code.
+- Expected: generic invalid-code response and no Wi-Fi credential write.
+- After lockout expires, submit a still-active valid code for Wi-Fi reconfiguration.
+- Expected: credentials save successfully unless verifier metadata has been revoked or expired.
+- In the frontend setup flows, verify setup/claim code labels, hints, disabled/loading roles or states, screen-reader error announcement, focus movement to invalid fields, and non-color-only error/success indicators.
+
+### 3b. Wi-Fi-Only Field Reset
+- Preload serial number, auth token, setup/claim verifier material, and Wi-Fi credentials in NVS.
+- Invoke the installer-accessible field reset path.
+- Expected: `wifi.wifi_ssid` and `wifi.wifi_pass` are cleared.
+- Expected: `device.serial`, `device.auth_token`, setup/claim verifier hash, setup/claim verifier salt, and verifier metadata remain readable.
 
 ### 4. Identity Recovery
 - Erase NVS, then boot.
-- Expected: firmware regenerates a serial number from the MAC address instead of halting.
-- Confirm the regenerated identity is persisted to NVS for subsequent boots.
+- Expected: normal runtime is blocked because serial number and auth token are missing.
+- Expected: firmware enters a recoverable setup/error path and does not generate a production identity from the MAC address.
+- Restore serial number, auth token, and setup/claim verifier material with manufacturing/service tooling before runtime validation.
 
 ## Integration Tests
 

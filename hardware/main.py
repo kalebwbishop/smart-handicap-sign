@@ -11,6 +11,7 @@ except ImportError:
 from wifi_utils import scan_wifi, wifi_connect, start_ap, run_provisioning_server
 from sensor import Photoresistor, device_id
 from config import load_config, save_config
+from identity import load_identity, get_serial_number
 from led import StatusLED
 
 # =====================
@@ -18,8 +19,11 @@ from led import StatusLED
 # =====================
 BASE_URL = "https://q23tr5nf-8000.usw3.devtunnels.ms/api/v1"
 CLASSIFY_URL = BASE_URL + "/inference/classify"
-SIGN_ID = "7f997a0d-9e97-4413-946d-224b67c164b5"
-STATUS_URL = BASE_URL + "/signs/" + SIGN_ID + "/status"
+
+# Device identity — read from flash (written during manufacturing)
+DEVICE_IDENTITY = load_identity()
+SERIAL_NUMBER = DEVICE_IDENTITY["serial_number"] if DEVICE_IDENTITY else None
+STATUS_URL = BASE_URL + "/devices/" + (SERIAL_NUMBER or "unknown") + "/status"
 
 ADC_PIN = 34
 SAMPLES_PER_BATCH = 512
@@ -52,7 +56,7 @@ def get_sign_status():
 
 def post_batch(samples, adc_pin: int):
     payload = {
-        "sign_id": SIGN_ID,
+        "serial_number": SERIAL_NUMBER,
         "device_id": device_id(),
         "ts_ms": time.ticks_ms(),
         "adc_pin": adc_pin,
@@ -71,6 +75,18 @@ def post_batch(samples, adc_pin: int):
 
 
 def main():
+    # ── Check device identity ──
+    if SERIAL_NUMBER is None:
+        print("ERROR: No device identity found. Device must be provisioned.")
+        print("Flash /device_identity.json with: {\"serial_number\": \"SHS-...\"}")
+        # Blink error LED and halt — device cannot operate without identity
+        status_led = StatusLED(pin=2)
+        status_led.set_status("error")
+        while True:
+            time.sleep(10)
+
+    print("Device serial:", SERIAL_NUMBER)
+
     cfg = load_config()
 
     if cfg is None:

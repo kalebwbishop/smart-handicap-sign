@@ -9,7 +9,7 @@ console.log('[CLIENT] EXPO_PUBLIC_API_URL env:', process.env.EXPO_PUBLIC_API_URL
 
 const axiosInstance = axios.create({
     baseURL: API_URL,
-    timeout: 10000,
+    timeout: 30000,
     headers: {
         'Content-Type': 'application/json',
     },

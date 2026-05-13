@@ -18,7 +18,7 @@ import { useAuthStore } from '@/store/authStore';
 import { notificationAPI } from '@/api/api';
 import { devicesAPI } from '@/api/devices';
 import { SignNotification } from '@/types/types';
-import { Device, DeviceLifecycleStatus } from '@/types/device';
+import { Device, DeviceLifecycleStatus, DeviceOperationalStatus } from '@/types/device';
 import { RootStackParamList } from '@/types/navigation';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
@@ -34,7 +34,7 @@ const POLL_INTERVAL_MS = 30_000; // 30 seconds
  * Helpers
  * ────────────────────────────────────────────── */
 
-const STATUS_CONFIG: Record<DeviceLifecycleStatus, { color: string; label: string; icon: string }> = {
+const LIFECYCLE_CONFIG: Record<DeviceLifecycleStatus, { color: string; label: string; icon: string }> = {
     active:       { color: '#34C759', label: 'Active',       icon: '🟢' },
     manufactured: { color: '#8E8E93', label: 'Manufactured', icon: '⚪' },
     unclaimed:    { color: '#8E8E93', label: 'Unclaimed',    icon: '⚪' },
@@ -43,6 +43,22 @@ const STATUS_CONFIG: Record<DeviceLifecycleStatus, { color: string; label: strin
     revoked:      { color: '#FF3B30', label: 'Revoked',      icon: '🔴' },
     retired:      { color: '#8E8E93', label: 'Retired',      icon: '⚪' },
 };
+
+const OPERATIONAL_CONFIG: Record<string, { color: string; label: string; icon: string }> = {
+    available:              { color: '#34C759', label: 'Available',            icon: '🟢' },
+    assistance_requested:   { color: '#FF3B30', label: 'Assistance Requested', icon: '🔴' },
+    assistance_in_progress: { color: '#FF9500', label: 'Assistance In Progress', icon: '🟡' },
+    offline:                { color: '#8E8E93', label: 'Offline',             icon: '⚪' },
+    error:                  { color: '#FF9500', label: 'Error',              icon: '🟡' },
+};
+
+/** Get the display status for a device — operational if active, otherwise lifecycle */
+function getDeviceStatusConfig(device: Device) {
+    if (device.lifecycle_status === 'active' && device.operational_status) {
+        return OPERATIONAL_CONFIG[device.operational_status] || OPERATIONAL_CONFIG.available;
+    }
+    return LIFECYCLE_CONFIG[device.lifecycle_status];
+}
 
 
 
@@ -190,9 +206,39 @@ export default function HomeScreen() {
         }
     }, [notifications]);
 
+    /* ── Device action handlers ── */
+
+    const [deviceActionLoading, setDeviceActionLoading] = useState(false);
+
+    const handleAcknowledgeDevice = useCallback(async () => {
+        if (!device) return;
+        setDeviceActionLoading(true);
+        try {
+            const updated = await devicesAPI.acknowledge(device.serial_number);
+            setDevice(updated);
+        } catch (err) {
+            console.error('[HomeScreen] Failed to acknowledge device:', err);
+        } finally {
+            setDeviceActionLoading(false);
+        }
+    }, [device]);
+
+    const handleResolveDevice = useCallback(async () => {
+        if (!device) return;
+        setDeviceActionLoading(true);
+        try {
+            const updated = await devicesAPI.resolve(device.serial_number);
+            setDevice(updated);
+        } catch (err) {
+            console.error('[HomeScreen] Failed to resolve device:', err);
+        } finally {
+            setDeviceActionLoading(false);
+        }
+    }, [device]);
+
     /* ── Derived ── */
 
-    const statusConfig = device ? STATUS_CONFIG[device.lifecycle_status] : null;
+    const statusConfig = device ? getDeviceStatusConfig(device) : null;
     const unacknowledgedCount = notifications.filter((n) => !n.read).length;
 
     const userInitial = user?.name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || '?';
@@ -287,6 +333,11 @@ export default function HomeScreen() {
                                 icon="⚙️"
                                 label="Preferences"
                                 onPress={() => { setMenuVisible(false); navigation.navigate('Preferences'); }}
+                            />
+                            <MenuItem
+                                icon="📊"
+                                label="Inference Debug"
+                                onPress={() => { setMenuVisible(false); navigation.navigate('InferenceDebug'); }}
                             />
 
                             <View style={s.menuDivider} />
@@ -387,6 +438,52 @@ export default function HomeScreen() {
                                         {statusConfig.label}
                                     </Text>
                                 </View>
+
+                                {/* Action buttons based on operational status */}
+                                {device.operational_status === 'assistance_requested' && (
+                                    <Pressable
+                                        onPress={(e) => { e.stopPropagation(); handleAcknowledgeDevice(); }}
+                                        disabled={deviceActionLoading}
+                                        style={({ pressed }) => [
+                                            s.actionBtn,
+                                            { backgroundColor: '#FF9500' },
+                                            deviceActionLoading && { opacity: 0.5 },
+                                            pressed && { opacity: 0.8 },
+                                        ]}
+                                        accessibilityRole="button"
+                                        accessibilityLabel="Acknowledge assistance request"
+                                    >
+                                        {deviceActionLoading ? (
+                                            <ActivityIndicator size="small" color={colors.white} />
+                                        ) : (
+                                            <Text style={[typography.button, { color: colors.white }]}>
+                                                Acknowledge Request
+                                            </Text>
+                                        )}
+                                    </Pressable>
+                                )}
+                                {device.operational_status === 'assistance_in_progress' && (
+                                    <Pressable
+                                        onPress={(e) => { e.stopPropagation(); handleResolveDevice(); }}
+                                        disabled={deviceActionLoading}
+                                        style={({ pressed }) => [
+                                            s.actionBtn,
+                                            { backgroundColor: '#34C759' },
+                                            deviceActionLoading && { opacity: 0.5 },
+                                            pressed && { opacity: 0.8 },
+                                        ]}
+                                        accessibilityRole="button"
+                                        accessibilityLabel="Mark assistance as resolved"
+                                    >
+                                        {deviceActionLoading ? (
+                                            <ActivityIndicator size="small" color={colors.white} />
+                                        ) : (
+                                            <Text style={[typography.button, { color: colors.white }]}>
+                                                Mark Resolved
+                                            </Text>
+                                        )}
+                                    </Pressable>
+                                )}
                             </Pressable>
                         )}
                     </View>
@@ -642,6 +739,12 @@ const s = StyleSheet.create({
     statusBanner: {
         borderRadius: layout.borderRadius,
         padding: spacing.xl,
+        alignItems: 'center',
+    },
+    actionBtn: {
+        marginTop: spacing.md,
+        padding: spacing.md,
+        borderRadius: layout.borderRadius,
         alignItems: 'center',
     },
     statusIconRow: {

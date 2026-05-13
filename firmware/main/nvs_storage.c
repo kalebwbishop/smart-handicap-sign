@@ -14,6 +14,30 @@ static const char *WIFI_SSID_KEY = "wifi_ssid";
 static const char *WIFI_PASS_KEY = "wifi_pass";
 static const char *SERIAL_KEY = "serial";
 static const char *AUTH_TOKEN_KEY = "auth_token";
+static const char *SETUP_CODE_HASH_KEY = "setup_code_hash";
+static const char *SETUP_CODE_SALT_KEY = "setup_code_salt";
+static const char *SETUP_CODE_REVOKED_KEY = "setup_code_revoked";
+static const char *SETUP_CODE_EXPIRES_AT_KEY = "setup_code_expires_at";
+
+static bool constant_time_equals(const char *left, const char *right)
+{
+    if (left == NULL || right == NULL) {
+        return false;
+    }
+
+    size_t left_len = strlen(left);
+    size_t right_len = strlen(right);
+    size_t max_len = left_len > right_len ? left_len : right_len;
+    unsigned char diff = (unsigned char)(left_len ^ right_len);
+
+    for (size_t i = 0; i < max_len; ++i) {
+        unsigned char left_char = i < left_len ? (unsigned char)left[i] : 0U;
+        unsigned char right_char = i < right_len ? (unsigned char)right[i] : 0U;
+        diff |= (unsigned char)(left_char ^ right_char);
+    }
+
+    return diff == 0U;
+}
 
 static esp_err_t validate_input_string(const char *value, size_t min_len, size_t max_len, const char *field_name)
 {
@@ -228,6 +252,11 @@ bool nvs_wifi_exists(void)
     return key_exists(WIFI_NAMESPACE, WIFI_SSID_KEY) && key_exists(WIFI_NAMESPACE, WIFI_PASS_KEY);
 }
 
+esp_err_t nvs_field_reset_wifi_only(void)
+{
+    return nvs_wifi_clear();
+}
+
 esp_err_t nvs_identity_save(const char *serial_number)
 {
     esp_err_t err = validate_input_string(serial_number, 1, NVS_SERIAL_NUMBER_MAX_LEN, "Serial number");
@@ -290,4 +319,107 @@ esp_err_t nvs_auth_token_load(char *token, size_t len)
 bool nvs_auth_token_exists(void)
 {
     return key_exists(DEVICE_NAMESPACE, AUTH_TOKEN_KEY);
+}
+
+esp_err_t nvs_setup_verifier_save(const char *hash, const char *salt)
+{
+    esp_err_t err = validate_input_string(hash, 1, NVS_SETUP_CODE_HASH_MAX_LEN, "Setup code hash");
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = validate_input_string(salt, 0, NVS_SETUP_CODE_SALT_MAX_LEN, "Setup code salt");
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    nvs_handle_t handle;
+    err = open_namespace(DEVICE_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = nvs_set_str(handle, SETUP_CODE_HASH_KEY, hash);
+    if (err == ESP_OK) {
+        err = nvs_set_str(handle, SETUP_CODE_SALT_KEY, salt);
+    }
+    if (err == ESP_OK) {
+        err = nvs_commit(handle);
+    }
+
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save setup verifier: %s", esp_err_to_name(err));
+    }
+
+    nvs_close(handle);
+    return err;
+}
+
+esp_err_t nvs_setup_verifier_load(char *hash, size_t hash_len, char *salt, size_t salt_len)
+{
+    esp_err_t err = load_string_value(DEVICE_NAMESPACE, SETUP_CODE_HASH_KEY, hash, hash_len);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    return load_string_value(DEVICE_NAMESPACE, SETUP_CODE_SALT_KEY, salt, salt_len);
+}
+
+bool nvs_setup_verifier_exists(void)
+{
+    return key_exists(DEVICE_NAMESPACE, SETUP_CODE_HASH_KEY) && key_exists(DEVICE_NAMESPACE, SETUP_CODE_SALT_KEY);
+}
+
+bool nvs_setup_verifier_is_active(void)
+{
+    nvs_handle_t handle;
+    esp_err_t err = nvs_open(DEVICE_NAMESPACE, NVS_READONLY, &handle);
+    if (err != ESP_OK) {
+        return false;
+    }
+
+    uint8_t revoked = 0;
+    err = nvs_get_u8(handle, SETUP_CODE_REVOKED_KEY, &revoked);
+    if (err == ESP_OK && revoked != 0U) {
+        nvs_close(handle);
+        return false;
+    }
+
+    int64_t expires_at = 0;
+    err = nvs_get_i64(handle, SETUP_CODE_EXPIRES_AT_KEY, &expires_at);
+    if (err == ESP_OK && expires_at <= 0) {
+        nvs_close(handle);
+        return false;
+    }
+
+    nvs_close(handle);
+    return nvs_setup_verifier_exists();
+}
+
+bool nvs_setup_code_verify(const char *code)
+{
+    esp_err_t err = validate_input_string(code, 1, NVS_SETUP_CODE_MAX_LEN, "Setup code");
+    if (err != ESP_OK || !nvs_setup_verifier_is_active()) {
+        return false;
+    }
+
+    char expected_hash[NVS_SETUP_CODE_HASH_MAX_LEN + 1] = {0};
+    char salt[NVS_SETUP_CODE_SALT_MAX_LEN + 1] = {0};
+    err = nvs_setup_verifier_load(expected_hash, sizeof(expected_hash), salt, sizeof(salt));
+    if (err != ESP_OK) {
+        return false;
+    }
+
+    char candidate[NVS_SETUP_CODE_HASH_MAX_LEN + 1] = {0};
+    if (salt[0] != '\0') {
+        snprintf(candidate, sizeof(candidate), "%s:%s", salt, code);
+    } else {
+        snprintf(candidate, sizeof(candidate), "%s", code);
+    }
+
+    bool verified = constant_time_equals(candidate, expected_hash) || constant_time_equals(code, expected_hash);
+    memset(candidate, 0, sizeof(candidate));
+    memset(expected_hash, 0, sizeof(expected_hash));
+    memset(salt, 0, sizeof(salt));
+    return verified;
 }

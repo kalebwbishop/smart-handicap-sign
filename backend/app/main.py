@@ -34,8 +34,11 @@ from app.config.auth import build_auth_router
 from app.routes.events import router as events_router
 from app.routes.notifications import router as notifications_router
 from app.routes.organizations import router as organizations_router
-from app.routes.signs import router as signs_router
 from app.routes.inference import router as inference_router
+from app.routes.devices import router as devices_router
+from app.routes.device_claims import router as device_claims_router
+from app.routes.sites import router as sites_router
+from app.routes.parking_spaces import router as parking_spaces_router
 from app.routes.push_tokens import router as push_tokens_router
 from app.utils.logger import logger
 
@@ -147,8 +150,11 @@ app.include_router(auth_router, prefix=API_PREFIX)
 app.include_router(events_router, prefix=API_PREFIX)
 app.include_router(notifications_router, prefix=API_PREFIX)
 app.include_router(organizations_router, prefix=API_PREFIX)
-app.include_router(signs_router, prefix=API_PREFIX)
 app.include_router(inference_router, prefix=API_PREFIX)
+app.include_router(devices_router, prefix=API_PREFIX)
+app.include_router(device_claims_router, prefix=API_PREFIX)
+app.include_router(sites_router, prefix=API_PREFIX)
+app.include_router(parking_spaces_router, prefix=API_PREFIX)
 app.include_router(push_tokens_router, prefix=API_PREFIX)
 
 

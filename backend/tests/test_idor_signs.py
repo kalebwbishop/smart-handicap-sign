@@ -1,5 +1,12 @@
 """Tests for IDOR protection on ``/api/v1/signs`` endpoints.
 
+LEGACY: These tests cover the deprecated signs API which has been replaced
+by the device registration system (routes/device_claims.py).  The signs
+router is no longer mounted in main.py, so these tests will fail until
+they are rewritten to target the new device endpoints.  Do not delete
+this file — it documents the expected authorization behaviour that the
+new device tests should replicate.
+
 Verifies that ``_require_sign_access`` blocks users who are not members
 of the sign's organization.
 """

@@ -1,7 +1,7 @@
 console.log('[APP] App.tsx module evaluating...');
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo } from 'react';
-import { NavigationContainer, LinkingOptions } from '@react-navigation/native';
+import { NavigationContainer, LinkingOptions, getStateFromPath as defaultGetStateFromPath } from '@react-navigation/native';
 import RootNavigator from './src/navigation/RootNavigator';
 import { RootStackParamList } from './src/types/navigation';
 import { View, StyleSheet, Platform } from 'react-native';
@@ -12,7 +12,7 @@ import { AuthResponse } from './src/types/types';
 console.log('[APP] All App.tsx imports resolved');
 
 const linking: LinkingOptions<RootStackParamList> = {
-    prefixes: [Linking.createURL('/'), 'http://localhost:8081/', 'https://localhost:8081/'],
+    prefixes: [Linking.createURL('/'), 'smartsign://', 'https://app.example.com', 'http://localhost:8081/', 'https://localhost:8081/'],
     config: {
         screens: {
             LandingScreen: '',
@@ -22,7 +22,19 @@ const linking: LinkingOptions<RootStackParamList> = {
                     code: String,
                 },
             },
+            ClaimValidate: 'setup',
+            QRScan: 'scan',
         },
+    },
+    // Remap short query param names (serial, claim) to screen param names
+    getStateFromPath: (path, options) => {
+        let remapped = path;
+        if (remapped.includes('setup')) {
+            remapped = remapped
+                .replace(/([?&])serial=/, '$1serial_number=')
+                .replace(/([?&])claim=/, '$1claim_id=');
+        }
+        return defaultGetStateFromPath(remapped, options);
     },
 };
 

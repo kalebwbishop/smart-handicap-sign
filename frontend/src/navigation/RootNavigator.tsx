@@ -13,6 +13,7 @@ import PreferencesScreen from '../screens/PreferencesScreen';
 import NotificationDetailScreen from '../screens/NotificationDetailScreen';
 import DeviceListScreen from '../screens/DeviceListScreen';
 import DeviceDetailScreen from '../screens/DeviceDetailScreen';
+import InferenceDebugScreen from '../screens/InferenceDebugScreen';
 import ClaimValidateScreen from '../screens/ClaimValidateScreen';
 import ClaimAssignScreen from '../screens/ClaimAssignScreen';
 import ClaimPhotosScreen from '../screens/ClaimPhotosScreen';
@@ -114,6 +115,11 @@ export default function RootNavigator() {
                             name="DeviceDetail"
                             component={DeviceDetailScreen}
                             options={{ title: 'Device Details' }}
+                        />
+                        <Stack.Screen
+                            name="InferenceDebug"
+                            component={InferenceDebugScreen}
+                            options={{ title: 'Inference Debug' }}
                         />
                         <Stack.Screen
                             name="ClaimValidate"

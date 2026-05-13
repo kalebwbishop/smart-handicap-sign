@@ -152,3 +152,8 @@ Schema auto-loaded by Docker entrypoint from `database/schemas/shs_schema.sql`.
 - `docker-compose.yml` has a broken `mobile` service referencing a nonexistent `./mobile` directory.
 - `database/seeds/dev_data.sql` references old schema columns (`password_hash`, `is_verified`) that no longer exist — seeding will fail.
 - No backend or frontend tests exist yet.
+
+<!-- SPECKIT START -->
+For additional context about technologies to be used, project structure,
+shell commands, and other important information, read the current plan
+<!-- SPECKIT END -->

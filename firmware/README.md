@@ -1,8 +1,8 @@
 # Hazard Hero Firmware (ESP-IDF)
 
-ESP-IDF firmware for the **ESP32-WROOM-32** smart handicap sign controller. It replaces the legacy MicroPython runtime in `hardware/` with a C implementation built around ESP-IDF 5.4+, dual OTA slots, HTTPS transport, NVS-backed provisioning, and deterministic LED / ADC / Wi-Fi behavior.
+ESP-IDF firmware for the **ESP32-WROOM-32** accessible parking device controller. It replaces the legacy MicroPython runtime in `hardware/` with a C implementation built around ESP-IDF 5.4+, dual OTA slots, HTTPS transport, NVS-backed provisioning, and deterministic LED / ADC / Wi-Fi behavior.
 
-The firmware samples a photoresistor on **GPIO 34 (ADC1_CH6)**, sends **512 samples** to the backend classifier, polls device status from the API, and reflects that status on the onboard LED at **GPIO 2**.
+The firmware samples a photoresistor on **GPIO 34 (ADC1_CH6)**, sends **512 raw 12-bit samples** to the backend classifier only when backend status is exactly `available`, polls device status from the API, and reflects that status on the onboard LED at **GPIO 2**.
 
 ## At a glance
 
@@ -106,7 +106,7 @@ The current `app_main()` flow is:
 1. **NVS init** via `nvs_storage_init()`
 2. **LED driver init** via `led_driver_init()`
 3. **OTA init** via `ota_init()`
-4. **Load device identity** → regenerate from MAC and persist if missing
+4. **Load device identity** → fail closed into recoverable setup/error handling when serial or token material is missing
 5. **Wi-Fi manager init** via `wifi_manager_init()`
 6. **Check Wi-Fi credentials** → enter provisioning mode if missing
 7. **Wi-Fi STA connect** → enter provisioning mode if the saved network fails
@@ -118,11 +118,11 @@ The current `app_main()` flow is:
 
 Main loop behavior:
 
-- Poll `/devices/{serial}/status`
+- Poll `/devices/{serial}/status` with firmware/config version headers
 - Mirror backend status on the LED
 - If status is not `available`, wait **3 s** and poll again
-- If status is `available`, collect **512 ADC samples** over **12.8 s**
-- POST samples to `/inference/classify`
+- If status is exactly `available`, collect **512 ADC samples** over **12.8 s**
+- POST samples to `/inference/classify` with `Authorization: Bearer <serial>:<token>` and firmware/config version headers
 - Retry Wi-Fi up to **3 failures** before falling back to SoftAP provisioning
 
 ---
@@ -287,9 +287,19 @@ The classify request loads an auth token from NVS.
 - Key: `auth_token`
 - Max length: **128 chars**
 
-If the token is missing, boot will still complete, but classification calls will fail once the device starts sending samples.
+If the token is missing, normal runtime must fail closed into a recoverable setup/error path. Firmware never creates device tokens; manufacturing, backend registration, or service tooling issues and restores token material.
 
-### 4) Wi-Fi credentials
+### 4) Setup/claim verifier material
+
+Local `/configure` requires exactly one of `claim_id` or `setup_code` before Wi-Fi credentials are saved.
+
+- Namespace: `device`
+- Suggested keys: `setup_code_hash`, `setup_code_salt`, optional revoked/expiry metadata
+- Issuer: manufacturing, backend registration, or service tooling
+
+Revoked or expired verifier metadata must make the verifier unusable before any Wi-Fi write. Five failed validations in the current boot session lock credential writes for 5 minutes. Field reset clears Wi-Fi credentials only and preserves serial number, auth token, and verifier material.
+
+### 5) Wi-Fi credentials
 
 Wi-Fi credentials may be loaded in either of two ways:
 
@@ -304,7 +314,7 @@ Stored keys:
 
 If credentials are missing, or if the device fails to reconnect **3 times**, firmware falls back to provisioning mode.
 
-### 5) TLS certificate
+### 6) TLS certificate
 
 `server_certs/ca_cert.pem` is embedded into the firmware image at build time. Replace the placeholder before using real HTTPS services.
 
@@ -338,8 +348,10 @@ curl http://192.168.4.1/status
 curl http://192.168.4.1/scan
 curl -X POST http://192.168.4.1/configure \
   -H 'Content-Type: application/json' \
-  -d '{"ssid":"OfficeWiFi","password":"correct-horse-battery-staple"}'
+  -d '{"ssid":"OfficeWiFi","password":"correct-horse-battery-staple","claim_id":"ABCD-EF23"}'
 ```
+
+`/configure` rejects missing code, both `claim_id` and `setup_code`, invalid code, revoked or expired verifier metadata, oversized or malformed JSON, and lockout attempts before writing Wi-Fi credentials. Responses must not include Wi-Fi passwords, device bearer tokens, setup/claim codes, hashes, or salts.
 
 ---
 
@@ -356,6 +368,8 @@ key,type,encoding,value
 device,namespace,,
 serial,data,string,HH-ESP32-0001
 auth_token,data,string,replace-with-device-auth-token
+setup_code_hash,data,string,replace-with-fake-local-verifier-hash
+setup_code_salt,data,string,replace-with-fake-local-verifier-salt
 wifi,namespace,,
 wifi_ssid,data,string,OfficeWiFi
 wifi_pass,data,string,correct-horse-battery-staple
@@ -395,6 +409,7 @@ esptool.py --port /dev/ttyUSB0 write_flash 0x9000 device_nvs.bin
 - Flash offset must stay **0x9000**
 - `idf.py erase-flash` wipes NVS and requires reprovisioning
 - The app requires **`device.serial`** before normal boot will start
+- Field reset must clear only `wifi.wifi_ssid` and `wifi.wifi_pass`; identity and verifier keys require protected manufacturing/service erase tooling
 
 ---
 
@@ -413,6 +428,7 @@ esptool.py --port /dev/ttyUSB0 write_flash 0x9000 device_nvs.bin
 | Status poll interval | `3000 ms` | `main/main.c` |
 | Max reconnect failures | `3` | `main/main.c` |
 | Status retry count | `3` | `main/main.c` |
+| Setup-code lockout | `5 failures / 5 minutes` | `main/provisioning_server.c` |
 
 ---
 
@@ -479,7 +495,9 @@ The LED driver is timer-based and non-blocking. Status strings from the backend 
 
 - Path: `GET /devices/{serial}/status`
 - Serial number comes from NVS
+- Request sends `X-Firmware-Version` and `X-Firmware-Config-Version`
 - Response must contain JSON field `status`
+- Malformed JSON, missing status, wrong serial, non-200 responses, TLS failures, stale state, or unknown status strings fail closed and produce zero classification submissions
 
 ### Classification
 
@@ -487,6 +505,13 @@ The LED driver is timer-based and non-blocking. Status strings from the backend 
 - Sends `serial_number` plus `samples[512]`
 - Samples must be 12-bit raw values in the range `0..4095`
 - Authorization header format: `Bearer <serial>:<auth_token>`
+- Request sends `X-Firmware-Version` and `X-Firmware-Config-Version`
+
+### Firmware event reporting
+
+Firmware-observed events are reported after connectivity is available through `POST /devices/{serial}/events` with bearer auth and firmware/config version headers. Supported event summaries are status polling failure, status polling recovery, OTA validation, and provisioning success. Payloads must be bounded and secret-free.
+
+Suggested operational signals for logs, metrics, or device events include setup-code failures, setup-code lockouts, status poll failures and recoveries, classify submissions, auth failures, OTA validation, provisioning success, firmware version observations, and firmware event reports.
 
 ### CA / certificate behavior
 

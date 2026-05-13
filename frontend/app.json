@@ -3,7 +3,7 @@
     "name": "Hazard Hero",
     "slug": "hazard-hero",
     "owner": "deploy-box",
-    "scheme": "hazardhero",
+    "scheme": ["hazardhero", "smartsign"],
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

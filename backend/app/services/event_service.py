@@ -53,7 +53,8 @@ async def create_event(
     """
     pool = await get_pool()
 
-    # Verify the sign exists and fetch its org
+    # TODO: The signs table is deprecated — migrate this lookup to use the
+    # devices table once events are linked to devices instead of signs.
     sign_row = await pool.fetchrow(
         "SELECT id, organization_id FROM signs WHERE id = $1", sign_id
     )

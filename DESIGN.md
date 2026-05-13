@@ -245,3 +245,211 @@ Depth is intentionally restrained. Apple favors tonal contrast, surface stepping
 - Distinct semantic status colors (error/warning/success) were not consistently visible in the extracted page set.
 - Some interaction micro-states vary by module and are not represented as universal system tokens.
 - A few retail modules expose context-specific typography overrides that do not appear across all five pages.
+
+---
+
+## 10. Device Registration Architecture
+
+This section documents the QR-code-based device registration system that allows headless IoT signs to be claimed, assigned, and activated by field installers using the mobile app.
+
+### QR Code Payload Format
+
+Each device ships with a printed QR code label. The payload is a URL — no secrets are embedded in the code itself:
+
+```
+smartsign://setup?serial=SHS-2605-S01-A7K-00482-R&claim=9Q7M-2KD8
+```
+
+For production, a universal link is used:
+
+```
+https://app.example.com/setup?serial=SHS-2605-S01-A7K-00482-R&claim=9Q7M-2KD8
+```
+
+| Field | Description |
+|-------|-------------|
+| `serial` | Device serial number (globally unique, printed on hardware) |
+| `claim` | One-time claim code (random, not a secret — verified server-side against a hash) |
+
+The QR code is scannable by any camera, but the claim ID is only useful once and only to an authenticated user with org membership.
+
+### Claim Flow
+
+```
+┌─────────┐    ┌──────────┐    ┌─────────────┐    ┌────────────┐    ┌──────────────┐    ┌──────────┐
+│ QR Scan  │───▶│ Validate │───▶│ Assign Org  │───▶│   Photos   │───▶│   Confirm    │───▶│  Active  │
+│          │    │          │    │  + Site +    │    │            │    │              │    │          │
+│ scan QR  │    │ POST     │    │  Space       │    │ upload     │    │ POST /claim  │    │ device   │
+│ extract  │    │ /validate│    │              │    │ install    │    │ atomic       │    │ online   │
+│ serial + │    │          │    │ select from  │    │ photos     │    │ commit       │    │          │
+│ claim_id │    │ returns  │    │ user's orgs  │    │            │    │              │    │          │
+│          │    │ device   │    │              │    │            │    │              │    │          │
+│          │    │ summary  │    │              │    │            │    │              │    │          │
+└─────────┘    └──────────┘    └─────────────┘    └────────────┘    └──────────────┘    └──────────┘
+```
+
+**Step-by-step:**
+
+1. **Scan** — Installer opens the app, scans the QR code on the device
+2. **Validate** — App sends `POST /api/v1/device-claims/validate` with serial + claim_id; server verifies the device exists, is claimable, and the claim ID hash matches
+3. **Assign** — Installer selects the target organization, site, and parking space
+4. **Photos** — Installer takes installation photos (stored as URLs in the installation record)
+5. **Confirm** — App sends `POST /api/v1/device-claims/claim` which atomically: verifies claim again, transitions device to `active`, creates the installation record, writes an audit log entry, and marks the claim ID as used
+6. **Active** — Device is now operational and associated with the parking space
+
+### Security Model
+
+| Concern | Mitigation |
+|---------|------------|
+| **Claim ID storage** | Claim IDs are stored as salted hashes (bcrypt/SHA) — the raw claim ID is never persisted |
+| **One-time use** | Claim status is tracked (`unused` → `used`); a used claim ID cannot be replayed |
+| **Rate limiting** | `/validate` and `/claim` endpoints are rate-limited to prevent brute-force enumeration |
+| **Atomic operations** | The claim transaction is atomic — partial claims cannot leave the system in an inconsistent state |
+| **Authorization** | Claiming requires authentication (WorkOS) + org membership with `installer`, `admin`, or `owner` role |
+| **Claim expiry** | Claim IDs have an optional expiration timestamp; expired claims are rejected |
+| **Revocation** | Admins can revoke a claim ID, preventing it from being used |
+| **IDOR protection** | All device, site, and space endpoints verify org membership before returning data |
+| **No secrets in QR** | The QR code URL contains the claim ID in cleartext but it is useless without authentication and can only be used once |
+
+### Data Model Overview
+
+```
+organizations ──┬── organization_members ── users
+                 │
+                 ├── sites
+                 │     └── parking_spaces ──┐
+                 │                          │
+                 └── devices ───────────────┤
+                       │                    │
+                       └── installations ───┘
+                             │
+                             └── device_events
+```
+
+**Core tables (v2 schema):**
+
+| Table | Purpose |
+|-------|---------|
+| `devices` | Physical hardware units; tracks serial, firmware, lifecycle status, hashed claim ID, current location |
+| `organizations` | Customer accounts with billing status and subscription tier |
+| `organization_members` | Links users to orgs with roles: `owner`, `admin`, `installer`, `member` |
+| `sites` | Physical locations (parking lots, garages, campuses) within an organization |
+| `parking_spaces` | Individual accessible spaces with ADA type (`standard`, `van_accessible`, `temporary`, `reserved`) |
+| `installations` | Records of device-to-space assignments; includes installer ID, photos, notes, timestamps |
+| `device_events` | Telemetry and lifecycle events (heartbeats, button presses, firmware updates) |
+| `audit_logs` | Immutable audit trail for all device state changes |
+
+### API Endpoint Summary
+
+#### Device Claims
+
+**`POST /api/v1/device-claims/validate`**
+
+```json
+// Request
+{
+  "serial_number": "SHS-2501-A1-F01-00042-7",
+  "claim_id": "abc123xyz"
+}
+
+// Response (success)
+{
+  "valid": true,
+  "device": {
+    "serial_number": "SHS-2501-A1-F01-00042-7",
+    "model_code": "A1",
+    "hardware_revision": "1.0",
+    "lifecycle_status": "unclaimed"
+  }
+}
+
+// Response (failure)
+{
+  "valid": false,
+  "error": "Invalid claim ID",
+  "error_code": "invalid_claim_id"
+}
+```
+
+**`POST /api/v1/device-claims/claim`**
+
+```json
+// Request
+{
+  "serial_number": "SHS-2501-A1-F01-00042-7",
+  "claim_id": "abc123xyz",
+  "customer_id": "org-uuid",
+  "site_id": "site-uuid",
+  "parking_space_id": "space-uuid",
+  "accessible_type": "van_accessible",
+  "installation_photos": ["https://blob.azure.../photo1.jpg"],
+  "install_notes": "Mounted at 4ft height, south-facing"
+}
+
+// Response (success)
+{
+  "success": true,
+  "device": {
+    "serial_number": "SHS-2501-A1-F01-00042-7",
+    "lifecycle_status": "active",
+    "customer_id": "org-uuid",
+    "site_id": "site-uuid",
+    "parking_space_id": "space-uuid"
+  }
+}
+```
+
+**Error codes:** `device_not_found`, `invalid_claim_id`, `claim_already_used`, `claim_expired`, `claim_revoked`, `device_already_active`, `device_revoked`, `device_retired`
+
+#### Device Management
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/api/v1/devices` | GET | member+ | List devices (filterable by org, lifecycle status) |
+| `/api/v1/devices/:serial` | GET | member+ | Get device details |
+| `/api/v1/devices/:serial/revoke` | POST | admin/owner | Revoke device with reason |
+| `/api/v1/devices/:serial/transfer` | POST | admin/owner | Move device to new site + space |
+| `/api/v1/devices/:serial/release` | POST | admin/owner | Release device back to unclaimed |
+| `/api/v1/devices/:serial/regenerate-claim` | POST | admin/owner | Generate new claim ID for unclaimed device |
+
+#### Sites & Parking Spaces
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/api/v1/sites` | GET | member+ | List sites |
+| `/api/v1/sites` | POST | admin/owner | Create site |
+| `/api/v1/sites/:id` | GET | member+ | Get site |
+| `/api/v1/sites/:siteId/parking-spaces` | GET | member+ | List spaces for site |
+| `/api/v1/sites/:siteId/parking-spaces` | POST | installer+ | Create parking space |
+| `/api/v1/parking-spaces/:id` | GET | member+ | Get space |
+
+### Frontend Claim Flow
+
+The mobile app implements the claim flow as a multi-screen wizard:
+
+```
+QRScanScreen → ClaimValidateScreen → ClaimAssignScreen → ClaimPhotosScreen → ClaimConfirmScreen
+```
+
+| Screen | File | Responsibility |
+|--------|------|----------------|
+| **QRScanScreen** | `screens/QRScanScreen.tsx` | Camera-based QR code scanning; extracts serial + claim_id from URL |
+| **ClaimValidateScreen** | `screens/ClaimValidateScreen.tsx` | Calls `/validate`; shows device summary or error |
+| **ClaimAssignScreen** | `screens/ClaimAssignScreen.tsx` | Org/site/space picker; loads user's available orgs and their sites |
+| **ClaimPhotosScreen** | `screens/ClaimPhotosScreen.tsx` | Camera capture for installation photos |
+| **ClaimConfirmScreen** | `screens/ClaimConfirmScreen.tsx` | Review summary; calls `/claim`; shows success or error with retry |
+
+API client: `frontend/src/api/deviceClaims.ts`
+
+### Admin Capabilities
+
+Organization admins and owners can manage device lifecycle through dedicated endpoints:
+
+| Action | Endpoint | Effect |
+|--------|----------|--------|
+| **Revoke** | `POST /devices/:serial/revoke` | Moves device to `revoked` state with reason; immediately deactivates |
+| **Transfer** | `POST /devices/:serial/transfer` | Moves an active device to a different site and parking space |
+| **Release** | `POST /devices/:serial/release` | Returns an active device to `unclaimed`; clears org/site/space assignment |
+| **Regenerate Claim ID** | `POST /devices/:serial/regenerate-claim` | Issues a new claim ID for an unclaimed device (old one is invalidated) |
+
+All admin actions require `admin` or `owner` role in the device's organization and are recorded in the audit log.
