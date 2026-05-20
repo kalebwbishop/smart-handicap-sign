@@ -28,10 +28,28 @@ variable "domain_name" {
   default     = ""
 }
 
-variable "container_image" {
-  description = "Container image to run in Azure Container Apps"
+variable "container_registry_name" {
+  description = "Azure Container Registry name used to store backend images"
   type        = string
-  default     = "docker.io/kalebwbishop/shs:2"
+  default     = "deployboxcrprod"
+}
+
+variable "container_registry_resource_group_name" {
+  description = "Resource group that contains the Azure Container Registry"
+  type        = string
+  default     = "deploy-box-rg-prod"
+}
+
+variable "container_image_repository" {
+  description = "Repository name inside the Azure Container Registry"
+  type        = string
+  default     = "hazard-hero-backend"
+}
+
+variable "container_image" {
+  description = "Optional full container image reference to run in Azure Container Apps"
+  type        = string
+  default     = ""
 }
 
 variable "container_cpu" {

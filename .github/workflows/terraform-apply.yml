@@ -1,10 +1,11 @@
-name: Terraform Apply
+name: Build and Terraform Apply
 
 on:
   push:
     branches:
       - main
     paths:
+      - "backend/**"
       - "terraform/**"
       - ".github/workflows/terraform-apply.yml"
   workflow_dispatch:
@@ -17,24 +18,26 @@ concurrency:
   group: terraform-apply
   cancel-in-progress: false
 
-defaults:
-  run:
-    shell: bash
-    working-directory: terraform
+env:
+  ARM_USE_OIDC: true
+  ARM_USE_AZUREAD: true
+  ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+  TF_VAR_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+  ACR_NAME: deployboxcrprod
+  ACR_LOGIN_SERVER: deployboxcrprod.azurecr.io
+  ACR_REPOSITORY: hazard-hero-backend
+  DEPLOY_BOX_PYTHON_REPOSITORY: Deploy-Box/deploy-box-python
+  DEPLOY_BOX_PYTHON_REF: main
 
 jobs:
-  apply:
+  build-image:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: main
-    env:
-      TF_IN_AUTOMATION: true
-      ARM_USE_OIDC: true
-      ARM_USE_AZUREAD: true
-      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
-      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
-      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      TF_VAR_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+    outputs:
+      image_ref: ${{ steps.image.outputs.sha_image }}
 
     steps:
       - name: Check out repository
@@ -45,6 +48,84 @@ jobs:
           test -n "$ARM_CLIENT_ID" || { echo "Missing repository variable AZURE_CLIENT_ID"; exit 1; }
           test -n "$ARM_TENANT_ID" || { echo "Missing repository variable AZURE_TENANT_ID"; exit 1; }
           test -n "$ARM_SUBSCRIPTION_ID" || { echo "Missing repository variable AZURE_SUBSCRIPTION_ID"; exit 1; }
+          test -n "$ACR_NAME" || { echo "Missing ACR_NAME configuration"; exit 1; }
+          test -n "$ACR_LOGIN_SERVER" || { echo "Missing ACR_LOGIN_SERVER configuration"; exit 1; }
+          test -n "$ACR_REPOSITORY" || { echo "Missing ACR_REPOSITORY configuration"; exit 1; }
+          test -n "$DEPLOY_BOX_PYTHON_REPOSITORY" || { echo "Missing DEPLOY_BOX_PYTHON_REPOSITORY configuration"; exit 1; }
+          test -n "$DEPLOY_BOX_PYTHON_REF" || { echo "Missing DEPLOY_BOX_PYTHON_REF configuration"; exit 1; }
+
+      - name: Check out deploy-box-python
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.DEPLOY_BOX_PYTHON_REPOSITORY }}
+          ref: ${{ env.DEPLOY_BOX_PYTHON_REF }}
+          path: .external/deploy-box-python
+
+      - name: Authenticate to Azure with OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.ARM_CLIENT_ID }}
+          tenant-id: ${{ env.ARM_TENANT_ID }}
+          subscription-id: ${{ env.ARM_SUBSCRIPTION_ID }}
+
+      - name: Log in to Azure Container Registry
+        run: az acr login --name "$ACR_NAME"
+
+      - name: Set image tags
+        id: image
+        run: |
+          echo "sha_image=${ACR_LOGIN_SERVER}/${ACR_REPOSITORY}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "latest_image=${ACR_LOGIN_SERVER}/${ACR_REPOSITORY}:latest" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare Docker build context
+        id: build_context
+        run: |
+          BUILD_CONTEXT="$RUNNER_TEMP/hazard-hero-build-context"
+          rm -rf "$BUILD_CONTEXT"
+          mkdir -p "$BUILD_CONTEXT/smart-handicap-sign/backend" "$BUILD_CONTEXT/deploy-box-python"
+          rsync -a --exclude='.env' --exclude='venv' --exclude='__pycache__' --exclude='.pytest_cache' --exclude='logs' backend/ "$BUILD_CONTEXT/smart-handicap-sign/backend/"
+          rsync -a --exclude='.git' .external/deploy-box-python/ "$BUILD_CONTEXT/deploy-box-python/"
+          echo "path=$BUILD_CONTEXT" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ steps.build_context.outputs.path }}
+          file: ${{ steps.build_context.outputs.path }}/smart-handicap-sign/backend/dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ steps.image.outputs.sha_image }}
+            ${{ steps.image.outputs.latest_image }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  apply:
+    needs: build-image
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: main
+    defaults:
+      run:
+        shell: bash
+        working-directory: terraform
+    env:
+      TF_IN_AUTOMATION: true
+      TF_VAR_container_image: ${{ needs.build-image.outputs.image_ref }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify workflow configuration
+        run: |
+          test -n "$ARM_CLIENT_ID" || { echo "Missing repository variable AZURE_CLIENT_ID"; exit 1; }
+          test -n "$ARM_TENANT_ID" || { echo "Missing repository variable AZURE_TENANT_ID"; exit 1; }
+          test -n "$ARM_SUBSCRIPTION_ID" || { echo "Missing repository variable AZURE_SUBSCRIPTION_ID"; exit 1; }
+          test -n "$TF_VAR_container_image" || { echo "Missing built container image reference"; exit 1; }
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3

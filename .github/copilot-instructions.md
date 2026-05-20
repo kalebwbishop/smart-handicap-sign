@@ -141,7 +141,7 @@ Schema auto-loaded by Docker entrypoint from `database/schemas/shs_schema.sql`.
 
 ## Deployment
 
-- **Backend:** Azure Container Apps (image `docker.io/kalebwbishop/shs:2`), 0.25 CPU / 0.5Gi, health probes on port 8000
+- **Backend:** Azure Container Apps (image `deployboxcrprod.azurecr.io/hazard-hero-backend:<tag>`), 0.25 CPU / 0.5Gi, health probes on port 8000
 - **Docker Compose services:** postgres (5432), pgadmin (5050), redis (6379), backend (8000), web (8081)
 
 ## Known Quirks

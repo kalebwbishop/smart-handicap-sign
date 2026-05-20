@@ -30,11 +30,14 @@ resource "azurerm_resource_group" "this" {
 }
 
 locals {
-  key_vault_name                 = var.key_vault_name
-  container_app_environment_name = "cae-smart-handicap-sign"
-  container_app_name             = "ca-smart-handicap-sign"
-  log_analytics_workspace_name   = "log-smart-handicap-sign"
-  user_assigned_identity_name    = "id-smart-handicap-sign"
+  key_vault_name                  = var.key_vault_name
+  container_app_environment_name  = "cae-smart-handicap-sign"
+  container_app_name              = "ca-smart-handicap-sign"
+  log_analytics_workspace_name    = "log-smart-handicap-sign"
+  user_assigned_identity_name     = "id-smart-handicap-sign"
+  container_registry_login_server = "${var.container_registry_name}.azurecr.io"
+  container_registry_id           = "/subscriptions/${var.subscription_id}/resourceGroups/${var.container_registry_resource_group_name}/providers/Microsoft.ContainerRegistry/registries/${var.container_registry_name}"
+  container_image                 = trimspace(var.container_image) != "" ? var.container_image : "${local.container_registry_login_server}/${var.container_image_repository}:latest"
   key_vault_secret_names = {
     postgres_connection_string = "postgres-connection-string"
     workos_api_key             = "workos-api-key"

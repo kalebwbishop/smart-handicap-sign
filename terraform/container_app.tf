@@ -19,6 +19,13 @@ resource "azurerm_user_assigned_identity" "container_app" {
   resource_group_name = azurerm_resource_group.this.name
 }
 
+resource "azurerm_role_assignment" "container_app_acr_pull" {
+  scope                            = local.container_registry_id
+  role_definition_name             = "AcrPull"
+  principal_id                     = azurerm_user_assigned_identity.container_app.principal_id
+  skip_service_principal_aad_check = true
+}
+
 resource "azurerm_container_app" "this" {
   name                         = local.container_app_name
   container_app_environment_id = azurerm_container_app_environment.this.id
@@ -28,6 +35,11 @@ resource "azurerm_container_app" "this" {
   identity {
     type         = "UserAssigned"
     identity_ids = [azurerm_user_assigned_identity.container_app.id]
+  }
+
+  registry {
+    server   = local.container_registry_login_server
+    identity = azurerm_user_assigned_identity.container_app.id
   }
 
   secret {
@@ -66,7 +78,7 @@ resource "azurerm_container_app" "this" {
 
     container {
       name   = "backend"
-      image  = var.container_image
+      image  = local.container_image
       cpu    = var.container_cpu
       memory = var.container_memory
 
@@ -108,5 +120,5 @@ resource "azurerm_container_app" "this" {
     }
   }
 
-  depends_on = [azurerm_key_vault_access_policy.container_app]
+  depends_on = [azurerm_key_vault_access_policy.container_app, azurerm_role_assignment.container_app_acr_pull]
 }
