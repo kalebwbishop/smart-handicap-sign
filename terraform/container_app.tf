@@ -33,19 +33,19 @@ resource "azurerm_container_app" "this" {
   secret {
     name                = "postgres-connection-string"
     identity            = azurerm_user_assigned_identity.container_app.id
-    key_vault_secret_id = azurerm_key_vault_secret.postgres_connection_string.id
+    key_vault_secret_id = data.azurerm_key_vault_secret.postgres_connection_string.versionless_id
   }
 
   secret {
     name                = "workos-api-key"
     identity            = azurerm_user_assigned_identity.container_app.id
-    key_vault_secret_id = azurerm_key_vault_secret.workos_api_key.id
+    key_vault_secret_id = data.azurerm_key_vault_secret.workos_api_key.versionless_id
   }
 
   secret {
     name                = "workos-client-id"
     identity            = azurerm_user_assigned_identity.container_app.id
-    key_vault_secret_id = azurerm_key_vault_secret.workos_client_id.id
+    key_vault_secret_id = data.azurerm_key_vault_secret.workos_client_id.versionless_id
   }
 
   ingress {

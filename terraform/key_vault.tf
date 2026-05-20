@@ -17,12 +17,8 @@ resource "azurerm_key_vault_access_policy" "deployer" {
   object_id    = data.azurerm_client_config.current.object_id
 
   secret_permissions = [
-    "Delete",
     "Get",
     "List",
-    "Purge",
-    "Recover",
-    "Set",
   ]
 }
 
@@ -37,26 +33,47 @@ resource "azurerm_key_vault_access_policy" "container_app" {
   ]
 }
 
-resource "azurerm_key_vault_secret" "workos_api_key" {
-  name         = "workos-api-key"
-  value        = var.workos_api_key
+data "azurerm_key_vault_secret" "workos_api_key" {
+  name         = local.key_vault_secret_names.workos_api_key
   key_vault_id = azurerm_key_vault.this.id
 
   depends_on = [azurerm_key_vault_access_policy.deployer]
 }
 
-resource "azurerm_key_vault_secret" "postgres_connection_string" {
-  name         = "postgres-connection-string"
-  value        = var.postgres_connection_string
+data "azurerm_key_vault_secret" "postgres_connection_string" {
+  name         = local.key_vault_secret_names.postgres_connection_string
   key_vault_id = azurerm_key_vault.this.id
 
   depends_on = [azurerm_key_vault_access_policy.deployer]
 }
 
-resource "azurerm_key_vault_secret" "workos_client_id" {
-  name         = "workos-client-id"
-  value        = var.workos_client_id
+data "azurerm_key_vault_secret" "workos_client_id" {
+  name         = local.key_vault_secret_names.workos_client_id
   key_vault_id = azurerm_key_vault.this.id
 
   depends_on = [azurerm_key_vault_access_policy.deployer]
+}
+
+removed {
+  from = azurerm_key_vault_secret.workos_api_key
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = azurerm_key_vault_secret.postgres_connection_string
+
+  lifecycle {
+    destroy = false
+  }
+}
+
+removed {
+  from = azurerm_key_vault_secret.workos_client_id
+
+  lifecycle {
+    destroy = false
+  }
 }

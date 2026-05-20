@@ -35,6 +35,11 @@ locals {
   container_app_name             = "ca-smart-handicap-sign"
   log_analytics_workspace_name   = "log-smart-handicap-sign"
   user_assigned_identity_name    = "id-smart-handicap-sign"
+  key_vault_secret_names = {
+    postgres_connection_string = "postgres-connection-string"
+    workos_api_key             = "workos-api-key"
+    workos_client_id           = "workos-client-id"
+  }
   optional_container_env = {
     FRONTEND_URL        = var.frontend_url
     WORKOS_REDIRECT_URI = var.workos_redirect_uri

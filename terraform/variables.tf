@@ -65,9 +65,11 @@ variable "container_max_replicas" {
 }
 
 variable "postgres_connection_string" {
-  description = "PostgreSQL connection string for the backend API"
+  description = "Legacy compatibility input. PostgreSQL connection string is now read from Azure Key Vault."
   type        = string
   sensitive   = true
+  default     = null
+  nullable    = true
 }
 
 variable "frontend_url" {
@@ -90,11 +92,17 @@ variable "cors_origin" {
 
 # Application secrets
 variable "workos_api_key" {
-  type      = string
-  sensitive = true
+  description = "Legacy compatibility input. The WorkOS API key is now read from Azure Key Vault."
+  type        = string
+  sensitive   = true
+  default     = null
+  nullable    = true
 }
 
 variable "workos_client_id" {
-  type      = string
-  sensitive = true
+  description = "Legacy compatibility input. The WorkOS client ID is now read from Azure Key Vault."
+  type        = string
+  sensitive   = true
+  default     = null
+  nullable    = true
 }

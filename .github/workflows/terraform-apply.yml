@@ -35,9 +35,6 @@ jobs:
       ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
       ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       TF_VAR_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-      TF_VAR_postgres_connection_string: ${{ secrets.TF_VAR_POSTGRES_CONNECTION_STRING }}
-      TF_VAR_workos_api_key: ${{ secrets.TF_VAR_WORKOS_API_KEY }}
-      TF_VAR_workos_client_id: ${{ secrets.TF_VAR_WORKOS_CLIENT_ID }}
 
     steps:
       - name: Check out repository
@@ -48,9 +45,6 @@ jobs:
           test -n "$ARM_CLIENT_ID" || { echo "Missing repository variable AZURE_CLIENT_ID"; exit 1; }
           test -n "$ARM_TENANT_ID" || { echo "Missing repository variable AZURE_TENANT_ID"; exit 1; }
           test -n "$ARM_SUBSCRIPTION_ID" || { echo "Missing repository variable AZURE_SUBSCRIPTION_ID"; exit 1; }
-          test -n "$TF_VAR_postgres_connection_string" || { echo "Missing repository secret TF_VAR_POSTGRES_CONNECTION_STRING"; exit 1; }
-          test -n "$TF_VAR_workos_api_key" || { echo "Missing repository secret TF_VAR_WORKOS_API_KEY"; exit 1; }
-          test -n "$TF_VAR_workos_client_id" || { echo "Missing repository secret TF_VAR_WORKOS_CLIENT_ID"; exit 1; }
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3

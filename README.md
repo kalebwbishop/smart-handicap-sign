@@ -89,11 +89,13 @@ Your Azure principal also needs blob data access on that storage account/contain
 
 ### Secrets
 
-The Terraform stack expects sensitive runtime values to be supplied at apply time and stored in Azure Key Vault:
+The Terraform stack now reads sensitive runtime values from pre-existing Azure Key Vault secrets in the configured vault:
 
-- `postgres_connection_string`
-- `workos_api_key`
-- `workos_client_id`
+- `postgres-connection-string`
+- `workos-api-key`
+- `workos-client-id`
+
+Legacy Terraform variables like `postgres_connection_string`, `workos_api_key`, and `workos_client_id` are accepted for compatibility but ignored. Existing local `terraform.tfvars` entries for those values can be removed when convenient.
 
 Do not reuse an old local `terraform/terraform.tfvars` from the VM deployment. Older copies may still contain SSH and TLS certificate settings that are no longer used by the Container App stack. Start from `terraform/terraform.tfvars.example` instead.
 
@@ -106,9 +108,9 @@ Before enabling it:
 1. Create an Azure Entra application or service principal with a federated credential for GitHub Actions using the subject `repo:kalebwbishop/smart-handicap-sign:ref:refs/heads/main`.
 2. Grant that principal `Contributor` on the Terraform target scope and `Storage Blob Data Contributor` on `deployboxsaprod` so it can update Azure resources and the remote state backend.
 3. Add repository variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID`.
-4. Add repository secrets `TF_VAR_POSTGRES_CONNECTION_STRING`, `TF_VAR_WORKOS_API_KEY`, and `TF_VAR_WORKOS_CLIENT_ID`.
+4. Seed the three runtime secrets in Azure Key Vault before the full stack can deploy. On a brand-new environment, the first apply creates the vault and access policies; after that, add the secrets and rerun apply.
 
-The workflow uses `terraform/github.auto.tfvars` for committed non-secret overrides and passes the required sensitive values through `TF_VAR_*` secrets at runtime.
+The workflow uses `terraform/github.auto.tfvars` for committed non-secret overrides and reads runtime secrets from Azure Key Vault during Terraform plan/apply, so no GitHub repository secrets are required for WorkOS or PostgreSQL.
 
 ### Initialize and review changes
 

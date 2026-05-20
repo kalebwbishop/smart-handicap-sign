@@ -9,10 +9,10 @@ container_memory           = "1.0Gi"
 container_target_port      = 8000
 container_min_replicas     = 1
 container_max_replicas     = 1
-postgres_connection_string = "postgresql://<user>:<password>@<host>:5432/<database>"
 frontend_url               = ""
 workos_redirect_uri        = ""
 cors_origin                = ""
-
-workos_api_key   = "<set-workos-api-key>"
-workos_client_id = "<set-workos-client-id>"
+# Runtime secrets are read from Azure Key Vault:
+# - postgres-connection-string
+# - workos-api-key
+# - workos-client-id
