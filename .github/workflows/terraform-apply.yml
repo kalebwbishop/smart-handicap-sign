@@ -26,6 +26,7 @@ jobs:
   apply:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment: main
     env:
       TF_IN_AUTOMATION: true
       ARM_USE_OIDC: true
