@@ -58,6 +58,70 @@ An IoT accessibility system for smart handicap parking sign management, built wi
    npm start
    ```
 
+## Terraform Deployment
+
+The `terraform/` stack now targets **Azure Container Apps** instead of the old VM-based deployment. Terraform manages:
+
+- Resource group `res000_0_shs` in `eastus`
+- Log Analytics + Container Apps environment
+- Backend Azure Container App
+- User-assigned managed identity
+- Azure Key Vault for sensitive runtime secrets
+
+Custom domain and DNS management are handled outside Terraform. Keep `domain_name`, `frontend_url`, `workos_redirect_uri`, and `cors_origin` parameterized for the target environment instead of hardcoding a hostname into the stack.
+
+### Remote state backend
+
+Terraform state is configured to use Azure Blob Storage via Azure CLI authentication:
+
+- Storage account: `deployboxsaprod`
+- Container: `deploy-box-iac-storage`
+- Key: `hazard-hero/terraform.tfstate`
+
+Before running Terraform, make sure you are logged in with Azure CLI and that the storage container already exists:
+
+```bash
+az login
+az account set --subscription 3d5d1ab2-b17f-4c99-9bf1-db4fe0ad882e
+```
+
+Your Azure principal also needs blob data access on that storage account/container (for example `Storage Blob Data Contributor`) before `terraform init -reconfigure` can read or migrate the remote state.
+
+### Secrets
+
+The Terraform stack expects sensitive runtime values to be supplied at apply time and stored in Azure Key Vault:
+
+- `postgres_connection_string`
+- `workos_api_key`
+- `workos_client_id`
+
+Do not reuse an old local `terraform/terraform.tfvars` from the VM deployment. Older copies may still contain SSH and TLS certificate settings that are no longer used by the Container App stack. Start from `terraform/terraform.tfvars.example` instead.
+
+### GitHub Actions apply via OIDC
+
+The repository includes `.github/workflows/terraform-apply.yml`, which applies the Terraform stack on pushes to `main` that touch `terraform/**` and can also be started manually from `main`.
+
+Before enabling it:
+
+1. Create an Azure Entra application or service principal with a federated credential for GitHub Actions using the subject `repo:kalebwbishop/smart-handicap-sign:ref:refs/heads/main`.
+2. Grant that principal `Contributor` on the Terraform target scope and `Storage Blob Data Contributor` on `deployboxsaprod` so it can update Azure resources and the remote state backend.
+3. Add repository variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID`.
+4. Add repository secrets `TF_VAR_POSTGRES_CONNECTION_STRING`, `TF_VAR_WORKOS_API_KEY`, and `TF_VAR_WORKOS_CLIENT_ID`.
+
+The workflow uses `terraform/github.auto.tfvars` for committed non-secret overrides and passes the required sensitive values through `TF_VAR_*` secrets at runtime.
+
+### Initialize and review changes
+
+```bash
+cd terraform
+terraform init -reconfigure
+terraform plan -var-file="terraform.tfvars"
+```
+
+### Legacy VM cleanup
+
+The previous VM, network, and public IP resources are no longer defined in the Terraform configuration. When you run the migration plan against the historical state, Terraform should destroy those legacy resources. The old resource group `res000_0_4e69310cb4464d47` is not managed by the new configuration, so delete that resource group separately after confirming the legacy resources are gone.
+
 ## Device Registration (QR Code Claim Flow)
 
 Signs are headless IoT devices with no keyboard or screen for login. Each device ships with a QR code label containing a unique serial number and one-time claim ID. Field installers scan the QR code with the mobile app to register and activate the device.
@@ -233,7 +297,6 @@ Key test modules:
 | `test_idor_notifications.py` | IDOR protection on notification endpoints |
 | `test_idor_signs.py` | IDOR protection on sign/device endpoints |
 | `test_inference_security.py` | AI inference endpoint security |
-| `test_nginx_headers.py` | Security header validation |
 | `test_open_redirect.py` | Open redirect prevention |
 
 ## Next Steps

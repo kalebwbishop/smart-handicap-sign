@@ -1,0 +1,21 @@
+$kind: http-request
+description: |-
+  Initiate WorkOS OAuth / AuthKit flow.
+
+  Query params:
+  - `redirect_uri` (optional)
+
+  Auth: None
+url: "{{base_url}}/api/v1/auth/login?redirect_uri={{redirect_uri}}"
+method: GET
+auth:
+  type: noauth
+scripts:
+  - type: afterResponse
+    code: >-
+      try {
+        const data = pm.response.json();
+        if (data.authorizationUrl) pm.collectionVariables.set('authorization_url', data.authorizationUrl);
+      } catch (error) {}
+    language: text/javascript
+order: 1000

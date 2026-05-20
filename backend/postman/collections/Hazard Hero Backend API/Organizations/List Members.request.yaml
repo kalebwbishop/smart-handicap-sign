@@ -1,0 +1,8 @@
+$kind: http-request
+description: |-
+  List all members of an organization. Must be a member.
+
+  Auth: Bearer `{{access_token}}`
+url: "{{base_url}}/api/v1/organizations/{{organization_id}}/members"
+method: GET
+order: 6000

@@ -1,0 +1,8 @@
+$kind: http-request
+description: |-
+  Retrieve a specific device by serial number.
+
+  Auth: Bearer `{{access_token}}`
+url: "{{base_url}}/api/v1/devices/{{serial_number}}"
+method: GET
+order: 2000

@@ -1,0 +1,8 @@
+$kind: http-request
+description: |-
+  Delete an organization. Requires owner role.
+
+  Auth: Bearer `{{access_token}}`
+url: "{{base_url}}/api/v1/organizations/{{organization_id}}"
+method: DELETE
+order: 5000

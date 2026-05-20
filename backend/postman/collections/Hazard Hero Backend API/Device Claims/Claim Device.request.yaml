@@ -1,0 +1,33 @@
+$kind: http-request
+description: >-
+  Execute the device claim. Atomically assigns the device to the specified
+
+  organization, site, and parking space. Creates installation record and audit
+  log.
+
+
+  Requires authenticated user who is a member (installer/admin/owner) of the
+  target organization.
+
+
+  Auth: Bearer `{{access_token}}`
+url: "{{base_url}}/api/v1/device-claims/claim"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "serial_number": "{{serial_number}}",
+      "claim_id": "{{claim_id}}",
+      "customer_id": "{{customer_id}}",
+      "site_id": "{{site_id}}",
+      "parking_space_id": "{{parking_space_id}}",
+      "accessible_type": "van_accessible",
+      "installation_photos": [
+        "https://example.com/photo-1.jpg"
+      ],
+      "install_notes": "Mounted, leveled, and tested on site."
+    }
+order: 2000

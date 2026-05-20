@@ -1,0 +1,18 @@
+$kind: http-request
+description: |-
+  Update a specific notification.
+
+  Auth: Bearer `{{access_token}}`
+url: "{{base_url}}/api/v1/notifications/{{notification_id}}"
+method: PATCH
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "title": "Updated notification title",
+      "body": "Updated notification body",
+      "read": true
+    }
+order: 5000

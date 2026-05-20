@@ -1,0 +1,22 @@
+$kind: http-request
+description: |-
+  Update a site. Requires admin or owner role.
+
+  Auth: Bearer `{{access_token}}`
+url: "{{base_url}}/api/v1/sites/{{site_id}}"
+method: PATCH
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "name": "North Garage",
+      "address_line_1": "456 Elm St",
+      "city": "Springfield",
+      "state": "IL",
+      "postal_code": "62702",
+      "country": "US",
+      "jurisdiction": "Springfield"
+    }
+order: 4000

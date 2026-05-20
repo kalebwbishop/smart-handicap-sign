@@ -1,0 +1,19 @@
+$kind: http-request
+description: |-
+  Update a specific event.
+
+  Auth: Bearer `{{access_token}}`
+url: "{{base_url}}/api/v1/events/{{event_id}}"
+method: PATCH
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "type": "maintenance",
+      "data": {
+        "note": "Checked on device housing."
+      }
+    }
+order: 5000

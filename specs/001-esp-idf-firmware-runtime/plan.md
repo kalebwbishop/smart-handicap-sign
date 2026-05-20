@@ -20,7 +20,7 @@ Backend, database, frontend, AI, infrastructure, and documentation are affected 
 **Database**: PostgreSQL 15, v2 device lifecycle schema in `database/schemas/shs_schema_v2.sql`, TypeScript migration/seed scripts in `database/`  
 **Firmware**: ESP-IDF C under `firmware/`; legacy MicroPython under `hardware/` is reference-only for this feature  
 **AI**: PyTorch 1D CNN with 512-sample input contract; firmware does not run model inference locally  
-**Infrastructure**: Docker Compose, nginx configs, Terraform, Azure deployment artifacts; firmware depends on backend URL and certificate alignment  
+**Infrastructure**: Docker Compose, Terraform, Azure deployment artifacts; firmware depends on backend URL and certificate alignment  
 **Testing**: `idf.py build` for firmware, backend pytest for route/security contracts, database v2 migration validation when schema changes, frontend lint/test when provisioning UI/API changes  
 **External/Local Dependencies**: WorkOS, PostgreSQL, Docker, ESP-IDF 5.4+ toolchain, local `deploy-box-python`, local `deploy-box-react-native` where frontend/backend installs require them  
 **Constraints**: FastAPI `redirect_slashes=False`; raw SQL/no ORM; exact `/api/v1` paths; device token secrecy; local provisioning must not leak secrets; ESP32 watchdog/timing/memory limits; frontend must use existing API/theme/navigation patterns  
@@ -112,7 +112,6 @@ firmware/
 ai/
 hardware/
 terraform/
-nginx/
 docker-compose.yml
 ```
 
@@ -201,7 +200,7 @@ Backend services should expose this mapping through one helper used by the statu
 
 ### Infrastructure/Operations Design
 
-- **Docker/Terraform/nginx/Azure**: No infrastructure code change is planned unless certificate/backend URL validation reveals deployment mismatch. Firmware docs must state backend URL and certificate expectations.
+- **Docker/Terraform/Azure**: No infrastructure code change is planned unless certificate/backend URL validation reveals deployment mismatch. Firmware docs must state backend URL and certificate expectations.
 - **Environment Variables/Secrets**: Device tokens, setup/claim codes, CA/private key material, WorkOS secrets, and backend credentials must not be committed. Examples use fake values only.
 
 ### Post-Design Constitution Re-check
@@ -224,7 +223,7 @@ Backend services should expose this mapping through one helper used by the statu
 | Database | `npm run migrate:v2 --workspace=database` where safe if v2 schema/migration/seed/register files change |
 | Frontend | `npm run lint --workspace=frontend`; `npm run test --workspace=frontend` if provisioning UI/API tests are added or affected |
 | AI | `cd ai` then `pytest` only if inference/model files or checkpoint contracts change; otherwise document not run as not touched |
-| Infrastructure | Relevant Docker Compose/nginx/Terraform validation only if backend URL, certificates, or deployment files change |
+| Infrastructure | Relevant Docker Compose/Terraform validation only if backend URL, certificates, or deployment files change |
 | Documentation | Review firmware README, test plan, quickstart, and contracts for stale MicroPython or signs-v1 production language |
 | Accessibility | Validate provisioning setup-code fields, errors, disabled/loading states, and focus behavior against React Native accessibility expectations where the platform/tooling permits |
 | Observability | Review structured log fields, device event payloads, metric definitions, and operator recovery docs for secret leakage and support usefulness |

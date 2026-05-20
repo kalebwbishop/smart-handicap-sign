@@ -1,0 +1,16 @@
+$kind: http-request
+description: |-
+  Revoke a device. Requires admin or owner role.
+
+  Auth: Bearer `{{access_token}}`
+url: "{{base_url}}/api/v1/devices/{{serial_number}}/revoke"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "reason": "Compromised claim credentials"
+    }
+order: 6000

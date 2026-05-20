@@ -1,0 +1,8 @@
+$kind: http-request
+description: |-
+  Delete a parking space (admin/owner only). Fails 409 if a device is assigned.
+
+  Auth: Bearer `{{access_token}}`
+url: "{{base_url}}/api/v1/parking-spaces/{{parking_space_id}}"
+method: DELETE
+order: 5000

@@ -15,7 +15,7 @@ The repository is a brownfield npm-workspaces monorepo with module-separated own
 - Embedded backend inference code in `backend/app/ai/`
 - Active ESP-IDF firmware in `firmware/`
 - Legacy MicroPython hardware code in `hardware/`
-- Docker Compose, nginx, and Terraform deployment infrastructure at the repository root, `nginx/`, and `terraform/`
+- Docker Compose and Terraform deployment infrastructure at the repository root and `terraform/`
 
 The system is intentionally **module-separated rather than package-shared**. Cross-module integration must happen through HTTP APIs, SQL schemas, firmware payloads, migration scripts, documented contracts, TypeScript/Pydantic models, or model artifacts. Cross-imports between top-level modules are prohibited unless an explicit architectural decision changes this constitution.
 
@@ -91,7 +91,7 @@ All changes MUST respect top-level module ownership:
 - Legacy MicroPython support lives in `hardware/`
 - Standalone AI model training and testing code lives in `ai/`
 - Backend inference integration lives in `backend/app/ai/`
-- Deployment and operations code lives in `docker-compose.yml`, `nginx/`, and `terraform/`
+- Deployment and operations code lives in `docker-compose.yml` and `terraform/`
 
 A spec, plan, or task that spans modules MUST name every affected module and define the contract between them before implementation begins.
 
@@ -390,7 +390,7 @@ Existing detected test locations and commands are authoritative:
 - Frontend e2e/browser tests: `frontend/e2e/`, run with Playwright after starting Expo web as described by `frontend/playwright.config.ts`
 - Firmware validation: `idf.py build` from `firmware/` in an ESP-IDF 5.4+ environment when firmware C code, CMake, partitions, cert embedding, or SDK config changes
 - Database validation: `npm run migrate --workspace=database` or `npm run migrate:v2 --workspace=database`, depending on the intended schema path
-- Docker/infrastructure validation: relevant Docker Compose, nginx, or Terraform validation command where credentials/tooling permit
+- Docker/infrastructure validation: relevant Docker Compose or Terraform validation command where credentials/tooling permit
 
 Security fixes, authorization changes, migrations, device lifecycle changes, firmware payload changes, notification behavior, AI inference changes, and physical-world state changes require focused regression tests.
 
@@ -545,9 +545,9 @@ idf.py build
 
 If ESP-IDF is unavailable, the plan MUST document the missing toolchain and any substitute validation.
 
-### Docker, Nginx, Or Terraform Touched
+### Docker Or Terraform Touched
 
-Validate the relevant Docker Compose, nginx, or Terraform command path where credentials and tooling permit.
+Validate the relevant Docker Compose or Terraform command path where credentials and tooling permit.
 
 Plans MUST document skipped validation and deployment risk.
 

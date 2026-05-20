@@ -1,0 +1,8 @@
+$kind: http-request
+description: |-
+  Release a device back to unclaimed. Requires admin or owner role.
+
+  Auth: Bearer `{{access_token}}`
+url: "{{base_url}}/api/v1/devices/{{serial_number}}/release"
+method: POST
+order: 8000

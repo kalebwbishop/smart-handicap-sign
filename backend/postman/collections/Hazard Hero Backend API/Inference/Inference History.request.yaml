@@ -1,0 +1,12 @@
+$kind: http-request
+description: |-
+  Return recent inference data for debugging. Requires user auth.
+
+  Query params:
+  - `limit`: Number of recent entries to return (optional)
+  - `serial_number`: Filter by device serial number (optional)
+
+  Auth: Bearer `{{access_token}}`
+url: "{{base_url}}/api/v1/inference/history?limit=20"
+method: GET
+order: 2000

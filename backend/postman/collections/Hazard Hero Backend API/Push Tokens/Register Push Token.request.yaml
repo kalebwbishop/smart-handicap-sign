@@ -1,0 +1,17 @@
+$kind: http-request
+description: |-
+  Register an Expo push token for the current user.
+
+  Auth: Bearer `{{access_token}}`
+url: "{{base_url}}/api/v1/push-tokens"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "expo_push_token": "{{expo_push_token}}",
+      "device_id": "{{device_id}}"
+    }
+order: 1000

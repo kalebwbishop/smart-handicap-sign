@@ -1,0 +1,8 @@
+$kind: http-request
+description: |-
+  Delete a specific event and its linked notifications.
+
+  Auth: Bearer `{{access_token}}`
+url: "{{base_url}}/api/v1/events/{{event_id}}"
+method: DELETE
+order: 6000

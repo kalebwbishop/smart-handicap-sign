@@ -12,7 +12,7 @@ This repository is a brownfield Hazard Hero monorepo. Agents should keep work sc
 | Firmware | `firmware/` | Active ESP-IDF C firmware, CMake, OTA, provisioning, Wi-Fi, ADC, HTTPS, LED status |
 | Legacy Hardware | `hardware/` | MicroPython runtime only; do not update unless explicitly requested |
 | AI | `ai/`, `backend/app/ai/` | PyTorch training/inference contract and checkpoint compatibility |
-| Infrastructure | `docker-compose.yml`, `nginx/`, `terraform/`, deployment YAML/scripts | Local services, reverse proxy, Azure/Terraform deployment |
+| Infrastructure | `docker-compose.yml`, `terraform/`, deployment YAML/scripts | Local services and Azure/Terraform deployment |
 | Spec Kit | `.specify/`, `.github/prompts/`, `.github/agents/` | Specification workflow, templates, constitution, agent prompts |
 
 ## Shared Rules

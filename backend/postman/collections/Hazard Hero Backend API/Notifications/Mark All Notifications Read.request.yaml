@@ -1,0 +1,8 @@
+$kind: http-request
+description: |-
+  Mark all unread notifications as read for the current user.
+
+  Auth: Bearer `{{access_token}}`
+url: "{{base_url}}/api/v1/notifications/read-all"
+method: POST
+order: 7000

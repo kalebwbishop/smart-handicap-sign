@@ -1,0 +1,28 @@
+$kind: http-request
+description: |-
+  Exchange a refresh token for a new access token.
+
+  Auth: None
+url: "{{base_url}}/api/v1/auth/refresh"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "refreshToken": "{{refresh_token}}"
+    }
+auth:
+  type: noauth
+scripts:
+  - type: afterResponse
+    code: >-
+      try {
+        const data = pm.response.json();
+        if (data.accessToken) pm.collectionVariables.set('access_token', data.accessToken);
+        if (data.refreshToken) pm.collectionVariables.set('refresh_token', data.refreshToken);
+        if (data.user && data.user.id) pm.collectionVariables.set('user_id', data.user.id);
+      } catch (error) {}
+    language: text/javascript
+order: 4000

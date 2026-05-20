@@ -129,7 +129,7 @@ The device handles Wi-Fi failures, backend failures, certificate issues, LED sta
 - **Firmware (`firmware/`)**: Active ESP-IDF runtime, including application entry point, ADC sampling, HTTPS communication, LED behavior, device storage, OTA, provisioning, Wi-Fi management, build configuration, partitions, README, and test plan.
 - **Legacy Hardware (`hardware/`)**: Out of production scope except as a legacy reference that must not override ESP-IDF runtime expectations.
 - **AI (`ai/`, `backend/app/ai/`)**: Backend inference contract consumes firmware sample windows; model training and checkpoint management remain outside the firmware image.
-- **Infrastructure (`docker-compose.yml`, `nginx/`, `terraform/`)**: Backend host, certificate, and deployed service availability must align with firmware runtime configuration.
+- **Infrastructure (`docker-compose.yml`, `terraform/`)**: Backend host, certificate, and deployed service availability must align with firmware runtime configuration.
 - **Documentation**: Firmware README, firmware test plan, setup documentation, and device registration notes must match the runtime workflow.
 
 ### API Requirements *(include if backend/frontend/firmware contract changes)*

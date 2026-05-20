@@ -89,7 +89,7 @@ Use `[NEEDS CLARIFICATION: ...]` when a requirement is materially unclear.
 - **Firmware (`firmware/`)**: [ESP-IDF C files, CMake, certs, config, tests/docs, or N/A]
 - **Legacy Hardware (`hardware/`)**: [MicroPython files, only if explicitly affected]
 - **AI (`ai/`, `backend/app/ai/`)**: [Training, checkpoint, inference contract, or N/A]
-- **Infrastructure (`docker-compose.yml`, `nginx/`, `terraform/`)**: [Runtime/deploy changes or N/A]
+- **Infrastructure (`docker-compose.yml`, `terraform/`)**: [Runtime/deploy changes or N/A]
 - **Documentation**: [README, DESIGN, HARDWARE, firmware docs, API docs, or N/A]
 
 ### API Requirements *(include if backend/frontend/firmware contract changes)*

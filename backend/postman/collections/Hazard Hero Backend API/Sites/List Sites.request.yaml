@@ -1,0 +1,13 @@
+$kind: http-request
+description: |-
+  List sites for the current user's organizations.
+
+  Query params:
+  - `organization_id`: Filter by organization (optional)
+  - `skip` (optional)
+  - `limit` (optional)
+
+  Auth: Bearer `{{access_token}}`
+url: "{{base_url}}/api/v1/sites"
+method: GET
+order: 1000

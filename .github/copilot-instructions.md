@@ -147,7 +147,7 @@ Schema auto-loaded by Docker entrypoint from `database/schemas/shs_schema.sql`.
 ## Known Quirks
 
 - **External dependency:** `deploy-box-ui` is a locally linked library at `../../deploy-box-react-native-library`. Frontend builds will fail if this directory doesn't exist.
-- Codebase was originally a "Social Media Stack" template, then renamed "Smart Handicap Sign", then "Hazard Hero". Some infrastructure identifiers still use older naming (e.g., Docker image `kalebwbishop/shs:2`, DB name `shs`, network aliases `shs-backend`/`shs-frontend`, terraform resource names with `smart-handicap-sign`, cloud-init paths at `/opt/smart-handicap-sign/`). These are intentionally left as-is to avoid breaking deployed infrastructure.
+- Codebase was originally a "Social Media Stack" template, then renamed "Smart Handicap Sign", then "Hazard Hero". Some infrastructure identifiers still use older naming (e.g., Docker image `kalebwbishop/shs:2`, DB name `shs`, terraform resource names with `smart-handicap-sign`, cloud-init paths at `/opt/smart-handicap-sign/`). These are intentionally left as-is to avoid breaking deployed infrastructure.
 - Frontend `bable.config.js` has a filename typo (should be `babel.config.js`).
 - `docker-compose.yml` has a broken `mobile` service referencing a nonexistent `./mobile` directory.
 - `database/seeds/dev_data.sql` references old schema columns (`password_hash`, `is_verified`) that no longer exist — seeding will fail.

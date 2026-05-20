@@ -1,14 +1,19 @@
-output "public_ip_address" {
-  description = "Static public IP address of the VM"
-  value       = azurerm_public_ip.this.ip_address
-}
-
-output "ssh_command" {
-  description = "SSH command to connect to the VM"
-  value       = "ssh ${var.admin_username}@${azurerm_public_ip.this.ip_address}"
+output "container_app_url" {
+  description = "Default Azure Container Apps URL for the backend"
+  value       = "https://${azurerm_container_app.this.latest_revision_fqdn}"
 }
 
 output "app_url" {
-  description = "URL to access the application"
-  value       = "https://${var.domain_name}"
+  description = "Preferred public URL for the application"
+  value       = var.domain_name != "" ? "https://${var.domain_name}" : "https://${azurerm_container_app.this.latest_revision_fqdn}"
+}
+
+output "key_vault_name" {
+  description = "Azure Key Vault name containing application secrets"
+  value       = azurerm_key_vault.this.name
+}
+
+output "key_vault_uri" {
+  description = "Azure Key Vault URI containing application secrets"
+  value       = azurerm_key_vault.this.vault_uri
 }

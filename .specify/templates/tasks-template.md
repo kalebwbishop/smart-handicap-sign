@@ -30,7 +30,7 @@ description: "Hazard Hero task list template for feature implementation"
 - ESP-IDF firmware: `firmware/main/`, `firmware/CMakeLists.txt`, `firmware/partitions.csv`, `firmware/sdkconfig.defaults`
 - Legacy MicroPython: `hardware/`
 - AI model/training: `ai/`, `backend/app/ai/`
-- Infrastructure: `docker-compose.yml`, `nginx/`, `terraform/`
+- Infrastructure: `docker-compose.yml`, `terraform/`
 
 <!--
   The sections below are a project-aware scaffold. The /speckit.tasks command

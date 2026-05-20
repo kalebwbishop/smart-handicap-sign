@@ -1,0 +1,13 @@
+$kind: http-request
+description: |-
+  Return a PNG graph of the most recent inference samples. Requires user auth.
+
+  Query params:
+  - `serial_number`: Filter by device serial number (optional)
+
+  Auth: Bearer `{{access_token}}`
+url: "{{base_url}}/api/v1/inference/latest-graph"
+method: GET
+headers:
+  Accept: image/png
+order: 3000

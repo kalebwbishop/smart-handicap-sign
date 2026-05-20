@@ -1,64 +1,100 @@
-variable "resource_group_name" {
-  description = "Name of the existing Azure resource group"
+variable "subscription_id" {
+  description = "Azure subscription ID used by the azurerm provider"
   type        = string
-  default     = "res000_0_4e69310cb4464d47"
+  default     = "3d5d1ab2-b17f-4c99-9bf1-db4fe0ad882e"
+}
+
+variable "resource_group_name" {
+  description = "Name of the Azure resource group Terraform manages"
+  type        = string
+  default     = "res000_0_shs"
+}
+
+variable "location" {
+  description = "Azure region for the managed infrastructure"
+  type        = string
+  default     = "eastus"
+}
+
+variable "key_vault_name" {
+  description = "Stable Azure Key Vault name used for application secrets"
+  type        = string
+  default     = "hhhazardherokv"
 }
 
 variable "domain_name" {
-  description = "Domain name for the application"
+  description = "Optional public hostname for the application, managed outside Terraform"
   type        = string
-  default     = "hazardhero.deploy-box.com"
+  default     = ""
 }
 
-variable "vm_size" {
-  description = "Azure VM size"
+variable "container_image" {
+  description = "Container image to run in Azure Container Apps"
   type        = string
-  default     = "Standard_B2s"
+  default     = "docker.io/kalebwbishop/shs:2"
 }
 
-variable "admin_username" {
-  description = "SSH admin username for the VM"
-  type        = string
-  default     = "azureuser"
+variable "container_cpu" {
+  description = "vCPU allocated to the backend container"
+  type        = number
+  default     = 0.25
 }
 
-variable "ssh_public_key_path" {
-  description = "Path to the SSH public key file"
+variable "container_memory" {
+  description = "Memory allocated to the backend container"
   type        = string
-  default     = "~/.ssh/id_rsa.pub"
+  default     = "0.5Gi"
 }
 
-variable "github_repo_url" {
-  description = "HTTPS URL of the GitHub repository to clone"
-  type        = string
-  default     = "https://github.com/kalebwbishop/smart-handicap-sign.git"
+variable "container_target_port" {
+  description = "Port exposed by the backend container"
+  type        = number
+  default     = 8000
 }
 
-variable "github_repo_branch" {
-  description = "Branch to checkout after cloning"
-  type        = string
-  default     = "main"
+variable "container_min_replicas" {
+  description = "Minimum number of backend replicas"
+  type        = number
+  default     = 0
 }
 
-# Secrets (sensitive)
+variable "container_max_replicas" {
+  description = "Maximum number of backend replicas"
+  type        = number
+  default     = 1
+}
+
+variable "postgres_connection_string" {
+  description = "PostgreSQL connection string for the backend API"
+  type        = string
+  sensitive   = true
+}
+
+variable "frontend_url" {
+  description = "Public frontend URL used by the backend"
+  type        = string
+  default     = ""
+}
+
+variable "workos_redirect_uri" {
+  description = "OAuth callback URL registered with WorkOS"
+  type        = string
+  default     = ""
+}
+
+variable "cors_origin" {
+  description = "Comma-separated CORS origins for the backend API"
+  type        = string
+  default     = ""
+}
+
+# Application secrets
 variable "workos_api_key" {
   type      = string
   sensitive = true
-  default   = ""
 }
 
 variable "workos_client_id" {
   type      = string
   sensitive = true
-  default   = ""
-}
-
-# TLS certificate paths
-variable "tls_fullchain_path" {
-  type    = string
-  default = "../certs/fullchain.pem"
-}
-variable "tls_privkey_path" {
-  type    = string
-  default = "../certs/privkey.pem"
 }

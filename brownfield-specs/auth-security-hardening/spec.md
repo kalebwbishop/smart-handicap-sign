@@ -76,7 +76,7 @@ Hardware devices submit telemetry with device bearer credentials and claim endpo
 - **FR-005**: System MUST authenticate device bearer credentials as `Bearer <serial>:<token>`.
 - **FR-006**: System MUST compare device token hashes with constant-time comparison.
 - **FR-007**: System MUST rate-limit device claim validation and claim execution attempts.
-- **FR-008**: System MUST preserve security header expectations in nginx configuration.
+- **FR-008**: System MUST preserve deployment security header expectations where infrastructure manages them.
 
 ### Affected Modules
 
@@ -86,7 +86,7 @@ Hardware devices submit telemetry with device bearer credentials and claim endpo
 - **Firmware (`firmware/`)**: Device bearer token is required for classify submissions.
 - **Legacy Hardware (`hardware/`)**: Legacy client must match any auth contract if used.
 - **AI (`ai/`, `backend/app/ai/`)**: N/A.
-- **Infrastructure**: `nginx/` security headers and non-cloud SSL behavior.
+- **Infrastructure**: Deployment security headers and non-cloud SSL behavior.
 - **Documentation**: Auth flow documented in project instructions and README-style docs.
 
 ### API Requirements
@@ -133,7 +133,7 @@ Hardware devices submit telemetry with device bearer credentials and claim endpo
 - Redirect allow-listing MUST prevent arbitrary external redirects.
 - Device token checks MUST use stored salt/hash and constant-time comparison.
 - Claim rate limiting MUST limit brute-force attempts across multiple scopes.
-- Security tests MUST continue to cover open redirect, nginx headers, inference auth, and claim-related hardening.
+- Security tests MUST continue to cover open redirect, inference auth, and claim-related hardening.
 - User/profile/device identifiers MUST not be leaked across failed auth boundaries.
 
 ## Success Criteria

@@ -1,0 +1,19 @@
+$kind: http-request
+description: |-
+  Transfer a device to a new site/parking space. Requires admin or owner role.
+
+  Auth: Bearer `{{access_token}}`
+url: "{{base_url}}/api/v1/devices/{{serial_number}}/transfer"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: json
+  content: |-
+    {
+      "new_site_id": "{{new_site_id}}",
+      "new_parking_space_id": "{{new_parking_space_id}}",
+      "accessible_type": "van_accessible",
+      "notes": "Moved to a newly striped accessible space."
+    }
+order: 7000
