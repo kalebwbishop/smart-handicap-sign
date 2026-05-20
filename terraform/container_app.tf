@@ -120,5 +120,5 @@ resource "azurerm_container_app" "this" {
     }
   }
 
-  depends_on = [azurerm_key_vault_access_policy.container_app, azurerm_role_assignment.container_app_acr_pull]
+  depends_on = [azurerm_role_assignment.container_app_key_vault_secrets_user, azurerm_role_assignment.container_app_acr_pull]
 }

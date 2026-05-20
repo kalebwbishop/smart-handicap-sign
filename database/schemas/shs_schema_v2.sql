@@ -1,6 +1,8 @@
 -- Smart Handicap Sign — Database Schema v2
--- Description: Schema for device lifecycle, site management, and installation tracking
---              with WorkOS authentication. Replaces v1 (signs-centric) layout.
+-- Description: Canonical schema for device lifecycle, site management, and
+--              installation tracking with WorkOS authentication. Legacy sign
+--              compatibility objects are retained for the remaining backend
+--              services that still query sign/event records directly.
 -- Run: psql -f shs_schema_v2.sql
 
 
@@ -50,6 +52,17 @@ CREATE TYPE event_type AS ENUM (
     'alert',
     'maintenance',
     'misuse'
+);
+
+CREATE TYPE sign_status AS ENUM (
+    'available',
+    'assistance_requested',
+    'assistance_in_progress',
+    'offline',
+    'error',
+    'training_ready',
+    'training_positive',
+    'training_negative'
 );
 
 CREATE TYPE device_lifecycle_status AS ENUM (
@@ -282,6 +295,26 @@ COMMENT ON COLUMN devices.auth_token_hash IS 'SHA-256 hash of the per-device bea
 COMMENT ON COLUMN devices.auth_token_salt IS 'Salt used when hashing the device bearer token';
 
 
+-- ── Signs (legacy compatibility) ──────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS signs (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    organization_id UUID REFERENCES organizations(id) ON DELETE SET NULL,
+    name            TEXT NOT NULL,
+    location        TEXT NOT NULL,
+    status          sign_status NOT NULL DEFAULT 'available',
+    last_updated    TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_signs_status       ON signs(status);
+CREATE INDEX idx_signs_last_updated ON signs(last_updated);
+CREATE INDEX idx_signs_organization ON signs(organization_id);
+
+COMMENT ON TABLE  signs IS 'Legacy compatibility table kept for sign/event services that have not yet moved to devices';
+COMMENT ON COLUMN signs.location IS 'Legacy freeform location string from the original signs model';
+COMMENT ON COLUMN signs.status IS 'Legacy sign runtime status used by the remaining sign/event code paths';
+
+
 -- ── Parking Spaces (new) ────────────────────────────────────────────
 
 CREATE TABLE parking_spaces (
@@ -353,7 +386,7 @@ COMMENT ON COLUMN installations.activation_status IS 'Whether this installation 
 
 CREATE TABLE IF NOT EXISTS events (
     id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    sign_id    UUID NOT NULL,  -- legacy FK; original table (signs) no longer exists
+    sign_id    UUID NOT NULL,
     type       event_type NOT NULL,
     data       JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -369,8 +402,8 @@ CREATE TRIGGER update_events_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
-COMMENT ON TABLE  events IS 'Legacy sign events (status changes, alerts, maintenance, misuse). Retained for notification history.';
-COMMENT ON COLUMN events.sign_id IS 'Original FK to the now-removed signs table; kept for historical data';
+COMMENT ON TABLE  events IS 'Legacy sign events (status changes, alerts, maintenance, misuse). Retained for compatibility and notification history.';
+COMMENT ON COLUMN events.sign_id IS 'Legacy sign identifier used by the remaining sign/event service layer';
 COMMENT ON COLUMN events.type IS 'Category of the event';
 COMMENT ON COLUMN events.data IS 'Arbitrary JSON payload with event-specific details';
 

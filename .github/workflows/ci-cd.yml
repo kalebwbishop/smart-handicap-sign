@@ -1,4 +1,4 @@
-name: Build and Terraform Apply
+name: CI/CD Deploy
 
 on:
   push:
@@ -6,8 +6,9 @@ on:
       - main
     paths:
       - "backend/**"
+      - "database/**"
       - "terraform/**"
-      - ".github/workflows/terraform-apply.yml"
+      - ".github/workflows/ci-cd.yml"
   workflow_dispatch:
 
 permissions:
@@ -15,7 +16,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: terraform-apply
+  group: ci-cd-deploy
   cancel-in-progress: false
 
 env:
@@ -30,6 +31,7 @@ env:
   ACR_REPOSITORY: hazard-hero-backend
   DEPLOY_BOX_PYTHON_REPOSITORY: Deploy-Box/deploy-box-python
   DEPLOY_BOX_PYTHON_REF: main
+  POSTGRES_CONNECTION_SECRET_NAME: postgres-connection-string
 
 jobs:
   build-image:
@@ -103,8 +105,86 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  apply:
+  migrate-database:
     needs: build-image
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: main
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify workflow configuration
+        run: |
+          test -n "$ARM_CLIENT_ID" || { echo "Missing repository variable AZURE_CLIENT_ID"; exit 1; }
+          test -n "$ARM_TENANT_ID" || { echo "Missing repository variable AZURE_TENANT_ID"; exit 1; }
+          test -n "$ARM_SUBSCRIPTION_ID" || { echo "Missing repository variable AZURE_SUBSCRIPTION_ID"; exit 1; }
+          test -n "$POSTGRES_CONNECTION_SECRET_NAME" || { echo "Missing POSTGRES_CONNECTION_SECRET_NAME configuration"; exit 1; }
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Authenticate to Azure with OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.ARM_CLIENT_ID }}
+          tenant-id: ${{ env.ARM_TENANT_ID }}
+          subscription-id: ${{ env.ARM_SUBSCRIPTION_ID }}
+
+      - name: Initialize Terraform
+        working-directory: terraform
+        run: terraform init -input=false -reconfigure
+
+      - name: Resolve Key Vault name
+        id: key_vault
+        working-directory: terraform
+        run: |
+          if ! KEY_VAULT_NAME="$(terraform output -raw key_vault_name 2>/dev/null)"; then
+            echo "Expected an existing Terraform state with a key_vault_name output. Bootstrap the environment and seed Key Vault secrets before using this workflow." >&2
+            exit 1
+          fi
+
+          test -n "$KEY_VAULT_NAME" || { echo "Terraform output key_vault_name is empty"; exit 1; }
+          printf 'name=%s\n' "$KEY_VAULT_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: database/package-lock.json
+
+      - name: Install database dependencies
+        working-directory: database
+        run: npm ci
+
+      - name: Fetch database connection string
+        id: db_connection
+        run: |
+          POSTGRES_CONNECTION_STRING="$(az keyvault secret show \
+            --vault-name "${{ steps.key_vault.outputs.name }}" \
+            --name "$POSTGRES_CONNECTION_SECRET_NAME" \
+            --query value \
+            --output tsv)"
+
+          test -n "$POSTGRES_CONNECTION_STRING" || { echo "Key Vault secret $POSTGRES_CONNECTION_SECRET_NAME is empty"; exit 1; }
+          echo "::add-mask::$POSTGRES_CONNECTION_STRING"
+          printf 'value=%s\n' "$POSTGRES_CONNECTION_STRING" >> "$GITHUB_OUTPUT"
+
+      - name: Run database migration
+        working-directory: database
+        env:
+          NODE_ENV: production
+          POSTGRES_CONNECTION_STRING: ${{ steps.db_connection.outputs.value }}
+        run: npm run migrate
+
+  apply:
+    needs:
+      - build-image
+      - migrate-database
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: main

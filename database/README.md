@@ -1,109 +1,79 @@
-# Database Documentation
+# Database
 
-## Overview
-PostgreSQL database for the Mobile Stack application.
+PostgreSQL 15 schema assets for Hazard Hero.
 
-## Connection Details
+## Canonical assets
 
-### Development
-- **Host**: localhost
-- **Port**: 5432
-- **Database**: mobile_stack_dev
-- **User**: devuser
-- **Password**: devpassword
+- `schemas/shs_schema_v2.sql` — current schema used by the backend
+- `seeds/dev_data_v2.sql` — current development seed data
+- `scripts/migrate_v2.ts` — default migration entrypoint
 
-### Access via Docker
+Legacy files such as `schemas/shs_schema.sql` and `seeds/dev_data.sql` are retained only for historical reference and should not be used for normal setup.
+
+## Commands
+
+Run these from `database/`:
+
 ```bash
-# Start database
-npm run db:up
-
-# Connect with psql
-docker exec -it mobile-stack-postgres psql -U devuser -d mobile_stack_dev
-
-# Or use pgAdmin
-# Open http://localhost:5050
-# Email: admin@admin.com
-# Password: admin
+npm run migrate
+npm run seed
 ```
 
-## Schema
+Both scripts load `../backend/.env` and expect `POSTGRES_CONNECTION_STRING` (or `DATABASE_URL` for the seed script) to point at the target PostgreSQL instance.
 
-### Tables
+## Migration behavior
 
-#### users
-Stores user account information.
-- `id` (UUID): Primary key
-- `email` (VARCHAR): Unique email address
-- `password_hash` (VARCHAR): Bcrypt hashed password
-- `name` (VARCHAR): User's display name
-- `avatar_url` (VARCHAR): Profile picture URL
-- `is_verified` (BOOLEAN): Email verification status
-- `created_at` (TIMESTAMP): Account creation time
-- `updated_at` (TIMESTAMP): Last update time (auto-updated)
+`npm run migrate` uses `scripts/migrate_v2.ts` and handles three cases:
 
-#### refresh_tokens
-JWT refresh token storage for authentication.
-- `id` (UUID): Primary key
-- `user_id` (UUID): Foreign key to users table
-- `token` (VARCHAR): Refresh token (unique)
-- `expires_at` (TIMESTAMP): Token expiration time
-- `created_at` (TIMESTAMP): Token creation time
-- `revoked` (BOOLEAN): Token revocation status
+1. Fresh install — applies `shs_schema_v2.sql`
+2. Legacy v1 database (`signs` exists and `devices` does not) — snapshots v1 data, applies v2, migrates signs into devices, and restores the legacy compatibility tables still used by the backend
+3. Existing v2 database — performs a non-destructive compatibility sync for the remaining legacy sign/event code paths
 
-## Migrations
+## Production deployment
 
-Migrations are stored in `migrations/` directory and should be run in order.
+`.github/workflows/ci-cd.yml` runs `npm run migrate` before Terraform deploys a new backend revision.
 
-### Running Migrations
-```bash
-npm run db:migrate
-```
+Keep production schema changes backward-compatible and additive so the currently deployed backend can continue serving traffic until the new revision is rolled out.
 
-### Creating New Migration
-1. Create a new file: `migrations/00X_description.sql`
-2. Write your SQL changes
-3. Run migration command
+## Schema overview
+
+Primary v2 tables:
+
+- `users`, `profiles`
+- `organizations`, `organization_members`
+- `sites`
+- `devices`
+- `parking_spaces`
+- `installations`
+- `device_events`
+- `notifications`
+- `push_tokens`
+- `audit_logs`
+
+Legacy compatibility tables retained because the backend still uses them:
+
+- `signs`
+- `events`
+
+The `signs` table is now a compatibility surface for the remaining sign/event service code. The operational source of truth for active hardware is `devices`.
+
+## Key enums
+
+- `org_role`: `owner`, `admin`, `installer`, `member`
+- `device_lifecycle_status`: `manufactured`, `unclaimed`, `claiming`, `active`, `lost`, `revoked`, `retired`
+- `device_operational_status`: `available`, `assistance_requested`, `assistance_in_progress`, `offline`, `error`, `training_ready`, `training_positive`, `training_negative`
+- `claim_status_type`: `unused`, `used`, `revoked`, `expired`
+- `accessible_parking_type`: `standard`, `van_accessible`, `temporary`, `reserved`
+- `sign_status`: legacy compatibility enum matching the remaining sign service
 
 ## Seeding
 
-Seed data for development is in `seeds/dev_data.sql`.
+`npm run seed` applies only `seeds/dev_data_v2.sql`. The v2 seed includes:
 
-### Running Seeds
-```bash
-npm run db:seed
-```
+- sample users and organizations
+- organization memberships with installer/admin/owner roles
+- sites and parking spaces
+- devices in multiple lifecycle states
+- installations and device events
 
-## Backup and Restore
-
-### Backup
-```bash
-docker exec mobile-stack-postgres pg_dump -U devuser mobile_stack_dev > backup.sql
-```
-
-### Restore
-```bash
-cat backup.sql | docker exec -i mobile-stack-postgres psql -U devuser -d mobile_stack_dev
-```
-
-## Security Notes
-
-⚠️ **Never commit production credentials!**
-- Development credentials are in `.env.example`
-- Production should use environment variables
-- Use strong passwords in production
-- Enable SSL for production connections
-
-## Troubleshooting
-
-### Cannot connect to database
-1. Ensure Docker is running: `docker ps`
-2. Check if container is healthy: `docker logs mobile-stack-postgres`
-3. Verify connection string in backend `.env`
-
-### Reset database
-```bash
-docker-compose down -v  # Remove volumes
-docker-compose up -d postgres
-npm run db:migrate
-npm run db:seed
-```
+Run the seed only after `npm run migrate` has completed successfully.

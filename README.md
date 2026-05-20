@@ -101,7 +101,7 @@ Do not reuse an old local `terraform/terraform.tfvars` from the VM deployment. O
 
 ### GitHub Actions apply via OIDC
 
-The repository includes `.github/workflows/terraform-apply.yml`, which builds the backend container image, pushes it to Azure Container Registry, and applies the Terraform stack on pushes to `main` that touch `backend/**`, `terraform/**`, or the workflow itself. It can also be started manually from `main`.
+The repository includes `.github/workflows/ci-cd.yml`, which builds the backend container image, runs the database migration against the Key Vault PostgreSQL connection string, and then applies the Terraform stack on pushes to `main` that touch `backend/**`, `database/**`, `terraform/**`, or the workflow itself. It can also be started manually from `main`.
 
 Before enabling it:
 
@@ -111,9 +111,9 @@ Before enabling it:
    - `Storage Blob Data Contributor` on the state storage account `deployboxsaprod` (or the `deploy-box-iac-storage` container) so Terraform can read and update the remote backend.
    - `AcrPush` on the Azure Container Registry `deployboxcrprod` so the workflow can push backend images.
    - `User Access Administrator` or `Role Based Access Control Administrator` on `deployboxcrprod` so Terraform can grant the Container App managed identity `AcrPull`.
-   - Key Vault secret read access on `hhhazardherokv` once the vault exists: either an access policy with `Get` and `List`, or the RBAC role `Key Vault Secrets User` if the vault uses RBAC mode.
+   - `User Access Administrator` or `Role Based Access Control Administrator` on `hhhazardherokv` so Terraform can grant the deployer identity and the Container App managed identity the `Key Vault Secrets User` role.
 3. Add repository variables `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, and `AZURE_SUBSCRIPTION_ID`.
-4. Seed the three runtime secrets in Azure Key Vault before the full stack can deploy. On a brand-new environment, the first apply creates the vault and access policies; after that, add the secrets and rerun apply.
+4. Seed the three runtime secrets in Azure Key Vault before the full stack can deploy. On a brand-new environment, the first apply creates the vault and RBAC assignments; after that, add the secrets and rerun apply.
 
 The workflow builds `backend/dockerfile` against the public `Deploy-Box/deploy-box-python` repo, pushes both `latest` and `${GITHUB_SHA}` tags to `deployboxcrprod.azurecr.io/hazard-hero-backend`, and passes the SHA-tagged image into Terraform so the deployed Container App revision matches the commit that triggered the workflow.
 
@@ -163,7 +163,7 @@ manufactured → unclaimed → claiming → active → lost / revoked / retired
 
 ### Database Schema
 
-The v2 schema (`database/schemas/shs_schema_v2.sql`) replaces the v1 signs-centric layout with a full device lifecycle model. Key tables:
+The v2 schema (`database/schemas/shs_schema_v2.sql`) is the canonical database schema. It introduces the device lifecycle model while retaining legacy `signs`/`events` compatibility objects for the remaining backend code paths that still depend on them. Key tables:
 
 - **devices** — hardware units with serial number, lifecycle status, hashed claim IDs
 - **organizations** — customer accounts with billing and subscription tiers

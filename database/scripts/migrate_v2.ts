@@ -85,6 +85,105 @@ function mapLegacyOperationalStatus(status: string): string {
     }
 }
 
+const COMPATIBILITY_SIGNS_SQL = `
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_type WHERE typname = 'sign_status'
+    ) THEN
+        CREATE TYPE sign_status AS ENUM (
+            'available',
+            'assistance_requested',
+            'assistance_in_progress',
+            'offline',
+            'error',
+            'training_ready',
+            'training_positive',
+            'training_negative'
+        );
+    END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS signs (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    organization_id UUID REFERENCES organizations(id) ON DELETE SET NULL,
+    name TEXT NOT NULL,
+    location TEXT NOT NULL,
+    status sign_status NOT NULL DEFAULT 'available',
+    last_updated TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_signs_status ON signs(status);
+CREATE INDEX IF NOT EXISTS idx_signs_last_updated ON signs(last_updated);
+CREATE INDEX IF NOT EXISTS idx_signs_organization ON signs(organization_id);
+`;
+
+async function syncExistingV2Compatibility(client: Client, hasSignsTable: boolean) {
+    const mode = hasSignsTable ? 'refreshing compatibility data' : 'adding missing compatibility objects';
+    console.log(`\n📋 Detected existing v2 schema — ${mode}...`);
+
+    await client.query('BEGIN');
+    try {
+        await client.query(COMPATIBILITY_SIGNS_SQL);
+
+        const { rows } = await client.query<{
+            inserted_signs: number;
+            orphaned_events: number;
+        }>(`
+            WITH inserted AS (
+                INSERT INTO signs (id, organization_id, name, location, status, last_updated)
+                SELECT
+                    d.id,
+                    d.organization_id,
+                    COALESCE(d.name, d.serial_number),
+                    CASE
+                        WHEN ps.label IS NOT NULL AND st.name IS NOT NULL THEN ps.label || ' @ ' || st.name
+                        WHEN ps.label IS NOT NULL THEN ps.label
+                        WHEN st.name IS NOT NULL THEN st.name
+                        ELSE d.serial_number
+                    END,
+                    CASE
+                        WHEN d.lifecycle_status = 'active' THEN d.operational_status::text::sign_status
+                        WHEN d.operational_status::text IN ('offline', 'error') THEN d.operational_status::text::sign_status
+                        ELSE 'offline'::sign_status
+                    END,
+                    COALESCE(d.updated_at, d.created_at, NOW())
+                FROM devices d
+                LEFT JOIN sites st ON st.id = d.current_site_id
+                LEFT JOIN parking_spaces ps ON ps.id = d.current_parking_space_id
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM signs legacy_sign WHERE legacy_sign.id = d.id
+                )
+                RETURNING 1
+            ),
+            orphaned AS (
+                SELECT COUNT(*)::int AS count
+                FROM events e
+                LEFT JOIN signs s ON s.id = e.sign_id
+                WHERE s.id IS NULL
+            )
+            SELECT
+                (SELECT COUNT(*)::int FROM inserted) AS inserted_signs,
+                (SELECT count FROM orphaned) AS orphaned_events
+        `);
+
+        await client.query('COMMIT');
+
+        const insertedSigns = Number(rows[0]?.inserted_signs ?? 0);
+        const orphanedEvents = Number(rows[0]?.orphaned_events ?? 0);
+
+        console.log(`✅ v2 compatibility sync complete (${insertedSigns} sign row(s) ensured)`);
+        if (orphanedEvents > 0) {
+            console.warn(
+                `⚠️  ${orphanedEvents} legacy event(s) still do not map to a compatibility sign row.`
+            );
+        }
+    } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+    }
+}
+
 // ── Main migration ──────────────────────────────────────────────────
 
 async function migrateToV2() {
@@ -98,17 +197,26 @@ async function migrateToV2() {
         await client.connect();
         console.log('✅ Connected to database');
 
-        // 1. Detect whether the v1 schema is active
+        // 1. Detect whether this is a fresh install, a true v1 schema, or
+        //    an already-v2 database that needs a non-destructive compatibility sync.
         const tableCheck = await client.query(`
-            SELECT EXISTS (
-                SELECT 1 FROM information_schema.tables
-                WHERE table_schema = 'public' AND table_name = 'signs'
-            ) AS "exists"
+            SELECT
+                EXISTS (
+                    SELECT 1 FROM information_schema.tables
+                    WHERE table_schema = 'public' AND table_name = 'signs'
+                ) AS "hasSigns",
+                EXISTS (
+                    SELECT 1 FROM information_schema.tables
+                    WHERE table_schema = 'public' AND table_name = 'devices'
+                ) AS "hasDevices"
         `);
-        const signsTableExists: boolean = tableCheck.rows[0].exists;
+        const hasSignsTable: boolean = tableCheck.rows[0].hasSigns;
+        const hasDevicesTable: boolean = tableCheck.rows[0].hasDevices;
 
-        if (signsTableExists) {
+        if (hasSignsTable && !hasDevicesTable) {
             await migrateFromV1(client);
+        } else if (hasDevicesTable) {
+            await syncExistingV2Compatibility(client, hasSignsTable);
         } else {
             await freshInstall(client);
         }
@@ -265,7 +373,25 @@ async function migrateFromV1(client: Client) {
         }
         console.log(`   ✅ Migrated ${migrated} sign(s) → device(s)`);
 
-        // 5. Re-insert events (legacy — sign_id column retained in v2 schema)
+        // 5. Re-insert compatibility signs for the remaining sign/event services
+        for (const sign of signs) {
+            await client.query(
+                `INSERT INTO signs (id, organization_id, name, location, status, last_updated)
+                 VALUES ($1, $2, $3, $4, $5::sign_status, $6)
+                 ON CONFLICT (id) DO NOTHING`,
+                [
+                    sign.id,
+                    sign.organization_id,
+                    sign.name,
+                    sign.location,
+                    sign.status,
+                    sign.last_updated,
+                ]
+            );
+        }
+        console.log(`   ✅ Restored ${signs.length} legacy sign(s) for compatibility`);
+
+        // 6. Re-insert events (legacy — sign_id column retained in v2 schema)
         for (const e of events) {
             await client.query(
                 `INSERT INTO events (id, sign_id, type, data, created_at, updated_at)
@@ -321,6 +447,7 @@ async function migrateFromV1(client: Client) {
         console.log(`   Organizations preserved:   ${orgs.length}`);
         console.log(`   Org members preserved:     ${orgMembers.length}`);
         console.log(`   Signs → Devices migrated:  ${migrated}`);
+        console.log(`   Signs restored:            ${signs.length}`);
         console.log(`   Legacy events preserved:   ${events.length}`);
         console.log(`   Notifications preserved:   ${notifications.length}`);
         console.log(`   Push tokens preserved:     ${pushTokens.length}`);
@@ -339,7 +466,7 @@ async function migrateFromV1(client: Client) {
 // ── Fresh install (no v1 data) ──────────────────────────────────────
 
 async function freshInstall(client: Client) {
-    console.log('\n📋 No signs table found — treating as fresh install.');
+    console.log('\n📋 No existing schema detected — treating as fresh install.');
     console.log('⏳ Applying v2 schema...');
 
     const schemaPath = path.join(__dirname, '../schemas/shs_schema_v2.sql');

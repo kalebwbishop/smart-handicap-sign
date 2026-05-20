@@ -5,9 +5,19 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "migrate": "ts-node scripts/migrate.ts",
+    "migrate": "ts-node scripts/migrate_v2.ts",
     "migrate:v2": "ts-node scripts/migrate_v2.ts",
     "seed": "ts-node scripts/seed.ts"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.11.10",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.2"
   },
   "keywords": [],
   "author": "",
