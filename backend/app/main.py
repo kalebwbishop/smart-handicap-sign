@@ -2,6 +2,7 @@ import os
 import ssl
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 # Bypass SSL verification for corporate proxy environments
 if os.environ.get("ENVIRONMENT") != "cloud":
@@ -21,7 +22,7 @@ if os.environ.get("ENVIRONMENT") != "cloud":
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from app.config.database import close_pool, get_pool
 from app.config.settings import get_settings
@@ -31,7 +32,6 @@ from app.middleware.error_handler import (
     generic_error_handler,
 )
 from app.config.auth import build_auth_router
-from app.routes.events import router as events_router
 from app.routes.notifications import router as notifications_router
 from app.routes.organizations import router as organizations_router
 from app.routes.inference import router as inference_router
@@ -73,6 +73,9 @@ app = FastAPI(
     lifespan=lifespan,
     redirect_slashes=False,
 )
+
+APP_DIR = Path(__file__).resolve().parent
+STATIC_DIR = APP_DIR / "static"
 
 # CORS
 app.add_middleware(
@@ -142,12 +145,16 @@ async def status():
     }
 
 
+@app.get("/mock-device", include_in_schema=False)
+async def mock_device_page():
+    return FileResponse(STATIC_DIR / "mock-device.html")
+
+
 # ── routes ───────────────────────────────────────────────────────────
 
 API_PREFIX = "/api/v1"
 auth_router = build_auth_router()
 app.include_router(auth_router, prefix=API_PREFIX)
-app.include_router(events_router, prefix=API_PREFIX)
 app.include_router(notifications_router, prefix=API_PREFIX)
 app.include_router(organizations_router, prefix=API_PREFIX)
 app.include_router(inference_router, prefix=API_PREFIX)

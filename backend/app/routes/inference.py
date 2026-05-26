@@ -32,11 +32,6 @@ _inference_history: deque = deque(maxlen=MAX_HISTORY)
 
 
 class ClassifyRequest(BaseModel):
-    sign_id: Optional[str] = Field(
-        default=None,
-        min_length=1,
-        description="(Deprecated) The UUID of the sign. Use serial_number instead.",
-    )
     serial_number: Optional[str] = Field(
         default=None,
         min_length=1,
@@ -168,7 +163,7 @@ async def classify(
     # ── Store in history ring buffer for debugging ──────────────────────
     _inference_history.append({
         "timestamp": time.time(),
-        "serial_number": payload.serial_number or payload.sign_id,
+        "serial_number": payload.serial_number,
         "samples": payload.samples,
         "label": result["label"],
         "confidence": result["confidence"],

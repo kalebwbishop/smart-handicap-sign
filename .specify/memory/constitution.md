@@ -188,18 +188,15 @@ PostgreSQL is the source of truth for persisted entities.
 
 Changes to persisted data MUST include the relevant schema or migration script changes, backend model/service updates, and seed/register script updates when development data is affected.
 
-The repository contains both `shs_schema.sql` and `shs_schema_v2.sql`. Every database plan MUST state whether it targets:
+The repository uses `shs_schema.sql` as the bootstrap entrypoint and `shs_schema_v2.sql` as the canonical schema content. Every database plan MUST state whether it targets:
 
-- the legacy signs model
-- the v2 device lifecycle model
-- both models
-- a migration path between them
-- cleanup/removal of legacy behavior
+- the canonical device lifecycle model
+- seed/register script compatibility
+- cleanup/removal of obsolete behavior
 
 Schema changes MUST include:
 
 - migration strategy
-- compatibility window
 - rollback or recovery plan
 - impact on existing data
 - seed/register script impact

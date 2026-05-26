@@ -30,8 +30,8 @@ async def _require_notification_ownership(notification_id: str, user_id: str) ->
 
 
 class NotificationCreate(BaseModel):
-    event_id: Optional[str] = Field(
-        None, description="Optional ID of the event that triggered this notification"
+    device_event_id: Optional[str] = Field(
+        None, description="Optional ID of the device event that triggered this notification"
     )
     title: str = Field(..., description="Notification title")
     body: str = Field(..., description="Notification body text")
@@ -51,7 +51,7 @@ class NotificationUpdate(BaseModel):
 
 class NotificationOut(BaseModel):
     id: str
-    event_id: Optional[str]
+    device_event_id: Optional[str]
     user_id: Optional[str] = None
     title: str
     body: str
@@ -71,7 +71,7 @@ async def create_notification(
     """Create a new notification for the current user."""
     try:
         result = await notification_service.create_notification(
-            event_id=notification.event_id,
+            device_event_id=notification.device_event_id,
             user_id=current_user.id,
             title=notification.title,
             body=notification.body,
@@ -91,7 +91,7 @@ async def create_notification(
 
 @router.get("", response_model=List[NotificationOut])
 async def list_notifications(
-    event_id: Optional[str] = Query(None, description="Filter by event ID"),
+    device_event_id: Optional[str] = Query(None, description="Filter by device event ID"),
     read: Optional[bool] = Query(None, description="Filter by read status"),
     after: Optional[datetime] = Query(None, description="Return notifications created after this date/time (ISO 8601)"),
     skip: int = Query(0, ge=0),
@@ -102,7 +102,7 @@ async def list_notifications(
     try:
         rows = await notification_service.list_notifications(
             user_id=current_user.id,
-            event_id=event_id,
+            device_event_id=device_event_id,
             read=read,
             after=after,
             skip=skip,

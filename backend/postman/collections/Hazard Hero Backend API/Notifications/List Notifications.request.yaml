@@ -5,7 +5,7 @@ description: >-
 
   Query params:
 
-  - `event_id`: Filter by event ID (optional)
+  - `device_event_id`: Filter by device event ID (optional)
 
   - `read`: Filter by read status (optional)
 

@@ -1,8 +1,6 @@
 -- Smart Handicap Sign — Database Schema v2
 -- Description: Canonical schema for device lifecycle, site management, and
---              installation tracking with WorkOS authentication. Legacy sign
---              compatibility objects are retained for the remaining backend
---              services that still query sign/event records directly.
+--              installation tracking with WorkOS authentication.
 -- Run: psql -f shs_schema_v2.sql
 
 
@@ -24,9 +22,7 @@ DROP TABLE IF EXISTS parking_spaces CASCADE;
 DROP TABLE IF EXISTS sites CASCADE;
 DROP TABLE IF EXISTS push_tokens CASCADE;
 DROP TABLE IF EXISTS notifications CASCADE;
-DROP TABLE IF EXISTS events CASCADE;
 DROP TABLE IF EXISTS devices CASCADE;
-DROP TABLE IF EXISTS signs CASCADE;
 DROP TABLE IF EXISTS organization_members CASCADE;
 DROP TABLE IF EXISTS organizations CASCADE;
 DROP TABLE IF EXISTS profiles CASCADE;
@@ -37,8 +33,6 @@ DROP TYPE IF EXISTS claim_status_type CASCADE;
 DROP TYPE IF EXISTS device_operational_status CASCADE;
 DROP TYPE IF EXISTS device_lifecycle_status CASCADE;
 DROP TYPE IF EXISTS org_role CASCADE;
-DROP TYPE IF EXISTS event_type CASCADE;
-DROP TYPE IF EXISTS sign_status CASCADE;
 
 
 -- ════════════════════════════════════════════════════════════════════
@@ -46,24 +40,6 @@ DROP TYPE IF EXISTS sign_status CASCADE;
 -- ════════════════════════════════════════════════════════════════════
 
 CREATE TYPE org_role AS ENUM ('owner', 'admin', 'installer', 'member');
-
-CREATE TYPE event_type AS ENUM (
-    'status_change',
-    'alert',
-    'maintenance',
-    'misuse'
-);
-
-CREATE TYPE sign_status AS ENUM (
-    'available',
-    'assistance_requested',
-    'assistance_in_progress',
-    'offline',
-    'error',
-    'training_ready',
-    'training_positive',
-    'training_negative'
-);
 
 CREATE TYPE device_lifecycle_status AS ENUM (
     'manufactured',
@@ -240,7 +216,7 @@ COMMENT ON TABLE  sites IS 'Physical locations (lots, garages, campuses) belongi
 COMMENT ON COLUMN sites.jurisdiction IS 'Local ADA / accessibility jurisdiction that governs this site';
 
 
--- ── Devices (replaces signs) ────────────────────────────────────────
+-- ── Devices ──────────────────────────────────────────────────────────
 
 CREATE TABLE devices (
     id                      UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -293,26 +269,6 @@ COMMENT ON COLUMN devices.public_key_fingerprint IS 'Fingerprint of the device''
 COMMENT ON COLUMN devices.certificate_id IS 'Reference to the device''s PKI certificate';
 COMMENT ON COLUMN devices.auth_token_hash IS 'SHA-256 hash of the per-device bearer token used for API authentication';
 COMMENT ON COLUMN devices.auth_token_salt IS 'Salt used when hashing the device bearer token';
-
-
--- ── Signs (legacy compatibility) ──────────────────────────────────────
-
-CREATE TABLE IF NOT EXISTS signs (
-    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    organization_id UUID REFERENCES organizations(id) ON DELETE SET NULL,
-    name            TEXT NOT NULL,
-    location        TEXT NOT NULL,
-    status          sign_status NOT NULL DEFAULT 'available',
-    last_updated    TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_signs_status       ON signs(status);
-CREATE INDEX idx_signs_last_updated ON signs(last_updated);
-CREATE INDEX idx_signs_organization ON signs(organization_id);
-
-COMMENT ON TABLE  signs IS 'Legacy compatibility table kept for sign/event services that have not yet moved to devices';
-COMMENT ON COLUMN signs.location IS 'Legacy freeform location string from the original signs model';
-COMMENT ON COLUMN signs.status IS 'Legacy sign runtime status used by the remaining sign/event code paths';
 
 
 -- ── Parking Spaces (new) ────────────────────────────────────────────
@@ -382,33 +338,7 @@ COMMENT ON COLUMN installations.installation_photos IS 'JSON array of photo URLs
 COMMENT ON COLUMN installations.activation_status IS 'Whether this installation is active, decommissioned, etc.';
 
 
--- ── Events (kept from v1 for backward compatibility) ────────────────
-
-CREATE TABLE IF NOT EXISTS events (
-    id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    sign_id    UUID NOT NULL,
-    type       event_type NOT NULL,
-    data       JSONB DEFAULT '{}'::jsonb,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_events_sign       ON events(sign_id);
-CREATE INDEX idx_events_type       ON events(type);
-CREATE INDEX idx_events_created_at ON events(created_at DESC);
-
-CREATE TRIGGER update_events_updated_at
-    BEFORE UPDATE ON events
-    FOR EACH ROW
-    EXECUTE FUNCTION update_updated_at_column();
-
-COMMENT ON TABLE  events IS 'Legacy sign events (status changes, alerts, maintenance, misuse). Retained for compatibility and notification history.';
-COMMENT ON COLUMN events.sign_id IS 'Legacy sign identifier used by the remaining sign/event service layer';
-COMMENT ON COLUMN events.type IS 'Category of the event';
-COMMENT ON COLUMN events.data IS 'Arbitrary JSON payload with event-specific details';
-
-
--- ── Device Events (new — replaces events for device telemetry) ──────
+-- ── Device Events ────────────────────────────────────────────────────
 
 CREATE TABLE device_events (
     id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -426,12 +356,11 @@ COMMENT ON COLUMN device_events.event_type IS 'Machine-readable event category (
 COMMENT ON COLUMN device_events.payload IS 'Arbitrary JSON payload with event-specific data';
 
 
--- ── Notifications (v2: added device_event_id) ───────────────────────
+-- ── Notifications ────────────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS notifications (
     id               UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id          UUID REFERENCES users(id) ON DELETE CASCADE,
-    event_id         UUID REFERENCES events(id) ON DELETE SET NULL,
     device_event_id  UUID REFERENCES device_events(id) ON DELETE SET NULL,
     title            TEXT NOT NULL,
     body             TEXT NOT NULL,
@@ -441,7 +370,6 @@ CREATE TABLE IF NOT EXISTS notifications (
 );
 
 CREATE INDEX idx_notifications_user        ON notifications(user_id);
-CREATE INDEX idx_notifications_event       ON notifications(event_id);
 CREATE INDEX idx_notifications_device_event ON notifications(device_event_id);
 CREATE INDEX idx_notifications_read        ON notifications(read);
 CREATE INDEX idx_notifications_created_at  ON notifications(created_at DESC);
@@ -452,9 +380,8 @@ CREATE TRIGGER update_notifications_updated_at
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at_column();
 
-COMMENT ON TABLE  notifications IS 'Per-user notifications, optionally tied to a legacy event or v2 device event';
+COMMENT ON TABLE  notifications IS 'Per-user notifications, optionally tied to a device event';
 COMMENT ON COLUMN notifications.user_id IS 'The user this notification belongs to';
-COMMENT ON COLUMN notifications.event_id IS 'Optional FK to legacy event that triggered this notification';
 COMMENT ON COLUMN notifications.device_event_id IS 'Optional FK to v2 device event that triggered this notification';
 COMMENT ON COLUMN notifications.read IS 'Whether the notification has been read';
 

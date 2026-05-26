@@ -81,15 +81,14 @@ docker compose up -d     # postgres, pgadmin, redis, backend, web
 - **Error handling:** Custom `AppError` class + generic exception handler middleware.
 - **Logging:** Structured logger with console + `logs/error.log` + `logs/combined.log` (JSON).
 - **ML inference:** `app/ai/` contains an embedded copy of WaveDetector — keep in sync with `ai/` root module.
-- **`optional_auth` dependency** for endpoints that work with or without auth (e.g., `/inference/classify`, `GET /signs/{sign_id}/status`).
-- **`redirect_slashes=False`** on the FastAPI app — trailing slashes will 404 (e.g., `/api/v1/signs/` fails, `/api/v1/signs` works).
+- **`optional_auth` dependency** for endpoints that work with or without auth (e.g., `/inference/classify`, `GET /api/v1/devices/{serial_number}/status`).
+- **`redirect_slashes=False`** on the FastAPI app — trailing slashes will 404 (e.g., `/api/v1/devices/serial/status/` fails if a route is defined without the slash).
 - **SSL bypass:** When `ENVIRONMENT != "cloud"`, SSL verification is disabled globally (stdlib `ssl` + `httpx` patched). This is for corporate proxy environments — don't add redundant `verify=False` flags.
 
 ### API routes (all under `/api/v1`)
 
 - `/auth/*` — WorkOS OAuth (login, callback, exchange, refresh, me, logout)
-- `/signs/*` — CRUD + acknowledge/resolve workflow + lightweight status polling (used by ESP32)
-- `/events/*` — Sign event log
+- `/devices/*` — device registration, claims, lifecycle, status polling, and device event history
 - `/notifications/*` — Push notification management
 - `/organizations/*` — Organization CRUD, member management, role-based access (owner/admin/member)
 - `/inference/classify` — POST 512-int signal → wave/non-wave classification (optional auth)
@@ -131,11 +130,11 @@ docker compose up -d     # postgres, pgadmin, redis, backend, web
 
 ## Database
 
-PostgreSQL 15 with `uuid-ossp`. UUID primary keys. Most tables have `created_at`/`updated_at` triggers, except `signs` which only has `last_updated`.
+PostgreSQL 15 with `uuid-ossp`. UUID primary keys. Most tables have `created_at`/`updated_at` triggers.
 
-Tables: `users`, `profiles`, `organizations`, `organization_members` (many-to-many users↔orgs with `org_role` enum: owner/admin/member), `signs` (with status enum), `events` (with type enum + JSONB data), `notifications`
+Tables: `users`, `profiles`, `organizations`, `organization_members`, `devices`, `sites`, `parking_spaces`, `installations`, `device_events`, `notifications`, `push_tokens`, `audit_logs`
 
-Custom enums: `sign_status` (8 values), `event_type` (4 values)
+Custom enums: `org_role`, `device_lifecycle_status`, `device_operational_status`, `claim_status_type`, `accessible_parking_type`
 
 Schema auto-loaded by Docker entrypoint from `database/schemas/shs_schema.sql`.
 

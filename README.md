@@ -2,6 +2,12 @@
 
 An IoT accessibility system for smart handicap parking sign management, built with React Native, FastAPI, PostgreSQL, WorkOS, and Azure.
 
+## Status Flow
+
+![Hazard Hero Status Flow](./diagrams/status-flow.png)
+
+This state diagram shows the operational status flow for a sign or device, including the main assistance loop plus offline, error, and training states.
+
 ## Features
 
 - 🔐 **Authentication**: WorkOS OAuth with multiple providers
@@ -163,9 +169,9 @@ manufactured → unclaimed → claiming → active → lost / revoked / retired
 
 ### Database Schema
 
-The v2 schema (`database/schemas/shs_schema_v2.sql`) is the canonical database schema. It introduces the device lifecycle model while retaining legacy `signs`/`events` compatibility objects for the remaining backend code paths that still depend on them. Key tables:
+The v2 schema (`database/schemas/shs_schema_v2.sql`) is the canonical database schema. It uses the device lifecycle model as the only active hardware model. Key tables:
 
-- **devices** — hardware units with serial number, lifecycle status, hashed claim IDs
+- **devices** — hardware units with serial number, lifecycle status, and hashed auth/claim material
 - **organizations** — customer accounts with billing and subscription tiers
 - **organization_members** — role-based membership (owner, admin, installer, member)
 - **sites** — physical locations (lots, garages) belonging to an organization
@@ -197,8 +203,8 @@ smart-handicap-sign/
 │   └── package.json
 ├── database/
 │   └── schemas/
-│       ├── shs_schema.sql      # v1 schema (legacy)
-│       └── shs_schema_v2.sql   # v2 schema (device lifecycle)
+│       ├── shs_schema.sql      # Bootstrap entrypoint
+│       └── shs_schema_v2.sql   # Canonical device lifecycle schema
 ├── docker-compose.yml
 ├── DESIGN.md
 ├── WORKOS_SETUP.md
@@ -218,6 +224,14 @@ smart-handicap-sign/
 - `PUT /api/v1/profiles/:userId` - Update profile
 - `GET /api/v1/profiles/:userId/followers` - List followers
 - `POST /api/v1/profiles/:userId/follow` - Follow user
+
+## Mock Device Console
+
+When the backend is running, open `http://localhost:8000/mock-device` to use the standalone device mock page. It can:
+
+- generate idempotent SQL for a `devices` row using a client-side token hash
+- poll `GET /api/v1/devices/{serial}/status`
+- send 512-sample runtime batches to `POST /api/v1/inference/classify`
 
 ### Posts
 - `POST /api/v1/posts` - Create post

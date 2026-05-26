@@ -1,8 +1,0 @@
-$kind: http-request
-description: |-
-  Retrieve all notifications linked to a specific event.
-
-  Auth: Bearer `{{access_token}}`
-url: "{{base_url}}/api/v1/events/{{event_id}}/notifications"
-method: GET
-order: 4000

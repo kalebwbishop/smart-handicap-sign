@@ -37,8 +37,7 @@ variables:
   device_token: ""
   claim_id: ""
   user_id: ""
-  sign_id: ""
-  event_id: ""
+  device_event_id: ""
   notification_id: ""
   device_id: ""
   expo_push_token: ExponentPushToken[example-token]

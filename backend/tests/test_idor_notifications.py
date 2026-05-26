@@ -19,7 +19,7 @@ _NOW = datetime.now(timezone.utc).isoformat()
 
 NOTIF_ALICE = {
     "id": "notif-1",
-    "event_id": "evt-1",
+    "device_event_id": "dev-evt-1",
     "user_id": "user-alice",
     "title": "Alert",
     "body": "Something happened",
@@ -30,7 +30,7 @@ NOTIF_ALICE = {
 
 NOTIF_BOB = {
     "id": "notif-2",
-    "event_id": "evt-2",
+    "device_event_id": "dev-evt-2",
     "user_id": "user-bob",
     "title": "Bob's Alert",
     "body": "Bob's notification",

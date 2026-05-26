@@ -1,8 +1,8 @@
 """
 Notification service – all notification-related database operations.
 
-This module is imported by other services (e.g. event_service) so that
-cross-domain logic like "create a notification after an event" stays
+This module is imported by other services (e.g. device_service) so that
+cross-domain logic like "create a notification after a device event" stays
 decoupled from the HTTP layer.
 """
 
@@ -24,7 +24,6 @@ def _row_to_dict(row) -> dict:
     """Normalise a database row into a plain dict with string IDs."""
     d = dict(row)
     d["id"] = str(d["id"])
-    d["event_id"] = str(d["event_id"]) if d.get("event_id") else None
     d["device_event_id"] = str(d["device_event_id"]) if d.get("device_event_id") else None
     d["user_id"] = str(d["user_id"]) if d.get("user_id") else None
     return d
@@ -35,7 +34,6 @@ def _row_to_dict(row) -> dict:
 
 async def create_notification(
     *,
-    event_id: Optional[str] = None,
     device_event_id: Optional[str] = None,
     user_id: Optional[str] = None,
     title: str,
@@ -49,17 +47,10 @@ async def create_notification(
     Accepts an optional *pool* so callers that already hold a connection /
     transaction can pass it in, avoiding an extra pool acquisition.
 
-    Either *event_id* (legacy v1 events) or *device_event_id* (v2 device
-    events) may be provided to link the notification to the originating event.
+    *device_event_id* may be provided to link the notification to the
+    originating device event.
     """
     pool = pool or await get_pool()
-
-    if event_id is not None:
-        event_check = await pool.fetchrow(
-            "SELECT id FROM events WHERE id = $1", event_id
-        )
-        if not event_check:
-            raise ValueError(f"Event {event_id} not found")
 
     if device_event_id is not None:
         event_check = await pool.fetchrow(
@@ -69,12 +60,12 @@ async def create_notification(
             raise ValueError(f"Device event {device_event_id} not found")
 
     query = """
-        INSERT INTO notifications (event_id, device_event_id, user_id, title, body, read)
-        VALUES ($1, $2::uuid, $3, $4, $5, $6)
-        RETURNING id, event_id, device_event_id, user_id, title, body, read,
+        INSERT INTO notifications (device_event_id, user_id, title, body, read)
+        VALUES ($1::uuid, $2, $3, $4, $5)
+        RETURNING id, device_event_id, user_id, title, body, read,
                   created_at, updated_at
     """
-    row = await pool.fetchrow(query, event_id, device_event_id, user_id, title, body, read)
+    row = await pool.fetchrow(query, device_event_id, user_id, title, body, read)
 
     if not row:
         raise RuntimeError("Failed to create notification")
@@ -94,7 +85,7 @@ async def create_notification(
                 title,
                 body,
                 data={
-                    "event_id": event_id,
+                    "device_event_id": device_event_id,
                     "notification_id": notification["id"],
                 },
             )
@@ -107,7 +98,6 @@ async def create_notification(
 async def create_notifications_for_org(
     *,
     org_id: str,
-    event_id: Optional[str] = None,
     device_event_id: Optional[str] = None,
     title: str,
     body: str,
@@ -124,7 +114,6 @@ async def create_notifications_for_org(
     notifications = []
     for member in member_rows:
         notif = await create_notification(
-            event_id=event_id,
             device_event_id=device_event_id,
             user_id=str(member["user_id"]),
             title=title,
@@ -135,8 +124,8 @@ async def create_notifications_for_org(
         notifications.append(notif)
 
     logger.info(
-        "✅ Created %d notifications for org %s (event %s)",
-        len(notifications), org_id, event_id,
+        "✅ Created %d notifications for org %s (device event %s)",
+        len(notifications), org_id, device_event_id,
     )
 
     # Fire-and-forget push notifications for all org members at once
@@ -150,7 +139,7 @@ async def create_notifications_for_org(
             tokens,
             title,
             body,
-            data={"event_id": event_id, "org_id": org_id},
+            data={"device_event_id": device_event_id, "org_id": org_id},
         )
     except Exception as e:
         logger.error("Push send failed for org %s: %s", org_id, e)
@@ -164,7 +153,7 @@ async def create_notifications_for_org(
 async def list_notifications(
     *,
     user_id: Optional[str] = None,
-    event_id: Optional[str] = None,
+    device_event_id: Optional[str] = None,
     read: Optional[bool] = None,
     after: Optional[datetime] = None,
     skip: int = 0,
@@ -181,9 +170,9 @@ async def list_notifications(
         params.append(user_id)
         idx += 1
 
-    if event_id is not None:
-        conditions.append(f"event_id = ${idx}")
-        params.append(event_id)
+    if device_event_id is not None:
+        conditions.append(f"device_event_id = ${idx}::uuid")
+        params.append(device_event_id)
         idx += 1
 
     if read is not None:
@@ -199,7 +188,7 @@ async def list_notifications(
     where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
     query = f"""
-        SELECT id, event_id, user_id, title, body, read,
+        SELECT id, device_event_id, user_id, title, body, read,
                created_at, updated_at
         FROM notifications
         {where}
@@ -238,7 +227,7 @@ async def get_notification(notification_id: str) -> Optional[dict]:
     pool = await get_pool()
     row = await pool.fetchrow(
         """
-        SELECT id, event_id, user_id, title, body, read,
+        SELECT id, device_event_id, user_id, title, body, read,
                created_at, updated_at
         FROM notifications
         WHERE id = $1
@@ -288,7 +277,7 @@ async def update_notification(
     if not updates:
         row = await pool.fetchrow(
             """
-            SELECT id, event_id, user_id, title, body, read,
+            SELECT id, device_event_id, user_id, title, body, read,
                    created_at, updated_at
             FROM notifications WHERE id = $1
             """,
@@ -303,7 +292,7 @@ async def update_notification(
         UPDATE notifications
         SET {', '.join(updates)}
         WHERE id = ${idx}
-        RETURNING id, event_id, user_id, title, body, read,
+        RETURNING id, device_event_id, user_id, title, body, read,
                   created_at, updated_at
     """
     row = await pool.fetchrow(query, *params)
@@ -324,7 +313,7 @@ async def mark_as_read(notification_id: str) -> Optional[dict]:
         UPDATE notifications
         SET read = TRUE, updated_at = NOW()
         WHERE id = $1
-        RETURNING id, event_id, user_id, title, body, read,
+        RETURNING id, device_event_id, user_id, title, body, read,
                   created_at, updated_at
         """,
         notification_id,

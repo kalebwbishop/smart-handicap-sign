@@ -11,7 +11,7 @@ body:
   type: json
   content: |-
     {
-      "event_id": "{{event_id}}",
+      "device_event_id": "{{device_event_id}}",
       "title": "Assistance Requested",
       "body": "Space A12 needs assistance.",
       "read": false

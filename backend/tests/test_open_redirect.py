@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import json
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from unittest.mock import patch, AsyncMock
@@ -35,6 +36,7 @@ class TestAllowedRedirects:
     @pytest.mark.parametrize(
         "uri",
         [
+            "hazardhero://callback",
             "smartsign://callback",
             "exp://192.168.1.5:8081/--/auth",
             "http://localhost:8081/auth",
@@ -51,6 +53,21 @@ class TestAllowedRedirects:
         assert resp.status_code == 302
         assert uri in resp.headers["location"]
         assert "code=test-code" in resp.headers["location"]
+
+    def test_login_returns_authorization_url_for_allowed_redirect(self, client_anon):
+        redirect_uri = "exp://192.168.1.5:8081/--/callback"
+
+        resp = client_anon.get(
+            "/api/v1/auth/login",
+            params={"redirect_uri": redirect_uri},
+        )
+
+        assert resp.status_code == 200
+
+        params = parse_qs(urlparse(resp.json()["authorizationUrl"]).query)
+        assert params["provider"] == ["authkit"]
+        assert params["redirect_uri"] == [get_auth_config().workos_redirect_uri]
+        assert params["state"] == [_encode_state(redirect_uri)]
 
 
 # ── blocked redirects ────────────────────────────────────────────────
