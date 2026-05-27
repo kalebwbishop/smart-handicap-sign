@@ -96,7 +96,7 @@ function getPilotStatus(device: Device) {
 export default function HomeScreen() {
     const insets = useSafeAreaInsets();
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-    const { user, logout } = useAuthStore();
+    const { user, logout, ensureFreshSession } = useAuthStore();
 
     const [menuVisible, setMenuVisible] = useState(false);
     const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -118,6 +118,7 @@ export default function HomeScreen() {
         setEventsLoading(true);
 
         try {
+            await ensureFreshSession();
             const devices = await devicesAPI.list();
             if (devices.length === 0) {
                 setDevice(null);
@@ -139,7 +140,7 @@ export default function HomeScreen() {
             setDeviceLoading(false);
             setEventsLoading(false);
         }
-    }, []);
+    }, [ensureFreshSession]);
 
     useEffect(() => {
         fetchData();
@@ -164,6 +165,7 @@ export default function HomeScreen() {
 
         setDeviceActionLoading(true);
         try {
+            await ensureFreshSession();
             const updated = await devicesAPI.acknowledge(device.serial_number);
             setDevice(updated);
             const deviceEvents = await devicesAPI.getEvents(device.serial_number);
@@ -173,13 +175,14 @@ export default function HomeScreen() {
         } finally {
             setDeviceActionLoading(false);
         }
-    }, [device]);
+    }, [device, ensureFreshSession]);
 
     const handleResolveRequest = useCallback(async () => {
         if (!device) return;
 
         setDeviceActionLoading(true);
         try {
+            await ensureFreshSession();
             const updated = await devicesAPI.resolve(device.serial_number);
             setDevice(updated);
             const deviceEvents = await devicesAPI.getEvents(device.serial_number);
@@ -189,7 +192,7 @@ export default function HomeScreen() {
         } finally {
             setDeviceActionLoading(false);
         }
-    }, [device]);
+    }, [device, ensureFreshSession]);
 
     const handleLogout = useCallback(async () => {
         setMenuVisible(false);

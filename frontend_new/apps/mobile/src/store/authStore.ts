@@ -24,10 +24,35 @@ interface AuthState {
     setTokens: (token: string, refreshToken: string) => Promise<void>;
     logout: () => Promise<void>;
     restoreSession: () => Promise<void>;
+    ensureFreshSession: () => Promise<void>;
     handleSessionExpired: () => void;
 }
 
 let lastExchangedCode: string | null = null;
+let refreshInFlight: Promise<void> | null = null;
+
+function getTokenExpiryMs(token: string | null): number | null {
+    if (!token) return null;
+
+    try {
+        const [, payload] = token.split('.');
+        if (!payload) return null;
+
+        const normalized = payload.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=');
+        const decoded = JSON.parse(globalThis.atob(padded));
+        return typeof decoded.exp === 'number' ? decoded.exp * 1000 : null;
+    } catch (error) {
+        console.warn('[Auth] Failed to decode token expiry:', error);
+        return null;
+    }
+}
+
+function isTokenFresh(token: string | null): boolean {
+    const expiryMs = getTokenExpiryMs(token);
+    if (!expiryMs) return false;
+    return expiryMs - Date.now() > 60_000;
+}
 
 export const useAuthStore = create<AuthState>((set, get) => ({
     user: null,
@@ -189,6 +214,47 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             await tokenStorage.clear();
             set({ user: null, token: null, refreshToken: null, isAuthenticated: false, isLoading: false });
             console.log('[Auth] Cleared auth state after failure');
+        }
+    },
+
+    ensureFreshSession: async () => {
+        if (refreshInFlight) {
+            await refreshInFlight;
+            return;
+        }
+
+        const currentAccessToken = await tokenStorage.getAccessToken();
+        if (isTokenFresh(currentAccessToken)) {
+            return;
+        }
+
+        refreshInFlight = (async () => {
+            const storedRefreshToken = await tokenStorage.getRefreshToken();
+            if (!storedRefreshToken) {
+                get().handleSessionExpired();
+                throw new Error('No refresh token available');
+            }
+
+            const tokens = await apiClient_refresh(storedRefreshToken);
+            await tokenStorage.setAccessToken(tokens.accessToken);
+            if (tokens.refreshToken) {
+                await tokenStorage.setRefreshToken(tokens.refreshToken);
+            }
+
+            set((state) => ({
+                token: tokens.accessToken,
+                refreshToken: tokens.refreshToken ?? state.refreshToken ?? storedRefreshToken,
+            }));
+        })();
+
+        try {
+            await refreshInFlight;
+        } catch (error) {
+            console.error('[Auth] ensureFreshSession failed:', error);
+            get().handleSessionExpired();
+            throw error;
+        } finally {
+            refreshInFlight = null;
         }
     },
 
