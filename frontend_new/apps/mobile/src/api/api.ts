@@ -3,10 +3,5 @@ import apiClient from "./client";
 
 export const {
   authAPI,
-  organizationAPI,
-  notificationAPI,
-  pushTokenAPI,
   devicesAPI,
-  deviceClaimsAPI,
-  sitesAPI,
 } = createApiServices(apiClient);

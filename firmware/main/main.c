@@ -12,7 +12,6 @@
 #include "https_client.h"
 #include "led_driver.h"
 #include "nvs_storage.h"
-#include "ota_update.h"
 #include "provisioning_server.h"
 #include "wifi_manager.h"
 
@@ -201,7 +200,6 @@ void app_main(void)
     char serial_number[NVS_SERIAL_NUMBER_MAX_LEN + 1] = {0};
     char wifi_ssid[NVS_WIFI_SSID_MAX_LEN + 1] = {0};
     char wifi_password[NVS_WIFI_PASSWORD_MAX_LEN + 1] = {0};
-    bool ota_validation_pending = false;
     int reconnect_failures = 0;
 
     ESP_LOGI(TAG, "Hazard Hero firmware starting");
@@ -215,12 +213,6 @@ void app_main(void)
     if (err != ESP_OK) {
         fatal_restart("Failed to initialize LED driver", err);
     }
-
-    err = ota_init();
-    if (err != ESP_OK) {
-        fatal_restart("Failed to initialize OTA subsystem", err);
-    }
-    ota_validation_pending = ota_is_first_boot();
 
     err = load_device_identity(serial_number, sizeof(serial_number));
     if (err != ESP_OK) {
@@ -285,14 +277,6 @@ void app_main(void)
                 vTaskDelay(pdMS_TO_TICKS(NETWORK_STABILITY_DELAY_MS));
             }
             continue;
-        }
-
-        if (ota_validation_pending) {
-            err = ota_mark_valid();
-            if (err != ESP_OK) {
-                fatal_restart("Failed to mark OTA image valid after connectivity check", err);
-            }
-            ota_validation_pending = false;
         }
 
         reconnect_failures = 0;

@@ -1,128 +1,98 @@
 # Firmware Hardware Test Plan
 
-## Scope
-This plan validates the ESP-IDF firmware integration on real ESP32 hardware when local flashing is available.
+This plan validates the **single pilot sign** on real ESP32 hardware.
 
-## Pre-flash Checklist
-1. Verify ESP-IDF toolchain version matches project requirements and `idf.py --version` succeeds.
-2. Confirm target is the expected ESP32 board and USB serial port is stable.
-3. Review `firmware\partitions.csv` and confirm dual OTA slots plus `otadata` fit the target flash size.
-4. Confirm `firmware\version.txt` matches the intended release version.
-5. Set the backend URL build cache value (`HAZARD_HERO_BACKEND_URL`) to the correct environment endpoint.
-6. Verify `server_certs\ca_cert.pem` matches the backend certificate chain.
-7. Erase or inspect flash intentionally; do not reuse stale credentials or OTA metadata by accident.
-8. Record baseline free heap immediately after boot for comparison.
+## Pre-flash checklist
 
-## Basic Functionality Tests
+1. Verify ESP-IDF is installed and `idf.py --version` succeeds.
+2. Confirm the expected ESP32 board and serial port.
+3. Confirm `firmware\version.txt` matches the intended pilot build.
+4. Set `HAZARD_HERO_BACKEND_URL` to the pilot backend.
+5. Verify `server_certs\ca_cert.pem` matches the backend certificate chain.
+6. Decide whether Wi-Fi credentials will be preloaded or entered through provisioning.
+7. Record baseline free heap after boot if memory profiling is in scope.
 
-### 1. Boot and LED Patterns
+## Basic functionality tests
+
+### 1. Boot and LED patterns
+
 - Flash the device and reboot.
-- Expected: boot logs show NVS init, OTA init, WiFi manager init, ADC init, HTTPS client init.
-- Expected: LED enters `available` pattern after initialization.
-- Force each backend status (`available`, `assistance_requested`, `assistance_in_progress`, `offline`, `error`) and verify LED pattern matches the design.
+- Expected: boot logs show NVS, Wi-Fi, ADC, and HTTPS client initialization.
+- Expected: LED reaches the `available` pattern after successful startup.
+- Force backend states (`available`, `assistance_requested`, `assistance_in_progress`, `offline`, `error`) and verify LED behavior.
 
-### 2. Saved WiFi Connect
-- Preload valid credentials in NVS.
+### 2. Saved Wi-Fi connect
+
+- Preload valid Wi-Fi credentials in NVS.
 - Reboot the board.
 - Expected: station connects without entering AP mode.
-- Expected: status polling begins within a few seconds of boot.
+- Expected: status polling starts within a few seconds.
 
-### 3. AP Provisioning Mode
-- Clear WiFi credentials from NVS and reboot.
-- Expected: device starts SoftAP with `SmartSign-XXXX` SSID.
-- Query `http://192.168.4.1/status` and verify `ap_active=true`.
-- Expected: `/status` does not include Wi-Fi password, auth token, setup/claim code, verifier hash, or verifier salt.
-- Query `http://192.168.4.1/scan` and verify nearby SSIDs are returned and sorted reasonably.
-- POST `/configure` without `claim_id` or `setup_code`; expected: `400`, no Wi-Fi credential write.
-- POST `/configure` with both `claim_id` and `setup_code`; expected: `400`, no Wi-Fi credential write.
-- POST `/configure` with an invalid code; expected: generic `401` or `403`, no Wi-Fi credential write.
-- POST valid credentials plus exactly one valid `claim_id` or `setup_code` and confirm the board reboots.
-- Expected after reboot: station connects successfully using saved credentials.
-- Expected: success and error responses never include Wi-Fi password, auth token, setup/claim code, verifier hash, or verifier salt.
+### 3. AP provisioning mode
 
-### 3a. Provisioning Abuse And Accessibility Validation
-- Submit 5 invalid setup/claim codes in the current boot session.
-- Expected: `/configure` returns `429` for further credential-write attempts for 5 minutes.
-- Expected: no Wi-Fi credentials are written during lockout.
-- Provision revoked or expired verifier metadata, then submit the formerly valid code.
-- Expected: generic invalid-code response and no Wi-Fi credential write.
-- After lockout expires, submit a still-active valid code for Wi-Fi reconfiguration.
-- Expected: credentials save successfully unless verifier metadata has been revoked or expired.
-- In the frontend setup flows, verify setup/claim code labels, hints, disabled/loading roles or states, screen-reader error announcement, focus movement to invalid fields, and non-color-only error/success indicators.
+- Clear Wi-Fi credentials from NVS and reboot.
+- Expected: device starts SoftAP with `SmartSign-XXXX`.
+- Query `http://192.168.4.1/status` and verify AP mode is active.
+- Query `http://192.168.4.1/scan` and verify nearby networks are returned.
+- POST `/configure` without `claim_id` or `setup_code`; expected: `400`, no Wi-Fi write.
+- POST `/configure` with both `claim_id` and `setup_code`; expected: `400`, no Wi-Fi write.
+- POST invalid setup data; expected: generic auth failure, no Wi-Fi write.
+- POST valid Wi-Fi credentials plus exactly one valid verifier; expected: board reboots and joins Wi-Fi.
 
-### 3b. Wi-Fi-Only Field Reset
-- Preload serial number, auth token, setup/claim verifier material, and Wi-Fi credentials in NVS.
-- Invoke the installer-accessible field reset path.
-- Expected: `wifi.wifi_ssid` and `wifi.wifi_pass` are cleared.
-- Expected: `device.serial`, `device.auth_token`, setup/claim verifier hash, setup/claim verifier salt, and verifier metadata remain readable.
+### 4. Identity readiness
 
-### 4. Identity Recovery
-- Erase NVS, then boot.
-- Expected: normal runtime is blocked because serial number and auth token are missing.
-- Expected: firmware enters a recoverable setup/error path and does not generate a production identity from the MAC address.
-- Restore serial number, auth token, and setup/claim verifier material with manufacturing/service tooling before runtime validation.
+- Verify the board has a valid auth token in NVS and a usable serial number.
+- Expected: status polling works against the pilot backend.
+- Expected: if the serial number is missing, firmware regenerates one from the MAC address and stores it.
+- Expected: missing auth token blocks normal runtime until restored.
 
-## Integration Tests
+## Integration tests
 
-### 1. Status Polling
+### 1. Status polling
+
 - With backend reachable, observe repeated `GET /devices/{serial}/status` calls.
-- Expected: Authorization header is present.
-- Expected: unexpected HTTP responses do not crash the device and trigger reconnect handling when needed.
+- Expected: unexpected HTTP responses do not crash the device.
+- Expected: reconnect handling runs when networking fails.
 
-### 2. ADC Sampling and Classification
-- Put the backend into `available` status.
-- Capture logs before and after `adc_sampler_collect_batch()`.
-- Expected: 512 samples are collected successfully and `POST /inference/classify` returns a parsed label/confidence.
-- Expected: ADC read failures are logged and the firmware remains responsive.
+### 2. ADC sampling and classification
 
-### 3. LED + Backend State Integration
-- Simulate backend transitions through all supported statuses.
-- Expected: polled status string maps to the correct LED pattern every time.
-- Expected: unknown status strings fall back to `offline` behavior without crashing.
+- Put the backend into `available`.
+- Observe logs before and after `adc_sampler_collect_batch()`.
+- Expected: 512 samples are collected and `POST /inference/classify` succeeds.
+- Expected: ADC failures are logged and the device remains responsive.
 
-### 4. WiFi Drop During HTTPS Request
-- Disconnect the AP or jam the network during status poll and classify requests.
-- Expected: HTTPS request fails cleanly, error is logged, and reconnect logic retries.
-- Expected: after reconnect, the device waits for network stabilization and resumes polling.
+### 3. LED and backend state integration
 
-## Memory Profiling Procedure
-1. Add temporary log points using `heap_caps_get_free_size(MALLOC_CAP_8BIT)` at these stages:
-   - boot start
-   - after NVS + LED init
-   - after WiFi connect
-   - after HTTPS client init
-   - after one status poll
-   - after one classify request
-2. Record both free heap and largest free block when possible.
-3. Repeat while AP provisioning is active and while STA mode is active.
-4. Compare repeated classify cycles for memory drift.
-5. Target: **more than 150 KB free heap after WiFi + HTTPS initialization**.
+- Simulate backend transitions through supported statuses.
+- Expected: each status maps to the intended LED pattern.
+- Expected: unknown status strings fail closed without crashing.
 
-## Stress Test Procedure (24h)
-1. Run the board for 24 hours against a stable backend.
-2. Keep periodic status polling active the entire time.
-3. Inject repeated classify cycles at normal cadence.
-4. Force at least three WiFi outages during the run.
-5. Record heap snapshots every hour.
-6. Expected: no watchdog reset, no reboot loop, no steadily decreasing heap, and successful recovery after each outage.
+### 4. Wi-Fi drop during HTTPS request
 
-## OTA Test Procedure
-1. Flash a known-good base image in `ota_0`.
-2. Publish a newer signed firmware image to the OTA server.
-3. Trigger OTA manually or through the planned update path.
-4. Reboot into the new slot.
-5. Before first connectivity, verify the image remains pending verification.
-6. After the first successful backend connectivity check, verify `ota_mark_valid()` is called and rollback is cancelled.
-7. Negative test: block backend connectivity after OTA boot and confirm rollback behavior matches policy.
+- Interrupt network access during status poll and classify requests.
+- Expected: request fails cleanly, reconnect logic retries, and the device resumes after connectivity returns.
 
-## Failure Injection Checks
-- Corrupt or erase NVS and verify the device either reprovisions WiFi or regenerates identity safely.
-- Return malformed JSON from the backend and verify parse errors are logged without memory leaks or crashes.
-- Force ADC read errors and verify the device enters error indication but continues running.
-- Return non-200 responses from status and classify endpoints and verify logs plus retry behavior.
+## Stress procedure
 
-## Expected Memory Budget
-- Boot + core services: leave ample margin for WiFi startup.
-- After WiFi STA connect + HTTPS client init: **>150 KB free heap target**.
-- During classify request assembly and response parsing: no sustained downward trend after repeated cycles.
-- During AP provisioning: enough headroom to serve `/status`, `/scan`, and `/configure` without allocation failures.
+1. Run the board against a stable backend for 24 hours.
+2. Keep status polling active throughout.
+3. Trigger repeated classify cycles at normal cadence.
+4. Force at least three Wi-Fi outages during the run.
+5. Expected: no watchdog reset, no reboot loop, and successful recovery after each outage.
+
+## Failure injection checks
+
+- Corrupt or erase Wi-Fi credentials and verify the device enters provisioning mode.
+- Return malformed JSON from the backend and verify parse errors do not crash the device.
+- Force ADC read errors and verify the device signals error but keeps running.
+- Return non-200 responses from status and classify endpoints and verify retry behavior.
+
+## Pilot exit checks
+
+Before launch, confirm:
+
+- the sign can stay connected at the install location
+- the sign only classifies when status is `available`
+- a real visitor wave produces `assistance_requested`
+- the operator can acknowledge and resolve the request
+- the device recovers from temporary Wi-Fi or backend interruptions

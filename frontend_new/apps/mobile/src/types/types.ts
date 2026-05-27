@@ -9,5 +9,4 @@ export type {
   OrgRole,
   Organization,
   OrgMember,
-  SignNotification,
 } from "@hazard-hero/shared";

@@ -11,7 +11,7 @@ import hashlib
 import hmac
 from typing import Optional
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Header, HTTPException, status
 from pydantic import BaseModel
 
 from app.config.database import get_pool
@@ -19,28 +19,17 @@ from app.utils.logger import logger
 
 
 class AuthenticatedDevice(BaseModel):
-    """Resolved device identity after successful auth."""
     id: str
     serial_number: str
-    organization_id: Optional[str] = None
 
 
 def _hash_token(token: str, salt: str) -> str:
-    """Hash a device token with SHA-256 using the stored salt."""
     return hashlib.sha256(f"{salt}{token}".encode()).hexdigest()
 
 
 async def get_authenticated_device(
     authorization: Optional[str] = Header(None),
 ) -> AuthenticatedDevice:
-    """FastAPI dependency that authenticates a device via bearer token.
-
-    Expects: ``Authorization: Bearer <serial>:<token>``
-
-    The serial number identifies which device row to look up, and the
-    token is verified against the stored hash using constant-time
-    comparison.
-    """
     if not authorization:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -66,8 +55,7 @@ async def get_authenticated_device(
     pool = await get_pool()
     row = await pool.fetchrow(
         """
-        SELECT id, serial_number, organization_id,
-               auth_token_hash, auth_token_salt
+        SELECT id, serial_number, auth_token_hash, auth_token_salt
         FROM devices
         WHERE serial_number = $1
         """,
@@ -102,5 +90,4 @@ async def get_authenticated_device(
     return AuthenticatedDevice(
         id=str(row["id"]),
         serial_number=row["serial_number"],
-        organization_id=str(row["organization_id"]) if row["organization_id"] else None,
     )

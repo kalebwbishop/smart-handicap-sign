@@ -1,191 +1,157 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-    View,
-    Text,
-    ScrollView,
-    Pressable,
-    StyleSheet,
     ActivityIndicator,
-    Platform,
-    RefreshControl,
     Modal,
-    Alert,
+    Pressable,
+    RefreshControl,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { devicesAPI } from '@/api/api';
 import { useAuthStore } from '@/store/authStore';
-import { notificationAPI } from '@/api/api';
-import { devicesAPI } from '@/api/devices';
-import { SignNotification } from '@/types/types';
-import { Device, DeviceLifecycleStatus, DeviceOperationalStatus } from '@/types/device';
+import { Device, DeviceEvent, DeviceLifecycleStatus } from '@/types/device';
 import { RootStackParamList } from '@/types/navigation';
 import { colors } from '@/theme/colors';
+import { layout, shadows, spacing } from '@/theme/spacing';
 import { typography } from '@/theme/typography';
-import { spacing, layout, shadows } from '@/theme/spacing';
-import {
-    finishNotificationRequest,
-    isNotificationRequestCanceled,
-    startNotificationRequest,
-} from './homeScreenNotificationRequests';
 
-/* ──────────────────────────────────────────────
- * Constants
- * ────────────────────────────────────────────── */
+const POLL_INTERVAL_MS = 30_000;
 
-const POLL_INTERVAL_MS = 30_000; // 30 seconds
-
-/* ──────────────────────────────────────────────
- * Helpers
- * ────────────────────────────────────────────── */
-
-const LIFECYCLE_CONFIG: Record<DeviceLifecycleStatus, { color: string; label: string; icon: string }> = {
-    active:       { color: '#34C759', label: 'Active',       icon: '🟢' },
-    manufactured: { color: '#8E8E93', label: 'Manufactured', icon: '⚪' },
-    unclaimed:    { color: '#8E8E93', label: 'Unclaimed',    icon: '⚪' },
-    claiming:     { color: '#FF9500', label: 'Claiming',     icon: '🟡' },
-    lost:         { color: '#FF3B30', label: 'Lost',         icon: '🔴' },
-    revoked:      { color: '#FF3B30', label: 'Revoked',      icon: '🔴' },
-    retired:      { color: '#8E8E93', label: 'Retired',      icon: '⚪' },
+const LIFECYCLE_STATUS: Record<DeviceLifecycleStatus, { label: string; color: string }> = {
+    active: { label: 'Ready for requests', color: '#34C759' },
+    manufactured: { label: 'Not active yet', color: colors.textMuted },
+    unclaimed: { label: 'Not active yet', color: colors.textMuted },
+    claiming: { label: 'Setup in progress', color: colors.warning },
+    lost: { label: 'Needs support', color: colors.negative },
+    revoked: { label: 'Needs support', color: colors.negative },
+    retired: { label: 'Offline', color: colors.textMuted },
 };
 
-const OPERATIONAL_CONFIG: Record<string, { color: string; label: string; icon: string }> = {
-    available:              { color: '#34C759', label: 'Available',            icon: '🟢' },
-    assistance_requested:   { color: '#FF3B30', label: 'Assistance Requested', icon: '🔴' },
-    assistance_in_progress: { color: '#FF9500', label: 'Assistance In Progress', icon: '🟡' },
-    offline:                { color: '#8E8E93', label: 'Offline',             icon: '⚪' },
-    error:                  { color: '#FF9500', label: 'Error',              icon: '🟡' },
+const OPERATIONAL_STATUS: Record<string, { label: string; color: string; tone: string }> = {
+    available: { label: 'Available', color: '#34C759', tone: '#34C75912' },
+    assistance_requested: { label: 'Assistance Requested', color: colors.negative, tone: '#FF3B3012' },
+    assistance_in_progress: { label: 'Assistance In Progress', color: colors.warning, tone: '#FF950012' },
+    offline: { label: 'Offline', color: colors.textMuted, tone: '#86868B12' },
+    error: { label: 'Needs Attention', color: colors.warning, tone: '#FF950012' },
 };
 
-/** Get the display status for a device — operational if active, otherwise lifecycle */
-function getDeviceStatusConfig(device: Device) {
-    if (device.lifecycle_status === 'active' && device.operational_status) {
-        return OPERATIONAL_CONFIG[device.operational_status] || OPERATIONAL_CONFIG.available;
-    }
-    return LIFECYCLE_CONFIG[device.lifecycle_status];
-}
-
-
-
-function timeAgo(iso: string): string {
+function formatRelativeTime(iso: string): string {
     const diff = Date.now() - new Date(iso).getTime();
-    const mins = Math.floor(diff / 60_000);
-    if (mins < 1) return 'Just now';
-    if (mins < 60) return `${mins}m ago`;
-    const hrs = Math.floor(mins / 60);
-    if (hrs < 24) return `${hrs}h ago`;
-    const days = Math.floor(hrs / 24);
-    return `${days}d ago`;
+    const minutes = Math.floor(diff / 60_000);
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    return `${Math.floor(hours / 24)}d ago`;
 }
 
-/* ──────────────────────────────────────────────
- * Component
- * ────────────────────────────────────────────── */
+function formatEventTitle(event: DeviceEvent): string {
+    switch (event.event_type) {
+        case 'assistance_requested':
+            return 'Assistance requested';
+        case 'assistance_acknowledged':
+            return 'Request acknowledged';
+        case 'assistance_resolved':
+            return 'Request resolved';
+        case 'pilot_seeded':
+            return 'Pilot sign created';
+        default:
+            return event.event_type.replace(/_/g, ' ');
+    }
+}
+
+function formatEventBody(event: DeviceEvent): string {
+    const payload = event.payload ?? {};
+    if (typeof payload.message === 'string') {
+        return payload.message;
+    }
+
+    const previousStatus = typeof payload.previous_status === 'string' ? payload.previous_status : null;
+    const newStatus = typeof payload.new_status === 'string' ? payload.new_status : null;
+    const confidence = typeof payload.confidence === 'number'
+        ? `Confidence ${Math.round(payload.confidence * 100)}%`
+        : null;
+
+    return [previousStatus && newStatus ? `${previousStatus} -> ${newStatus}` : newStatus, confidence]
+        .filter(Boolean)
+        .join(' • ') || 'Recorded device event for the pilot sign.';
+}
+
+function getPilotStatus(device: Device) {
+    if (device.lifecycle_status === 'active' && device.operational_status) {
+        return OPERATIONAL_STATUS[device.operational_status] ?? OPERATIONAL_STATUS.available;
+    }
+
+    return {
+        ...LIFECYCLE_STATUS[device.lifecycle_status],
+        tone: `${LIFECYCLE_STATUS[device.lifecycle_status].color}12`,
+    };
+}
 
 export default function HomeScreen() {
-    const { user, logout } = useAuthStore();
-    const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const insets = useSafeAreaInsets();
+    const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+    const { user, logout } = useAuthStore();
+
+    const [menuVisible, setMenuVisible] = useState(false);
     const [isLoggingOut, setIsLoggingOut] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
-    const [menuVisible, setMenuVisible] = useState(false);
 
-    // Device state
     const [device, setDevice] = useState<Device | null>(null);
     const [deviceLoading, setDeviceLoading] = useState(true);
     const [deviceError, setDeviceError] = useState<string | null>(null);
+    const [deviceActionLoading, setDeviceActionLoading] = useState(false);
 
-    // Notifications state
-    const [notifications, setNotifications] = useState<SignNotification[]>([]);
-    const [notifLoading, setNotifLoading] = useState(true);
-    const lastPollTime = useRef<string | null>(null);
-    const activeNotificationRequest = useRef<AbortController | null>(null);
+    const [events, setEvents] = useState<DeviceEvent[]>([]);
+    const [eventsLoading, setEventsLoading] = useState(true);
 
-    /* ── Data fetching ── */
-
-    const refreshDevice = useCallback(async () => {
-        try {
-            const devices = await devicesAPI.list();
-            if (devices.length > 0) {
-                setDevice(devices[0]);
-            }
-        } catch (err) {
-            console.error('[HomeScreen] Failed to refresh device:', err);
-        }
-    }, []);
-
-    const fetchNotifications = useCallback(async (isPolling = false) => {
-        const controller = startNotificationRequest(activeNotificationRequest.current, isPolling);
-        if (!controller) {
-            return;
-        }
-
-        activeNotificationRequest.current = controller;
-
-        try {
-            if (isPolling && lastPollTime.current) {
-                // Only fetch notifications created after the last poll
-                const newNotifs = await notificationAPI.getNotifications(
-                    { after: lastPollTime.current },
-                    { signal: controller.signal },
-                );
-                if (newNotifs.length > 0) {
-                    setNotifications((prev) => {
-                        const existingIds = new Set(prev.map((n) => n.id));
-                        const unique = newNotifs.filter((n) => !existingIds.has(n.id));
-                        return unique.length > 0 ? [...unique, ...prev] : prev;
-                    });
-                    lastPollTime.current = new Date().toISOString();
-
-                    // New notifications likely mean a device status changed — re-fetch
-                    await refreshDevice();
-                }
-            } else {
-                // Full fetch
-                const allNotifs = await notificationAPI.getNotifications(
-                    undefined,
-                    { signal: controller.signal },
-                );
-                setNotifications(allNotifs);
-                lastPollTime.current = new Date().toISOString();
-            }
-        } catch (err) {
-            if (isNotificationRequestCanceled(err)) {
-                return;
-            }
-            console.error('[HomeScreen] Failed to fetch notifications:', err);
-        } finally {
-            const isCurrentRequest = activeNotificationRequest.current === controller;
-            activeNotificationRequest.current = finishNotificationRequest(
-                activeNotificationRequest.current,
-                controller,
-            );
-
-            if (!isPolling && isCurrentRequest) {
-                setNotifLoading(false);
-            }
-        }
-    }, [refreshDevice]);
+    const userName = user?.name?.split(' ')[0] || user?.email || 'Operator';
+    const userInitial = userName.charAt(0).toUpperCase();
 
     const fetchData = useCallback(async () => {
         setDeviceLoading(true);
-        setDeviceError(null);
+        setEventsLoading(true);
+
         try {
             const devices = await devicesAPI.list();
-            if (devices.length > 0) {
-                setDevice(devices[0]);
-            } else {
-                setDeviceError('No devices found.');
+            if (devices.length === 0) {
+                setDevice(null);
+                setEvents([]);
+                setDeviceError('No pilot sign is linked to this account yet.');
+                return;
             }
-        } catch (err) {
-            console.error('[HomeScreen] Failed to fetch data:', err);
-            setDeviceError('Failed to load device data.');
+
+            const pilotDevice = devices[0];
+            setDevice(pilotDevice);
+            setDeviceError(null);
+            const deviceEvents = await devicesAPI.getEvents(pilotDevice.serial_number);
+            setEvents(deviceEvents);
+        } catch (error) {
+            console.error('[HomeScreen] Failed to load pilot sign or events:', error);
+            setDeviceError('Unable to load the pilot sign right now.');
+            setEvents([]);
         } finally {
             setDeviceLoading(false);
+            setEventsLoading(false);
         }
+    }, []);
 
-        await fetchNotifications();
-    }, [fetchNotifications]);
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            fetchData();
+        }, POLL_INTERVAL_MS);
+
+        return () => clearInterval(interval);
+    }, [fetchData]);
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
@@ -193,212 +159,105 @@ export default function HomeScreen() {
         setRefreshing(false);
     }, [fetchData]);
 
-    useEffect(() => {
-        fetchData();
-    }, [fetchData]);
-
-    // Polling cycle for notifications
-    useEffect(() => {
-        const interval = setInterval(() => {
-            fetchNotifications(true);
-        }, POLL_INTERVAL_MS);
-
-        return () => clearInterval(interval);
-    }, [fetchNotifications]);
-
-    useEffect(() => () => {
-        activeNotificationRequest.current?.abort();
-    }, []);
-
-    /* ── Actions ── */
-
-    const handleAcknowledge = useCallback(async (notifId: string) => {
-        // Optimistic update
-        setNotifications((prev) =>
-            prev.map((n) => (n.id === notifId ? { ...n, read: true } : n)),
-        );
-        try {
-            await notificationAPI.markAsRead(notifId);
-        } catch {
-            // Revert on failure
-            setNotifications((prev) =>
-                prev.map((n) => (n.id === notifId ? { ...n, read: false } : n)),
-            );
-        }
-    }, []);
-
-    const handleAcknowledgeAll = useCallback(async () => {
-        const unread = notifications.filter((n) => !n.read).map((n) => n.id);
-        // Optimistic update
-        setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-        try {
-            await notificationAPI.markAllAsRead();
-        } catch {
-            setNotifications((prev) =>
-                prev.map((n) => (unread.includes(n.id) ? { ...n, read: false } : n)),
-            );
-        }
-    }, [notifications]);
-
-    /* ── Device action handlers ── */
-
-    const [deviceActionLoading, setDeviceActionLoading] = useState(false);
-
-    const handleAcknowledgeDevice = useCallback(async () => {
+    const handleAcknowledgeRequest = useCallback(async () => {
         if (!device) return;
+
         setDeviceActionLoading(true);
         try {
             const updated = await devicesAPI.acknowledge(device.serial_number);
             setDevice(updated);
-        } catch (err) {
-            console.error('[HomeScreen] Failed to acknowledge device:', err);
+            const deviceEvents = await devicesAPI.getEvents(device.serial_number);
+            setEvents(deviceEvents);
+        } catch (error) {
+            console.error('[HomeScreen] Failed to acknowledge request:', error);
         } finally {
             setDeviceActionLoading(false);
         }
     }, [device]);
 
-    const handleResolveDevice = useCallback(async () => {
+    const handleResolveRequest = useCallback(async () => {
         if (!device) return;
+
         setDeviceActionLoading(true);
         try {
             const updated = await devicesAPI.resolve(device.serial_number);
             setDevice(updated);
-        } catch (err) {
-            console.error('[HomeScreen] Failed to resolve device:', err);
+            const deviceEvents = await devicesAPI.getEvents(device.serial_number);
+            setEvents(deviceEvents);
+        } catch (error) {
+            console.error('[HomeScreen] Failed to resolve request:', error);
         } finally {
             setDeviceActionLoading(false);
         }
     }, [device]);
 
-    /* ── Derived ── */
-
-    const statusConfig = device ? getDeviceStatusConfig(device) : null;
-    const unacknowledgedCount = notifications.filter((n) => !n.read).length;
-
-    const userInitial = user?.name?.charAt(0)?.toUpperCase() || user?.email?.charAt(0)?.toUpperCase() || '?';
-
-    const handleDeleteAccount = useCallback(() => {
-        Alert.alert(
-            'Delete Account',
-            'Are you sure you want to permanently delete your account? This cannot be undone.',
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Delete',
-                    style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            // await apiClient.delete('/auth/account');
-                            await logout();
-                        } catch (err) {
-                            console.error('[HomeScreen] Delete account error:', err);
-                        }
-                    },
-                },
-            ],
-        );
+    const handleLogout = useCallback(async () => {
+        setMenuVisible(false);
+        setIsLoggingOut(true);
+        try {
+            await logout();
+        } finally {
+            setIsLoggingOut(false);
+        }
     }, [logout]);
 
+    const status = useMemo(() => (device ? getPilotStatus(device) : null), [device]);
+    const recentRequestCount = events.filter((event) => event.event_type === 'assistance_requested').length;
+
     return (
-        <View style={s.root}>
-            {/* ── Header ── */}
-            <View style={[s.header, { paddingTop: insets.top + spacing.sm }]}>
-                <View style={s.headerInner}>
-                    <Text style={[typography.h4, { color: colors.textPrimary }]}>
-                        {user ? `Hi, ${user.name?.split(' ')[0] || user.email}` : 'Dashboard'}
-                    </Text>
+        <View style={styles.root}>
+            <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+                <View style={styles.headerInner}>
+                    <View style={styles.headerCopy}>
+                        <Text style={styles.headerEyebrow}>Pilot operator view</Text>
+                        <Text style={styles.headerTitle}>Hi, {userName}</Text>
+                        <Text style={styles.headerSubtitle}>Monitor one sign and handle requests quickly.</Text>
+                    </View>
                     <Pressable
-                        onPress={() => setMenuVisible(true)}
-                        style={({ pressed }) => [s.avatar, pressed && { opacity: 0.7 }]}
+                        accessibilityLabel="Open account menu"
                         accessibilityRole="button"
-                        accessibilityLabel="Open menu"
+                        onPress={() => setMenuVisible(true)}
+                        style={({ pressed }) => [styles.avatar, pressed && styles.pressed]}
                     >
-                        <Text style={s.avatarText}>{userInitial}</Text>
+                        <Text style={styles.avatarText}>{userInitial}</Text>
                     </Pressable>
                 </View>
             </View>
 
-            {/* ── Menu Modal ── */}
             <Modal
-                visible={menuVisible}
-                transparent
                 animationType="fade"
                 onRequestClose={() => setMenuVisible(false)}
+                transparent
+                visible={menuVisible}
             >
-                <Pressable style={s.menuOverlay} onPress={() => setMenuVisible(false)}>
-                    <View style={[s.menuSheet, { paddingTop: insets.top + spacing.sm }]}>
-                        <Pressable onPress={() => {}} style={{ width: '100%' }}>
-                            {/* User info */}
-                            <View style={s.menuUserRow}>
-                                <View style={s.avatarLarge}>
-                                    <Text style={s.avatarLargeText}>{userInitial}</Text>
+                <Pressable onPress={() => setMenuVisible(false)} style={styles.menuOverlay}>
+                    <View style={[styles.menuSheet, { paddingTop: insets.top + spacing.sm }]}>
+                        <Pressable onPress={() => undefined} style={styles.menuContent}>
+                            <View style={styles.menuUserRow}>
+                                <View style={styles.menuAvatar}>
+                                    <Text style={styles.menuAvatarText}>{userInitial}</Text>
                                 </View>
-                                <View style={{ flex: 1, marginLeft: spacing.md }}>
-                                    <Text style={[typography.h4, { color: colors.textPrimary }]} numberOfLines={1}>
-                                        {user?.name || 'User'}
+                                <View style={styles.menuUserCopy}>
+                                    <Text numberOfLines={1} style={styles.menuUserName}>
+                                        {user?.name || 'Pilot operator'}
                                     </Text>
-                                    <Text style={[typography.bodySmall, { color: colors.textSecondary }]} numberOfLines={1}>
+                                    <Text numberOfLines={1} style={styles.menuUserEmail}>
                                         {user?.email}
                                     </Text>
                                 </View>
                             </View>
 
-                            <View style={s.menuDivider} />
-
-                            {/* Menu items */}
-                            {Platform.OS !== 'web' && (
-                                <MenuItem
-                                    icon="➕"
-                                    label="Add Device"
-                                    onPress={() => { setMenuVisible(false); navigation.navigate('SetupGuide'); }}
-                                />
-                            )}
-                            <MenuItem
-                                icon="🏢"
-                                label="Organizations"
-                                onPress={() => { setMenuVisible(false); navigation.navigate('Organizations'); }}
-                            />
-                            <MenuItem
-                                icon="💬"
-                                label="Send Feedback"
-                                onPress={() => { setMenuVisible(false); navigation.navigate('Feedback'); }}
-                            />
-                            <MenuItem
-                                icon="⚙️"
-                                label="Preferences"
-                                onPress={() => { setMenuVisible(false); navigation.navigate('Preferences'); }}
-                            />
-                            <MenuItem
-                                icon="📊"
-                                label="Inference Debug"
-                                onPress={() => { setMenuVisible(false); navigation.navigate('InferenceDebug'); }}
-                            />
-
-                            <View style={s.menuDivider} />
-
-                            <MenuItem
-                                icon="🚪"
-                                label={isLoggingOut ? 'Logging out…' : 'Log Out'}
-                                onPress={async () => {
-                                    setMenuVisible(false);
-                                    setIsLoggingOut(true);
-                                    try { await logout(); } catch {} finally { setIsLoggingOut(false); }
-                                }}
-                            />
-                            <MenuItem
-                                icon="🗑️"
-                                label="Delete Account"
-                                destructive
-                                onPress={() => { setMenuVisible(false); handleDeleteAccount(); }}
-                            />
-
-                            <View style={{ height: spacing.lg }} />
+                            <View style={styles.menuDivider} />
 
                             <Pressable
-                                onPress={() => setMenuVisible(false)}
-                                style={({ pressed }) => [s.menuCloseBtn, pressed && { opacity: 0.7 }]}
+                                accessibilityRole="button"
+                                onPress={handleLogout}
+                                style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
                             >
-                                <Text style={[typography.button, { color: colors.textSecondary }]}>Close</Text>
+                                <Text style={styles.menuItemIcon}>↗</Text>
+                                <Text style={styles.menuItemText}>
+                                    {isLoggingOut ? 'Logging out…' : 'Log out'}
+                                </Text>
                             </Pressable>
                         </Pressable>
                     </View>
@@ -406,456 +265,461 @@ export default function HomeScreen() {
             </Modal>
 
             <ScrollView
-                style={s.scrollView}
-                contentContainerStyle={s.scrollContent}
-                refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+                contentContainerStyle={styles.scrollContent}
+                refreshControl={
+                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+                }
+                style={styles.scrollView}
             >
-                <View style={s.content}>
-                    {/* ── Device Status Card ── */}
-                    <View style={s.card}>
-                        {deviceLoading ? (
-                            <View style={s.emptyState}>
-                                <ActivityIndicator size="large" color={colors.primary} />
-                                <Text style={[typography.body, { color: colors.textMuted, marginTop: spacing.sm }]}>
-                                    Loading device data…
-                                </Text>
-                            </View>
-                        ) : deviceError || !device || !statusConfig ? (
-                            <View style={s.emptyState}>
-                                <View style={s.infoIcon}>
-                                    <Text style={s.infoIconText}>i</Text>
+                <View style={styles.content}>
+                    <View style={styles.card}>
+                        <View style={styles.sectionHeader}>
+                            <Text style={styles.sectionEyebrow}>Pilot sign</Text>
+                            {status ? (
+                                <View style={[styles.statusPill, { backgroundColor: status.tone }]}>
+                                    <View style={[styles.statusDot, { backgroundColor: status.color }]} />
+                                    <Text style={[styles.statusPillText, { color: status.color }]}>{status.label}</Text>
                                 </View>
-                                <Text style={[typography.body, { color: colors.textMuted, marginTop: spacing.sm, textAlign: 'center' }]}>
-                                    No devices linked to your account yet.
-                                </Text>
-                                <Text style={[typography.bodySmall, { color: colors.textMuted, marginTop: spacing.xs, textAlign: 'center' }]}>
-                                    {Platform.OS === 'web'
-                                        ? 'Open the mobile app to connect a new device.'
-                                        : 'Connect your SmartSign device to get started.'}
-                                </Text>
-                                {Platform.OS !== 'web' && (
-                                    <Pressable
-                                        onPress={() => navigation.navigate('SetupGuide')}
-                                        style={({ pressed }) => [s.guideBtn, pressed && { opacity: 0.8 }]}
-                                        accessibilityRole="button"
-                                        accessibilityLabel="Show setup guide"
-                                    >
-                                        <Text style={[typography.button, { color: colors.ctaPrimaryText }]}>Show me how</Text>
-                                    </Pressable>
-                                )}
+                            ) : null}
+                        </View>
+
+                        {deviceLoading ? (
+                            <View style={styles.emptyState}>
+                                <ActivityIndicator color={colors.primary} size="large" />
+                                <Text style={styles.emptyTitle}>Loading pilot sign…</Text>
+                            </View>
+                        ) : deviceError || !device ? (
+                            <View style={styles.emptyState}>
+                                <Text style={styles.emptyIcon}>⚠️</Text>
+                                <Text style={styles.emptyTitle}>Pilot sign unavailable</Text>
+                                <Text style={styles.emptyBody}>{deviceError || 'No pilot sign found.'}</Text>
                             </View>
                         ) : (
-                            <Pressable
-                                onPress={() => navigation.navigate('DeviceDetail', { serial_number: device.serial_number })}
-                                style={({ pressed }) => [pressed && { opacity: 0.85 }]}
-                                accessibilityRole="button"
-                                accessibilityLabel={`View details for ${device.name || device.serial_number}`}
-                            >
-                                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.md }}>
-                                    <Text style={[typography.h3, { color: colors.textPrimary, flex: 1 }]}>{device.name || device.serial_number}</Text>
-                                    <View style={[s.statusDot, { backgroundColor: statusConfig.color }]} />
-                                </View>
-                                <View style={{ marginBottom: spacing.md }}>
-                                    {device.model_code && (
-                                        <Text style={[typography.bodySmall, { color: colors.textSecondary, marginTop: 2 }]}>
-                                            Model {device.model_code}
-                                        </Text>
-                                    )}
-                                    <Text style={[typography.bodySmall, { color: colors.textMuted, marginTop: 2 }]}>
-                                        Updated {timeAgo(device.updated_at)}
+                            <>
+                                <Text style={styles.signName}>{device.name || 'Pilot sign'}</Text>
+                                <Text style={styles.signMeta}>Serial {device.serial_number}</Text>
+                                <Text style={styles.signMeta}>Last update {formatRelativeTime(device.updated_at)}</Text>
+
+                                <View style={[styles.statusBanner, { backgroundColor: status?.tone ?? colors.offWhite }]}>
+                                    <Text style={[styles.statusBannerText, { color: status?.color ?? colors.textPrimary }]}>
+                                        {status?.label ?? 'Status unavailable'}
                                     </Text>
                                 </View>
 
-                                {/* Status indicator */}
-                                <View style={[s.statusBanner, { backgroundColor: statusConfig.color + '12' }]}>
-                                    <Text style={[typography.h2, { color: statusConfig.color, textAlign: 'center' }]}>
-                                        {statusConfig.label}
-                                    </Text>
-                                </View>
-
-                                {/* Action buttons based on operational status */}
-                                {device.operational_status === 'assistance_requested' && (
+                                {device.operational_status === 'assistance_requested' ? (
                                     <Pressable
-                                        onPress={(e) => { e.stopPropagation(); handleAcknowledgeDevice(); }}
-                                        disabled={deviceActionLoading}
-                                        style={({ pressed }) => [
-                                            s.actionBtn,
-                                            { backgroundColor: '#FF9500' },
-                                            deviceActionLoading && { opacity: 0.5 },
-                                            pressed && { opacity: 0.8 },
-                                        ]}
-                                        accessibilityRole="button"
                                         accessibilityLabel="Acknowledge assistance request"
-                                    >
-                                        {deviceActionLoading ? (
-                                            <ActivityIndicator size="small" color={colors.white} />
-                                        ) : (
-                                            <Text style={[typography.button, { color: colors.white }]}>
-                                                Acknowledge Request
-                                            </Text>
-                                        )}
-                                    </Pressable>
-                                )}
-                                {device.operational_status === 'assistance_in_progress' && (
-                                    <Pressable
-                                        onPress={(e) => { e.stopPropagation(); handleResolveDevice(); }}
-                                        disabled={deviceActionLoading}
-                                        style={({ pressed }) => [
-                                            s.actionBtn,
-                                            { backgroundColor: '#34C759' },
-                                            deviceActionLoading && { opacity: 0.5 },
-                                            pressed && { opacity: 0.8 },
-                                        ]}
                                         accessibilityRole="button"
-                                        accessibilityLabel="Mark assistance as resolved"
+                                        disabled={deviceActionLoading}
+                                        onPress={handleAcknowledgeRequest}
+                                        style={({ pressed }) => [
+                                            styles.primaryAction,
+                                            deviceActionLoading && styles.disabledAction,
+                                            pressed && styles.pressed,
+                                        ]}
                                     >
                                         {deviceActionLoading ? (
-                                            <ActivityIndicator size="small" color={colors.white} />
+                                            <ActivityIndicator color={colors.white} size="small" />
                                         ) : (
-                                            <Text style={[typography.button, { color: colors.white }]}>
-                                                Mark Resolved
-                                            </Text>
+                                            <Text style={styles.primaryActionText}>Acknowledge request</Text>
                                         )}
                                     </Pressable>
-                                )}
-                            </Pressable>
+                                ) : null}
+
+                                {device.operational_status === 'assistance_in_progress' ? (
+                                    <Pressable
+                                        accessibilityLabel="Resolve assistance request"
+                                        accessibilityRole="button"
+                                        disabled={deviceActionLoading}
+                                        onPress={handleResolveRequest}
+                                        style={({ pressed }) => [
+                                            styles.successAction,
+                                            deviceActionLoading && styles.disabledAction,
+                                            pressed && styles.pressed,
+                                        ]}
+                                    >
+                                        {deviceActionLoading ? (
+                                            <ActivityIndicator color={colors.white} size="small" />
+                                        ) : (
+                                            <Text style={styles.primaryActionText}>Mark resolved</Text>
+                                        )}
+                                    </Pressable>
+                                ) : null}
+                            </>
                         )}
                     </View>
 
-                    {/* ── Notifications ── */}
-                    <View style={s.card}>
-                        <View style={s.cardHeader}>
-                            <View style={s.notifHeaderLeft}>
-                                <Text style={[typography.h3, { color: colors.textPrimary }]}>Notifications</Text>
-                                {unacknowledgedCount > 0 && (
-                                    <View style={s.badge}>
-                                        <Text style={[typography.bodySmall, { color: colors.white, fontWeight: '700' }]}>
-                                            {unacknowledgedCount}
-                                        </Text>
-                                    </View>
-                                )}
+                    <View style={styles.card}>
+                        <View style={styles.sectionHeader}>
+                            <View>
+                                <Text style={styles.sectionEyebrow}>Request visibility</Text>
+                                <Text style={styles.sectionTitle}>Recent request history</Text>
                             </View>
+                            {recentRequestCount > 0 ? (
+                                <View style={styles.badge}>
+                                    <Text style={styles.badgeText}>{recentRequestCount}</Text>
+                                </View>
+                            ) : null}
                         </View>
 
-                        {notifications.length === 0 ? (
-                            <View style={s.emptyState}>
-                                <Text style={{ fontSize: 32 }}>🔔</Text>
-                                <Text style={[typography.body, { color: colors.textMuted, marginTop: spacing.sm }]}>
-                                    No notifications yet
+                        {eventsLoading ? (
+                            <View style={styles.emptyState}>
+                                <ActivityIndicator color={colors.primary} size="small" />
+                                <Text style={styles.emptyTitle}>Loading recent requests…</Text>
+                            </View>
+                        ) : events.length === 0 ? (
+                            <View style={styles.emptyState}>
+                                <Text style={styles.emptyIcon}>🔔</Text>
+                                <Text style={styles.emptyTitle}>No requests yet</Text>
+                                <Text style={styles.emptyBody}>
+                                    New assistance requests will appear here as soon as the pilot sign reports them.
                                 </Text>
                             </View>
                         ) : (
-                            <View style={s.notifList}>
-                                {notifications.map((notif) => (
+                            <View style={styles.notificationList}>
+                                {events.map((event) => (
                                     <NotificationRow
-                                        key={notif.id}
-                                        notification={notif}
-                                        onAcknowledge={handleAcknowledge}
-                                        onPress={() => navigation.navigate('NotificationDetail', { notification: notif })}
+                                        key={event.id}
+                                        event={event}
+                                        onPress={() => navigation.navigate('NotificationDetail', { event })}
                                     />
                                 ))}
                             </View>
                         )}
                     </View>
-
                 </View>
             </ScrollView>
         </View>
     );
 }
 
-/* ──────────────────────────────────────────────
- * Sub-components
- * ────────────────────────────────────────────── */
-
-function MenuItem({ icon, label, onPress, destructive }: { icon: string; label: string; onPress: () => void; destructive?: boolean }) {
-    return (
-        <Pressable
-            onPress={onPress}
-            style={({ pressed }) => [s.menuItem, pressed && { backgroundColor: colors.offWhite }]}
-            accessibilityRole="button"
-        >
-            <Text style={{ fontSize: 18, marginRight: spacing.md }}>{icon}</Text>
-            <Text style={[typography.body, { color: destructive ? colors.negative : colors.textPrimary }]}>
-                {label}
-            </Text>
-        </Pressable>
-    );
-}
-
 function NotificationRow({
-    notification,
-    onAcknowledge,
+    event,
     onPress,
 }: {
-    notification: SignNotification;
-    onAcknowledge: (id: string) => void;
+    event: DeviceEvent;
     onPress: () => void;
 }) {
     return (
         <Pressable
-            onPress={onPress}
-            style={({ pressed }) => [s.notifRow, notification.read && s.notifRowAcked, pressed && { opacity: 0.8 }]}
+            accessibilityLabel={`Open request update: ${formatEventTitle(event)}`}
             accessibilityRole="button"
-            accessibilityLabel={`View notification: ${notification.title}`}
+            onPress={onPress}
+            style={({ pressed }) => [
+                styles.notificationRow,
+                pressed && styles.pressed,
+            ]}
         >
-            <View style={s.notifBody}>
-                <View style={s.notifTitleRow}>
-                    <Text
-                        style={[
-                            typography.body,
-                            { fontWeight: '700', color: colors.textPrimary, flex: 1 },
-                            notification.read && { color: colors.textMuted },
-                        ]}
-                        numberOfLines={1}
-                    >
-                        {notification.title}
+            <View style={styles.notificationCopy}>
+                <View style={styles.notificationHeader}>
+                    <Text numberOfLines={1} style={styles.notificationTitle}>
+                        {formatEventTitle(event)}
                     </Text>
-                    <Text style={[typography.bodySmall, { color: colors.textMuted, marginLeft: spacing.sm }]}>
-                        {timeAgo(notification.created_at)}
-                    </Text>
+                    <Text style={styles.notificationTime}>{formatRelativeTime(event.created_at)}</Text>
                 </View>
-                <Text
-                    style={[
-                        typography.bodySmall,
-                        { color: colors.textSecondary, marginTop: 2 },
-                        notification.read && { color: colors.textMuted },
-                    ]}
-                    numberOfLines={2}
-                >
-                    {notification.body}
+                <Text numberOfLines={2} style={styles.notificationBody}>
+                    {formatEventBody(event)}
                 </Text>
             </View>
         </Pressable>
     );
 }
 
-/* ──────────────────────────────────────────────
- * Styles
- * ────────────────────────────────────────────── */
-
-const s = StyleSheet.create({
+const styles = StyleSheet.create({
     root: {
         flex: 1,
         backgroundColor: colors.offWhite,
     },
-
-    /* Header – light surface with subtle bottom border */
     header: {
         backgroundColor: colors.white,
+        borderBottomColor: colors.divider,
+        borderBottomWidth: StyleSheet.hairlineWidth,
         paddingBottom: spacing.sm,
         paddingHorizontal: layout.contentPadding,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: colors.divider,
     },
     headerInner: {
-        maxWidth: layout.maxWidth,
-        width: '100%',
+        alignItems: 'center',
         alignSelf: 'center',
         flexDirection: 'row',
         justifyContent: 'space-between',
-        alignItems: 'center',
+        maxWidth: layout.maxWidth,
+        width: '100%',
+    },
+    headerCopy: {
+        flex: 1,
+        paddingRight: spacing.md,
+    },
+    headerEyebrow: {
+        ...typography.label,
+        color: colors.primary,
+        marginBottom: spacing.xs,
+        textTransform: 'uppercase',
+    },
+    headerTitle: {
+        ...typography.h3,
+        color: colors.textPrimary,
+    },
+    headerSubtitle: {
+        ...typography.bodySmall,
+        color: colors.textSecondary,
+        marginTop: spacing.xs,
     },
     avatar: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: colors.ctaPrimary,
         alignItems: 'center',
+        backgroundColor: colors.ctaPrimary,
+        borderRadius: 18,
+        height: 36,
         justifyContent: 'center',
+        width: 36,
     },
     avatarText: {
         color: colors.white,
-        fontSize: 16,
         fontWeight: '700',
     },
-
-    /* Menu modal */
     menuOverlay: {
-        flex: 1,
         backgroundColor: 'rgba(0,0,0,0.35)',
+        flex: 1,
         justifyContent: 'flex-start',
     },
     menuSheet: {
         backgroundColor: colors.white,
-        paddingHorizontal: layout.contentPadding,
-        paddingBottom: spacing.xl,
         borderBottomLeftRadius: layout.borderRadiusXl,
         borderBottomRightRadius: layout.borderRadiusXl,
+        paddingBottom: spacing.xl,
+        paddingHorizontal: layout.contentPadding,
         ...shadows.elevated,
     },
+    menuContent: {
+        width: '100%',
+    },
     menuUserRow: {
-        flexDirection: 'row',
         alignItems: 'center',
+        flexDirection: 'row',
         paddingVertical: spacing.lg,
     },
-    avatarLarge: {
-        width: 48,
-        height: 48,
-        borderRadius: 24,
-        backgroundColor: colors.ctaPrimary,
+    menuAvatar: {
         alignItems: 'center',
+        backgroundColor: colors.ctaPrimary,
+        borderRadius: 24,
+        height: 48,
         justifyContent: 'center',
+        width: 48,
     },
-    avatarLargeText: {
+    menuAvatarText: {
         color: colors.white,
-        fontSize: 22,
+        fontSize: 20,
         fontWeight: '700',
     },
+    menuUserCopy: {
+        flex: 1,
+        marginLeft: spacing.md,
+    },
+    menuUserName: {
+        ...typography.h4,
+        color: colors.textPrimary,
+    },
+    menuUserEmail: {
+        ...typography.bodySmall,
+        color: colors.textSecondary,
+        marginTop: spacing.xs,
+    },
     menuDivider: {
-        height: StyleSheet.hairlineWidth,
         backgroundColor: colors.divider,
-        marginVertical: spacing.xs,
+        height: StyleSheet.hairlineWidth,
+        marginBottom: spacing.xs,
     },
     menuItem: {
-        flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 14,
-        paddingHorizontal: spacing.sm,
         borderRadius: layout.borderRadiusSm,
+        flexDirection: 'row',
+        paddingHorizontal: spacing.sm,
+        paddingVertical: 14,
     },
-    menuCloseBtn: {
-        alignItems: 'center',
-        paddingVertical: 12,
-        borderRadius: layout.borderRadiusPill,
+    menuItemPressed: {
         backgroundColor: colors.offWhite,
     },
-
-    /* Setup guide CTA */
-    guideBtn: {
-        marginTop: spacing.lg,
-        paddingVertical: 12,
-        paddingHorizontal: spacing.xl,
-        borderRadius: layout.borderRadiusPill,
-        backgroundColor: colors.ctaPrimary,
-        alignSelf: 'center',
+    menuItemIcon: {
+        fontSize: 18,
+        marginRight: spacing.md,
     },
-
-    /* Scroll */
+    menuItemText: {
+        ...typography.body,
+        color: colors.textPrimary,
+    },
     scrollView: {
         flex: 1,
     },
     scrollContent: {
-        paddingVertical: spacing.xl,
         paddingHorizontal: layout.contentPadding,
+        paddingVertical: spacing.xl,
     },
     content: {
-        maxWidth: 640,
-        width: '100%',
         alignSelf: 'center',
         gap: spacing.lg,
+        maxWidth: 720,
+        width: '100%',
     },
-
-    /* Card – white surface, subtle shadow, rounded 16px */
     card: {
         backgroundColor: colors.card,
         borderRadius: layout.borderRadiusMd,
         padding: spacing.xl,
-        ...Platform.select({
-            web: { boxShadow: '0 2px 12px rgba(0,0,0,0.08)' },
-            default: {
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 2 },
-                shadowOpacity: 0.08,
-                shadowRadius: 12,
-                elevation: 3,
-            },
-        }),
+        ...shadows.card,
     },
-    cardHeader: {
+    sectionHeader: {
+        alignItems: 'center',
         flexDirection: 'row',
         justifyContent: 'space-between',
-        alignItems: 'center',
         marginBottom: spacing.lg,
     },
-
-    /* Status banner – tinted background, rounded */
-    statusBanner: {
-        borderRadius: layout.borderRadius,
-        padding: spacing.xl,
-        alignItems: 'center',
+    sectionEyebrow: {
+        ...typography.label,
+        color: colors.textSecondary,
+        textTransform: 'uppercase',
     },
-    actionBtn: {
-        marginTop: spacing.md,
-        padding: spacing.md,
-        borderRadius: layout.borderRadius,
-        alignItems: 'center',
+    sectionTitle: {
+        ...typography.h4,
+        color: colors.textPrimary,
+        marginTop: spacing.xs,
     },
-    statusIconRow: {
+    signName: {
+        ...typography.h2,
+        color: colors.textPrimary,
+    },
+    signMeta: {
+        ...typography.bodySmall,
+        color: colors.textSecondary,
+        marginTop: spacing.xs,
+    },
+    statusPill: {
+        alignItems: 'center',
+        borderRadius: layout.borderRadiusPill,
         flexDirection: 'row',
-        alignItems: 'center',
-        gap: spacing.sm,
+        paddingHorizontal: spacing.sm + 2,
+        paddingVertical: spacing.xs,
+    },
+    statusPillText: {
+        ...typography.bodySmall,
+        fontWeight: '600',
     },
     statusDot: {
-        width: 14,
-        height: 14,
-        borderRadius: 7,
+        borderRadius: 4,
+        height: 8,
+        marginRight: spacing.xs,
+        width: 8,
     },
-
-    /* Notifications */
-    notifHeaderLeft: {
-        flexDirection: 'row',
+    statusBanner: {
+        borderRadius: layout.borderRadiusMd,
+        marginTop: spacing.lg,
+        paddingHorizontal: spacing.lg,
+        paddingVertical: spacing.lg,
+    },
+    statusBannerText: {
+        ...typography.h3,
+        textAlign: 'center',
+    },
+    primaryAction: {
         alignItems: 'center',
-        gap: spacing.sm,
+        backgroundColor: colors.warning,
+        borderRadius: layout.borderRadiusPill,
+        marginTop: spacing.lg,
+        paddingHorizontal: spacing.lg,
+        paddingVertical: 14,
     },
-    badge: {
-        backgroundColor: '#FF3B30',
-        borderRadius: layout.borderRadiusCircle,
-        minWidth: 22,
-        height: 22,
-        paddingHorizontal: 6,
+    successAction: {
         alignItems: 'center',
-        justifyContent: 'center',
+        backgroundColor: '#34C759',
+        borderRadius: layout.borderRadiusPill,
+        marginTop: spacing.lg,
+        paddingHorizontal: spacing.lg,
+        paddingVertical: 14,
     },
-    notifList: {
-        gap: spacing.sm,
+    primaryActionText: {
+        ...typography.button,
+        color: colors.white,
     },
-    notifRow: {
-        flexDirection: 'row',
-        alignItems: 'flex-start',
-        padding: spacing.md,
-        borderRadius: layout.borderRadius,
-        backgroundColor: colors.offWhite,
-        borderLeftWidth: 3,
-        borderLeftColor: colors.primary,
-    },
-    notifRowAcked: {
-        borderLeftColor: colors.divider,
+    disabledAction: {
         opacity: 0.6,
     },
-    notifBody: {
-        flex: 1,
-    },
-    notifTitleRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    ackBtn: {
-        marginTop: spacing.sm,
-        alignSelf: 'flex-start',
-        paddingVertical: 4,
-        paddingHorizontal: spacing.sm,
-        borderRadius: layout.borderRadiusPill,
-        backgroundColor: 'rgba(0,113,227,0.10)',
-    },
-
-    /* Empty */
     emptyState: {
         alignItems: 'center',
-        paddingVertical: spacing.xl,
+        paddingVertical: spacing.lg,
     },
-    infoIcon: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: 'rgba(0,113,227,0.10)',
+    emptyIcon: {
+        fontSize: 32,
+        marginBottom: spacing.sm,
+    },
+    emptyTitle: {
+        ...typography.h4,
+        color: colors.textPrimary,
+        marginTop: spacing.sm,
+        textAlign: 'center',
+    },
+    emptyBody: {
+        ...typography.bodySmall,
+        color: colors.textSecondary,
+        marginTop: spacing.xs,
+        textAlign: 'center',
+    },
+    badge: {
         alignItems: 'center',
+        backgroundColor: colors.primary,
+        borderRadius: 999,
         justifyContent: 'center',
+        minWidth: 24,
+        paddingHorizontal: spacing.sm,
+        paddingVertical: spacing.xs,
     },
-    infoIconText: {
-        fontSize: 18,
-        fontWeight: '700' as const,
-        fontStyle: 'italic' as const,
+    badgeText: {
+        ...typography.bodySmall,
+        color: colors.white,
+        fontWeight: '700',
+    },
+    notificationList: {
+        gap: spacing.md,
+    },
+    notificationRow: {
+        borderColor: colors.divider,
+        borderRadius: layout.borderRadiusMd,
+        borderWidth: StyleSheet.hairlineWidth,
+        padding: spacing.md,
+    },
+    notificationRowRead: {
+        backgroundColor: colors.offWhite,
+    },
+    notificationCopy: {
+        flex: 1,
+    },
+    notificationHeader: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+    },
+    notificationTitle: {
+        ...typography.body,
+        color: colors.textPrimary,
+        flex: 1,
+        fontWeight: '700',
+        marginRight: spacing.sm,
+    },
+    notificationTime: {
+        ...typography.small,
+        color: colors.textMuted,
+    },
+    notificationBody: {
+        ...typography.bodySmall,
+        color: colors.textSecondary,
+        marginTop: spacing.xs,
+    },
+    inlineAction: {
+        alignSelf: 'flex-start',
+        marginTop: spacing.sm,
+    },
+    inlineActionText: {
+        ...typography.bodySmall,
         color: colors.primary,
+        fontWeight: '600',
+    },
+    pressed: {
+        opacity: 0.82,
     },
 });

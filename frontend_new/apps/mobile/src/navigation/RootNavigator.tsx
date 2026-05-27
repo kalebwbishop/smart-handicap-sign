@@ -5,24 +5,10 @@ import { RootStackParamList } from '../types/navigation';
 import LandingScreen from '../screens/LandingScreen';
 import LoginScreen from '../screens/LoginScreen';
 import HomeScreen from '../screens/HomeScreen';
-import WiFiSetupScreen from '../screens/WiFiSetupScreen';
-import OrganizationScreen from '../screens/OrganizationScreen';
-import SetupGuideScreen from '../screens/SetupGuideScreen';
-import FeedbackScreen from '../screens/FeedbackScreen';
-import PreferencesScreen from '../screens/PreferencesScreen';
 import NotificationDetailScreen from '../screens/NotificationDetailScreen';
-import DeviceListScreen from '../screens/DeviceListScreen';
-import DeviceDetailScreen from '../screens/DeviceDetailScreen';
-import InferenceDebugScreen from '../screens/InferenceDebugScreen';
-import ClaimValidateScreen from '../screens/ClaimValidateScreen';
-import ClaimAssignScreen from '../screens/ClaimAssignScreen';
-import ClaimPhotosScreen from '../screens/ClaimPhotosScreen';
-import ClaimConfirmScreen from '../screens/ClaimConfirmScreen';
-import QRScanScreen from '../screens/QRScanScreen';
 import { useAuthStore } from '../store/authStore';
 import { ActivityIndicator, Platform, View } from 'react-native';
 import { colors } from '../theme/colors';
-import { usePushNotifications } from '../hooks/usePushNotifications';
 import {
     useFonts,
     Montserrat_300Light,
@@ -41,12 +27,6 @@ const sharedHeaderStyle = {
     headerTitleStyle: { fontFamily: 'Montserrat_600SemiBold', fontWeight: '600' as const },
     headerShadowVisible: false,
 };
-
-/** Registers for push notifications when authenticated. Renders nothing. */
-function PushNotificationRegistrar() {
-    usePushNotifications();
-    return null;
-}
 
 export default function RootNavigator() {
     const { isAuthenticated, isLoading, restoreSession } = useAuthStore();
@@ -76,105 +56,33 @@ export default function RootNavigator() {
     }
 
     return (
-        <>
-            {isAuthenticated && <PushNotificationRegistrar />}
-            <Stack.Navigator screenOptions={{ headerShown: true, headerBackTitle: '', ...sharedHeaderStyle }}>
-                {isAuthenticated ? (
-                    <>
-                        <Stack.Screen
-                            name="Home"
-                            component={HomeScreen}
-                            options={{ title: '', headerShown: false }}
-                        />
-                        <Stack.Screen
-                            name="Organizations"
-                            component={OrganizationScreen}
-                            options={{ title: 'Organizations' }}
-                        />
-                        <Stack.Screen
-                            name="Feedback"
-                            component={FeedbackScreen}
-                            options={{ title: 'Send Feedback' }}
-                        />
-                        <Stack.Screen
-                            name="Preferences"
-                            component={PreferencesScreen}
-                            options={{ title: 'Preferences' }}
-                        />
-                        <Stack.Screen
-                            name="NotificationDetail"
-                            component={NotificationDetailScreen}
-                            options={{ title: 'Notification' }}
-                        />
-                        <Stack.Screen
-                            name="DeviceList"
-                            component={DeviceListScreen}
-                            options={{ title: 'Devices', headerShown: false }}
-                        />
-                        <Stack.Screen
-                            name="DeviceDetail"
-                            component={DeviceDetailScreen}
-                            options={{ title: 'Device Details' }}
-                        />
-                        <Stack.Screen
-                            name="InferenceDebug"
-                            component={InferenceDebugScreen}
-                            options={{ title: 'Inference Debug' }}
-                        />
-                        <Stack.Screen
-                            name="ClaimValidate"
-                            component={ClaimValidateScreen}
-                            options={{ title: 'Verify Device' }}
-                        />
-                        <Stack.Screen
-                            name="ClaimAssign"
-                            component={ClaimAssignScreen}
-                            options={{ title: 'Assign Device' }}
-                        />
-                        <Stack.Screen
-                            name="ClaimPhotos"
-                            component={ClaimPhotosScreen}
-                            options={{ title: 'Installation Photos' }}
-                        />
-                        <Stack.Screen
-                            name="ClaimConfirm"
-                            component={ClaimConfirmScreen}
-                            options={{ title: 'Confirm Activation' }}
-                        />
-                        <Stack.Screen
-                            name="QRScan"
-                            component={QRScanScreen}
-                            options={{ title: 'Scan QR Code' }}
-                        />
-                        {Platform.OS !== 'web' && (
-                            <Stack.Screen
-                                name="SetupGuide"
-                                component={SetupGuideScreen}
-                                options={{ title: 'Setup Guide' }}
-                            />
-                        )}
-                        {Platform.OS !== 'web' && (
-                            <Stack.Screen
-                                name="WiFiSetup"
-                                component={WiFiSetupScreen}
-                                options={{ title: 'Wi-Fi Setup' }}
-                            />
-                        )}
-                    </>
-                ) : Platform.OS === 'web' ? (
+        <Stack.Navigator screenOptions={{ headerShown: true, headerBackTitle: '', ...sharedHeaderStyle }}>
+            {isAuthenticated ? (
+                <>
                     <Stack.Screen
-                        name="LandingScreen"
-                        component={LandingScreen}
-                        options={{ title: 'Hazard Hero', headerShown: false }}
+                        name="Home"
+                        component={HomeScreen}
+                        options={{ title: '', headerShown: false }}
                     />
-                ) : (
                     <Stack.Screen
-                        name="LoginScreen"
-                        component={LoginScreen}
-                        options={{ title: 'Hazard Hero', headerShown: false }}
+                        name="NotificationDetail"
+                        component={NotificationDetailScreen}
+                        options={{ title: 'Request Details' }}
                     />
-                )}
-            </Stack.Navigator>
-        </>
+                </>
+            ) : Platform.OS === 'web' ? (
+                <Stack.Screen
+                    name="LandingScreen"
+                    component={LandingScreen}
+                    options={{ title: 'Hazard Hero', headerShown: false }}
+                />
+            ) : (
+                <Stack.Screen
+                    name="LoginScreen"
+                    component={LoginScreen}
+                    options={{ title: 'Hazard Hero', headerShown: false }}
+                />
+            )}
+        </Stack.Navigator>
     );
 }

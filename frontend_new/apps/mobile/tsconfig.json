@@ -9,7 +9,8 @@
     "allowSyntheticDefaultImports": true,
     "jsx": "react-native",
     "lib": [
-      "ES2020"
+      "ES2020",
+      "DOM"
     ],
     "target": "ESNEXT",
     "module": "ESNEXT",
@@ -23,6 +24,11 @@
     "**/*.tsx"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "e2e",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx"
   ]
 }

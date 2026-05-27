@@ -1,367 +1,178 @@
-# Hazard Hero Firmware (ESP-IDF)
+# Hazard Hero Firmware
 
-ESP-IDF firmware for the **ESP32-WROOM-32** accessible parking device controller. It replaces the legacy MicroPython runtime in `hardware/` with a C implementation built around ESP-IDF 5.4+, dual OTA slots, HTTPS transport, NVS-backed provisioning, and deterministic LED / ADC / Wi-Fi behavior.
+ESP-IDF firmware for the **single pilot sign**. This firmware is intentionally focused on the one-sign assistance loop and field setup needed for that pilot.
 
-The firmware samples a photoresistor on **GPIO 34 (ADC1_CH6)**, sends **512 raw 12-bit samples** to the backend classifier only when backend status is exactly `available`, polls device status from the API, and reflects that status on the onboard LED at **GPIO 2**.
+## What this firmware does
 
-## At a glance
+- Connects one ESP32 sign to Wi-Fi
+- Polls backend status for the installed sign
+- Samples the photoresistor on **GPIO 34**
+- Sends **512 ADC samples** to `POST /inference/classify` only when the sign is `available`
+- Mirrors backend-driven sign state on the LED at **GPIO 2**
+- Falls back to SoftAP provisioning when Wi-Fi credentials are missing or invalid
 
-- **Target board:** ESP32-WROOM-32 class dev boards (4 MB flash, no PSRAM)
-- **ADC input:** GPIO 34 / ADC1 channel 6
-- **Status LED:** GPIO 2
-- **Sampling window:** 512 samples × 25 ms = **12.8 s**
-- **Backend base URL:** compile-time CMake cache value `HAZARD_HERO_BACKEND_URL`
-- **Wi-Fi fallback:** SoftAP provisioning after missing creds or 3 failed reconnects
-- **Watchdog timeout:** 30 s
-- **Status poll interval:** 3 s when not in `available`
-- **OTA layout:** dual app slots (`ota_0`, `ota_1`) plus `otadata`
+## Pilot-only scope
 
----
+This firmware is for operating one installed sign. It does **not** depend on:
 
-## Project structure
+- OTA updates
+- Fleet rollout workflows
+- Multi-site coordination
+- Complex runtime update channels
+
+Those can be added after the pilot proves the core assistance loop.
+
+## Runtime behavior
+
+Boot flow:
+
+1. Initialize NVS
+2. Initialize LED driver
+3. Load device identity
+4. Initialize Wi-Fi manager
+5. Load Wi-Fi credentials or enter provisioning mode
+6. Connect to Wi-Fi
+7. Initialize ADC sampler
+8. Initialize HTTPS client
+9. Enter the main loop
+
+Main loop:
+
+- Poll `GET /devices/{serial}/status`
+- Update the LED to match backend status
+- If status is not `available`, wait 3 seconds and poll again
+- If status is `available`, collect 512 samples over 12.8 seconds
+- Send the sample batch to `POST /inference/classify`
+
+## Supported sign states
+
+The pilot relies on these core operational states:
+
+- `available`
+- `assistance_requested`
+- `assistance_in_progress`
+- `offline`
+- `error`
+
+The LED driver still supports training states, but they are not part of the pilot operator workflow.
+
+## Hardware assumptions
+
+- ESP32-WROOM-32 class board
+- 4 MB flash
+- Photoresistor on **GPIO 34**
+- Status LED on **GPIO 2**
+
+## Project files
 
 ```text
 firmware/
-├── CMakeLists.txt                    # Top-level ESP-IDF project definition
-├── README.md                         # This setup and architecture guide
-├── partitions.csv                    # Custom dual-OTA partition layout
-├── sdkconfig.defaults                # Default sdkconfig values for ESP32-WROOM-32
-├── version.txt                       # Human-maintained firmware version marker
+├── CMakeLists.txt
+├── partitions.csv
+├── sdkconfig.defaults
+├── version.txt
 ├── server_certs/
-│   └── ca_cert.pem                   # Embedded PEM root CA used by HTTPS + OTA
+│   └── ca_cert.pem
 └── main/
-    ├── CMakeLists.txt                # Registers firmware sources and embedded cert
-    ├── main.c                        # Application entry point, boot sequence, main loop
-    ├── nvs_storage.h                 # Public API for persisted serial, token, and Wi-Fi creds
-    ├── nvs_storage.c                 # NVS read/write helpers for device + Wi-Fi namespaces
-    ├── wifi_manager.h                # Wi-Fi STA/AP API and scan result types
-    ├── wifi_manager.c                # Wi-Fi STA connect, SoftAP mode, RSSI-sorted scanning
-    ├── provisioning_server.h         # Provisioning server lifecycle API
-    ├── provisioning_server.c         # SoftAP HTTP server for `/status`, `/scan`, `/configure`
-    ├── adc_sampler.h                 # ADC constants and batch sampling interface
-    ├── adc_sampler.c                 # ADC1 oneshot driver for 12-bit photoresistor sampling
-    ├── led_driver.h                  # Device status enum and LED control API
-    ├── led_driver.c                  # Non-blocking timer-driven LED patterns for 8 statuses
-    ├── https_client.h                # HTTPS classify/status request interfaces and result types
-    ├── https_client.c                # TLS client for classify POST and status GET requests
-    ├── ota_update.h                  # OTA control API and status enum
-    └── ota_update.c                  # esp_https_ota implementation and rollback helpers
+    ├── main.c
+    ├── adc_sampler.c
+    ├── adc_sampler.h
+    ├── https_client.c
+    ├── https_client.h
+    ├── led_driver.c
+    ├── led_driver.h
+    ├── nvs_storage.c
+    ├── nvs_storage.h
+    ├── provisioning_server.c
+    ├── provisioning_server.h
+    ├── wifi_manager.c
+    └── wifi_manager.h
 ```
 
----
+## Build requirements
 
-## Architecture
+- ESP-IDF 5.4+
+- Python 3.10+
+- CMake + Ninja
+- WSL2 on Windows is recommended for local builds
 
-```text
-                           +----------------------+
-                           |      main.c          |
-                           | boot + main loop     |
-                           +----------+-----------+
-                                      |
-          +---------------------------+------------------------------+
-          |              |                 |               |          |
-          v              v                 v               v          v
-+----------------+ +-------------+ +---------------+ +-----------+ +----------------+
-| nvs_storage    | | wifi_manager| | adc_sampler   | | led_driver| | https_client   |
-| serial/token   | | STA/AP/scan | | ADC1 oneshot  | | 8 patterns| | TLS API calls  |
-| wifi creds     | +------+------+ +-------+-------+ +-----+-----+ +--------+-------+
-+--------+-------+        |                |               ^                |
-         |                v                |               |                |
-         |        +---------------+        |               |                |
-         |        | provisioning  |<-------+               |                |
-         |        | _server       |                        |                |
-         |        | SoftAP HTTP   |------------------------+                |
-         |        +---------------+                                         |
-         |                                                                   |
-         +---------------------------------------------------+               |
-                                                             |               |
-                                                             v               v
-                                                     +-------------------------------+
-                                                     | Backend API + CA certificate   |
-                                                     | `/devices/{serial}/status`     |
-                                                     | `/inference/classify`           |
-                                                     +-------------------------------+
+## Build and flash
 
-                           +----------------------+
-                           |     ota_update       |
-                           | esp_https_ota +      |
-                           | rollback helpers     |
-                           +----------+-----------+
-                                      |
-                                      v
-                           +----------------------+
-                           | partitions.csv       |
-                           | ota_0 / ota_1 slots  |
-                           +----------------------+
-```
-
-**Important:** `app_main()` now calls `ota_init()` during boot and `ota_mark_valid()` after the first successful backend connectivity check. `ota_perform_update()` still requires an explicit trigger path.
-
----
-
-## Boot sequence
-
-The current `app_main()` flow is:
-
-1. **NVS init** via `nvs_storage_init()`
-2. **LED driver init** via `led_driver_init()`
-3. **OTA init** via `ota_init()`
-4. **Load device identity** → fail closed into recoverable setup/error handling when serial or token material is missing
-5. **Wi-Fi manager init** via `wifi_manager_init()`
-6. **Check Wi-Fi credentials** → enter provisioning mode if missing
-7. **Wi-Fi STA connect** → enter provisioning mode if the saved network fails
-8. **ADC sampler init** via `adc_sampler_init()`
-9. **HTTPS client init** via `https_client_init(HAZARD_HERO_BACKEND_URL)`
-10. **Enable task watchdog** with a 30 s timeout
-11. **Enter main loop**
-12. **Mark OTA image valid** after the first successful backend connectivity check
-
-Main loop behavior:
-
-- Poll `/devices/{serial}/status` with firmware/config version headers
-- Mirror backend status on the LED
-- If status is not `available`, wait **3 s** and poll again
-- If status is exactly `available`, collect **512 ADC samples** over **12.8 s**
-- POST samples to `/inference/classify` with `Authorization: Bearer <serial>:<token>` and firmware/config version headers
-- Retry Wi-Fi up to **3 failures** before falling back to SoftAP provisioning
-
----
-
-## Prerequisites
-
-### Required software
-
-- **ESP-IDF v5.4+**
-- **Python 3.10+** (installed by the ESP-IDF toolchain flow is fine)
-- **CMake + Ninja** (installed via ESP-IDF setup)
-- **WSL2 Ubuntu** on Windows (recommended and assumed below)
-- **usbipd-win** on Windows for USB passthrough into WSL2
-
-### Required hardware
-
-- ESP32-WROOM-32 board (or compatible ESP32 dev board with 4 MB flash)
-- USB cable with data lines
-- Photoresistor wired to **GPIO 34**
-- LED on **GPIO 2** (most ESP32 dev boards already expose this as the onboard LED)
-
-### WSL2 setup notes
-
-Build from the **Linux filesystem** (for example `~/code/smart-handicap-sign/firmware`), **not** from `/mnt/c/...`. ESP-IDF builds are noticeably slower and less reliable when the source tree lives on the Windows-mounted filesystem.
-
-Example ESP-IDF installation inside WSL2:
-
-```bash
-mkdir -p ~/esp
-cd ~/esp
-git clone -b v5.4 --recursive https://github.com/espressif/esp-idf.git
-cd esp-idf
-./install.sh esp32
-echo 'source ~/esp/esp-idf/export.sh' >> ~/.bashrc
-source ~/esp/esp-idf/export.sh
-```
-
-Recommended one-time serial access fix inside WSL:
-
-```bash
-sudo usermod -aG dialout $USER
-# then log out and back in
-```
-
-### USB passthrough with `usbipd-win`
-
-Run these commands from **Windows PowerShell as Administrator**:
-
-```powershell
-usbipd list
-usbipd bind --busid <BUSID>
-usbipd attach --wsl --busid <BUSID>
-```
-
-Then verify the device inside WSL:
-
-```bash
-ls /dev/ttyUSB* /dev/ttyACM*
-```
-
-When you are done flashing:
-
-```powershell
-usbipd detach --busid <BUSID>
-```
-
----
-
-## Build, flash, and monitor
-
-### 1) Open a WSL2 shell with ESP-IDF exported
+From a Linux-path checkout with ESP-IDF exported:
 
 ```bash
 source ~/esp/esp-idf/export.sh
-```
-
-### 2) Work from a Linux-path checkout
-
-```bash
 cd ~/code/smart-handicap-sign/firmware
-```
-
-### 3) Set the target once
-
-```bash
 idf.py set-target esp32
-```
-
-### 4) Build
-
-```bash
 idf.py build
-```
-
-Useful clean rebuild if you change targets or toolchain state:
-
-```bash
-idf.py fullclean build
-```
-
-### 5) Flash the board
-
-```bash
 idf.py -p /dev/ttyUSB0 flash
-```
-
-### 6) Watch boot logs
-
-```bash
 idf.py -p /dev/ttyUSB0 monitor
 ```
 
-Exit the monitor with **Ctrl+]**.
+## Required configuration
 
-### 7) One-command flash + monitor
+### Backend URL
 
-```bash
-idf.py -p /dev/ttyUSB0 flash monitor
-```
-
-### 8) Optional size report
-
-```bash
-idf.py size
-```
-
----
-
-## Configuration
-
-There is no Kconfig surface for runtime deployment settings yet. Configuration currently comes from **compile-time constants** plus **NVS data**.
-
-### 1) Backend base URL (`HAZARD_HERO_BACKEND_URL`)
-
-The backend URL is provided as a CMake cache value in `firmware/CMakeLists.txt` and compiled into `main/main.c`:
+Set the backend API base URL in `firmware/CMakeLists.txt` before building:
 
 ```cmake
 set(HAZARD_HERO_BACKEND_URL "https://api.example.com/api/v1" CACHE STRING "Backend API base URL")
 ```
 
-Set this to the environment-specific API base URL before building.
+Use the real pilot backend URL, including `/api/v1`.
 
-**Notes:**
+### Device identity
 
-- The URL should include `/api/v1`
-- `https_client_init()` trims any trailing slash
-- The embedded CA in `server_certs/ca_cert.pem` must trust the server you point to
+The sign uses these identity values:
 
-### 2) Device serial number
+- `device.auth_token`
 
-The device **will not boot into the main loop without a serial number** in NVS.
+Notes:
 
-- Namespace: `device`
-- Key: `serial`
-- Max length: **32 chars**
+- `device.serial` should be preloaded for the pilot when possible.
+- If `device.serial` is missing, current firmware regenerates it from the device MAC address and stores it in NVS.
+- `device.auth_token` still needs to be provisioned for normal backend communication.
 
-### 3) Device auth token
+### Wi-Fi credentials
 
-The classify request loads an auth token from NVS.
+The sign needs these NVS values or must receive them through provisioning:
 
-- Namespace: `device`
-- Key: `auth_token`
-- Max length: **128 chars**
+- `wifi.wifi_ssid`
+- `wifi.wifi_pass`
 
-If the token is missing, normal runtime must fail closed into a recoverable setup/error path. Firmware never creates device tokens; manufacturing, backend registration, or service tooling issues and restores token material.
+## Provisioning in the field
 
-### 4) Setup/claim verifier material
+If Wi-Fi credentials are missing or reconnect attempts fail repeatedly, firmware starts a SoftAP provisioning server.
 
-Local `/configure` requires exactly one of `claim_id` or `setup_code` before Wi-Fi credentials are saved.
+### Provisioning details
 
-- Namespace: `device`
-- Suggested keys: `setup_code_hash`, `setup_code_salt`, optional revoked/expiry metadata
-- Issuer: manufacturing, backend registration, or service tooling
-
-Revoked or expired verifier metadata must make the verifier unusable before any Wi-Fi write. Five failed validations in the current boot session lock credential writes for 5 minutes. Field reset clears Wi-Fi credentials only and preserves serial number, auth token, and verifier material.
-
-### 5) Wi-Fi credentials
-
-Wi-Fi credentials may be loaded in either of two ways:
-
-- **Provisioning SoftAP** (recommended for field setup)
-- **Preloaded NVS** during manufacturing
-
-Stored keys:
-
-- Namespace: `wifi`
-- Key: `wifi_ssid` (max **32 chars**)
-- Key: `wifi_pass` (max **64 chars**)
-
-If credentials are missing, or if the device fails to reconnect **3 times**, firmware falls back to provisioning mode.
-
-### 6) TLS certificate
-
-`server_certs/ca_cert.pem` is embedded into the firmware image at build time. Replace the placeholder before using real HTTPS services.
-
-- `https_client.c` disables common-name checking for dev-tunnel usage
-- `ota_update.c` uses the embedded CA as well; serve OTA binaries from a host the cert actually matches
-
----
-
-## Provisioning Wi-Fi in the field
-
-If Wi-Fi credentials are missing or invalid, firmware starts a SoftAP and HTTP provisioning server.
-
-### SoftAP behavior
-
-- SSID format: **`SmartSign-XXXX`** (`XXXX` = last two MAC bytes in hex)
-- Port: **80**
-- Default ESP-IDF AP IP: **`192.168.4.1`**
+- SSID format: `SmartSign-XXXX`
+- IP address: `192.168.4.1`
+- Port: `80`
 
 ### Provisioning endpoints
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `/status` | GET | Returns device MAC-derived ID and confirms AP mode |
-| `/scan` | GET | Returns nearby Wi-Fi networks sorted by RSSI |
-| `/configure` | POST | Saves `ssid` and `password`, then reboots |
+| `/status` | GET | Confirms AP mode and device identity summary |
+| `/scan` | GET | Lists nearby Wi-Fi networks |
+| `/configure` | POST | Saves Wi-Fi credentials and reboots |
 
-Example field provisioning flow:
+Example:
 
 ```bash
 curl http://192.168.4.1/status
 curl http://192.168.4.1/scan
 curl -X POST http://192.168.4.1/configure \
-  -H 'Content-Type: application/json' \
-  -d '{"ssid":"OfficeWiFi","password":"correct-horse-battery-staple","claim_id":"ABCD-EF23"}'
+  -H "Content-Type: application/json" \
+  -d "{\"ssid\":\"OfficeWiFi\",\"password\":\"correct-horse-battery-staple\",\"claim_id\":\"ABCD-EF23\"}"
 ```
 
-`/configure` rejects missing code, both `claim_id` and `setup_code`, invalid code, revoked or expired verifier metadata, oversized or malformed JSON, and lockout attempts before writing Wi-Fi credentials. Responses must not include Wi-Fi passwords, device bearer tokens, setup/claim codes, hashes, or salts.
+## NVS preload option
 
----
+For bench setup or manufacturing, generate an NVS image and flash it to the `nvs` partition.
 
-## NVS provisioning (serial number, auth token, optional Wi-Fi)
-
-For manufacturing or bench setup, the cleanest path is to generate an NVS partition image and flash it to the `nvs` partition at **0x9000**.
-
-### Option A — generate an NVS partition binary
-
-Create `device_config.csv`:
+Example CSV:
 
 ```csv
 key,type,encoding,value
@@ -375,270 +186,86 @@ wifi_ssid,data,string,OfficeWiFi
 wifi_pass,data,string,correct-horse-battery-staple
 ```
 
-If you want Wi-Fi entered later through the provisioning portal, omit the `wifi_*` rows and keep only the `device` namespace values.
-
-Generate the partition image:
+Generate and flash:
 
 ```bash
 python $IDF_PATH/components/nvs_flash/nvs_partition_generator/nvs_partition_gen.py \
   generate device_config.csv device_nvs.bin 0x6000
-```
 
-Flash it:
-
-```bash
-esptool.py --port /dev/ttyUSB0 write_flash 0x9000 device_nvs.bin
-```
-
-Or, if you prefer using the ESP-IDF Python environment explicitly:
-
-```bash
 python -m esptool --port /dev/ttyUSB0 write_flash 0x9000 device_nvs.bin
 ```
 
-### Option B — flash firmware, then flash NVS
-
-```bash
-idf.py -p /dev/ttyUSB0 flash
-esptool.py --port /dev/ttyUSB0 write_flash 0x9000 device_nvs.bin
-```
-
-### Important NVS notes
-
-- Partition size must stay **0x6000** to match `partitions.csv`
-- Flash offset must stay **0x9000**
-- `idf.py erase-flash` wipes NVS and requires reprovisioning
-- The app requires **`device.serial`** before normal boot will start
-- Field reset must clear only `wifi.wifi_ssid` and `wifi.wifi_pass`; identity and verifier keys require protected manufacturing/service erase tooling
-
----
-
-## Key firmware constants
-
-| Constant | Value | Source |
-|---|---:|---|
-| `HAZARD_HERO_BACKEND_URL` | `https://api.example.com/api/v1` (override per build) | `firmware/CMakeLists.txt` |
-| `ADC_PIN` | `GPIO 34 / ADC1_CH6` | `main/adc_sampler.h` |
-| `LED_GPIO` | `GPIO 2` | `main/led_driver.h` |
-| `SAMPLES_PER_BATCH` | `512` | `main/adc_sampler.h` |
-| `SAMPLE_INTERVAL_MS` | `25` | `main/adc_sampler.h` |
-| Sampling time | `12.8 s` | Derived from 512 × 25 ms |
-| WDT timeout | `30000 ms` | `main/main.c` |
-| Wi-Fi connect timeout | `20000 ms` | `main/main.c` / `wifi_manager.c` |
-| Status poll interval | `3000 ms` | `main/main.c` |
-| Max reconnect failures | `3` | `main/main.c` |
-| Status retry count | `3` | `main/main.c` |
-| Setup-code lockout | `5 failures / 5 minutes` | `main/provisioning_server.c` |
-
----
-
 ## Partition table
 
-`partitions.csv` defines a dual-slot OTA layout for a 4 MB ESP32 flash part:
+The pilot firmware uses a **single application partition** instead of an OTA layout.
 
 | Partition | Type | Subtype | Offset | Size | Purpose |
 |---|---|---|---:|---:|---|
-| `nvs` | data | nvs | `0x9000` | `0x6000` (24 KB) | Serial number, auth token, Wi-Fi creds |
-| `otadata` | data | ota | `0xF000` | `0x2000` (8 KB) | Active OTA slot / rollback metadata |
-| `phy_init` | data | phy | `0x11000` | `0x1000` (4 KB) | RF calibration data |
-| `ota_0` | app | ota_0 | `0x20000` | `0x1F0000` (~1.94 MiB) | App slot A |
-| `ota_1` | app | ota_1 | `0x210000` | `0x1F0000` (~1.94 MiB) | App slot B |
+| `nvs` | data | nvs | `0x9000` | `0x6000` | Device identity and Wi-Fi credentials |
+| `phy_init` | data | phy | `0xF000` | `0x1000` | RF calibration |
+| `factory` | app | factory | `0x10000` | `0x3F0000` | Pilot firmware image |
 
-Why it matters:
+## Key constants
 
-- Two app partitions allow safe OTA swaps
-- NVS is large enough for identity + Wi-Fi provisioning
-- The application binary must fit within a **single 0x1F0000 slot**
+| Setting | Value |
+|---|---|
+| Sample count | `512` |
+| Sample interval | `25 ms` |
+| Sampling window | `12.8 s` |
+| Status poll interval | `3000 ms` |
+| Wi-Fi connect timeout | `20000 ms` |
+| Watchdog timeout | `30000 ms` |
+| Max reconnect failures | `3` |
 
----
+## LED patterns
 
-## Memory budget
+| Status | Pattern |
+|---|---|
+| `available` | Slow heartbeat |
+| `assistance_requested` | Fast blink |
+| `assistance_in_progress` | Double flash |
+| `offline` | Off |
+| `error` | Triple burst |
 
-The table below is an engineering budget for this firmware shape on an ESP32 without PSRAM. Exact free heap varies by build flags, Wi-Fi state, and TLS handshake overhead.
+## Pilot operations checklist
 
-| Component / working set | Approx. RAM |
-|---|---:|
-| Wi-Fi + lwIP stack | 100-115 KB |
-| FreeRTOS kernel / task infrastructure | 20-30 KB |
-| ADC sample buffer (`512 * sizeof(int)`) | 2 KB |
-| HTTP client TX buffer | 4 KB |
-| HTTP client RX buffer | 2 KB |
-| JSON request/response allocations | 2-8 KB |
-| Provisioning HTTP server overhead | 8-16 KB |
-| App state, timers, NVS helpers, strings | 10-20 KB |
-| **Target free heap after Wi-Fi + HTTPS init** | **150+ KB** |
+Before installing the pilot sign:
 
-If you need real numbers on a board, run `idf.py size` and log `heap_caps_get_free_size()` from a local test build.
-
----
-
-## LED status patterns
-
-The LED driver is timer-based and non-blocking. Status strings from the backend are converted into the enum in `led_driver.h`.
-
-| Status | Pattern | Timing |
-|---|---|---|
-| `available` | Slow heartbeat | 1 s on, 2 s off |
-| `assistance_requested` | Fast blink | 200 ms on, 200 ms off |
-| `assistance_in_progress` | Double flash | 150 ms on, 150 ms off, 150 ms on, 800 ms off |
-| `offline` | LED off | Off continuously |
-| `error` | Triple burst (SOS-like) | 100 ms on/off ×3, then 800 ms pause |
-| `training_ready` | Medium pulse | 500 ms on, 500 ms off |
-| `training_positive` | Solid on | On continuously |
-| `training_negative` | Very fast blink | 100 ms on, 100 ms off |
-
----
-
-## HTTPS behavior
-
-### Status polling
-
-- Path: `GET /devices/{serial}/status`
-- Serial number comes from NVS
-- Request sends `X-Firmware-Version` and `X-Firmware-Config-Version`
-- Response must contain JSON field `status`
-- Malformed JSON, missing status, wrong serial, non-200 responses, TLS failures, stale state, or unknown status strings fail closed and produce zero classification submissions
-
-### Classification
-
-- Path: `POST /inference/classify`
-- Sends `serial_number` plus `samples[512]`
-- Samples must be 12-bit raw values in the range `0..4095`
-- Authorization header format: `Bearer <serial>:<auth_token>`
-- Request sends `X-Firmware-Version` and `X-Firmware-Config-Version`
-
-### Firmware event reporting
-
-Firmware-observed events are reported after connectivity is available through `POST /devices/{serial}/events` with bearer auth and firmware/config version headers. Supported event summaries are status polling failure, status polling recovery, OTA validation, and provisioning success. Payloads must be bounded and secret-free.
-
-Suggested operational signals for logs, metrics, or device events include setup-code failures, setup-code lockouts, status poll failures and recoveries, classify submissions, auth failures, OTA validation, provisioning success, firmware version observations, and firmware event reports.
-
-### CA / certificate behavior
-
-- `server_certs/ca_cert.pem` is embedded at build time
-- `https_client.c` keeps TLS common-name validation enabled
-- The embedded CA must trust the configured backend hostname and certificate chain
-
----
-
-## OTA update instructions
-
-The firmware includes an OTA module and a dual-slot partition table. Current status:
-
-- `ota_update.c` is compiled and linked
-- `partitions.csv` supports OTA slot switching
-- `server_certs/ca_cert.pem` is reused for OTA TLS
-- `main.c` now calls `ota_init()` during boot and `ota_mark_valid()` after the first successful backend connectivity check
-- `ota_perform_update()` still requires an explicit update trigger
-
-### What is already implemented
-
-`ota_update.c` supports:
-
-- Detecting first boot after OTA (`ota_is_first_boot()`)
-- Marking the running image valid (`ota_mark_valid()`)
-- Downloading a firmware binary over HTTPS (`ota_perform_update(url)`)
-- Reporting current version and OTA status
-
-### Practical OTA workflow
-
-1. Build firmware:
-
-   ```bash
-   idf.py build
-   ```
-
-2. Host the generated firmware binary (typically under `build/`) on an HTTPS endpoint trusted by `server_certs/ca_cert.pem`
-3. Invoke `ota_perform_update("https://your-host/path/firmware.bin")` from your chosen update trigger
-4. Reboot after success so the bootloader switches to the new slot
-5. On next boot, let the normal boot path call `ota_init()` and wait for the first successful backend connectivity check to trigger `ota_mark_valid()` and cancel rollback
-
-### OTA constraints
-
-- The firmware binary must fit inside one **0x1F0000** app slot
-- The OTA URL must be HTTPS
-- The server certificate must chain to the embedded CA
-
----
-
-## Migration status
-
-ESP-IDF migration status for the firmware tree:
-
-- [x] ESP-IDF project scaffolding and component registration
-- [x] NVS persistence for serial number, auth token, and Wi-Fi credentials
-- [x] Wi-Fi station mode, reconnect handling, and SoftAP fallback
-- [x] Provisioning HTTP server (`/status`, `/scan`, `/configure`)
-- [x] ADC sampling pipeline (512 samples @ 25 ms)
-- [x] Non-blocking LED status patterns for all 8 states
-- [x] HTTPS classify and status client
-- [x] OTA support module and dual-slot partition table
-- [x] Main boot sequence and runtime loop
-- [x] Firmware documentation
-
-**Reality check:** migration is complete at the module/documentation level, but OTA still needs to be called from the runtime path if you want automatic update behavior.
-
----
+1. Set the backend URL.
+2. Replace `server_certs/ca_cert.pem` with the CA needed for the pilot backend.
+3. Flash the firmware.
+4. Provision serial number, auth token, and Wi-Fi credentials.
+5. Verify the sign can poll status.
+6. Verify a real wave triggers `assistance_requested`.
+7. Verify the operator can acknowledge and resolve the request.
 
 ## Troubleshooting
 
-### `idf.py: command not found`
+### Device boots into AP mode
 
-You have not exported the ESP-IDF environment in the current shell.
+- Wi-Fi credentials are missing
+- Saved credentials are wrong
+- The sign failed to reconnect too many times
 
-```bash
-source ~/esp/esp-idf/export.sh
-```
+### Status polling fails
 
-### Flashing from WSL cannot find `/dev/ttyUSB0`
+- Backend URL is wrong
+- TLS certificate does not match the backend chain
+- Device serial number or auth token is missing/invalid
+- Backend is unavailable
 
-- Make sure the board is attached with `usbipd attach --wsl --busid <BUSID>`
-- Check `/dev/ttyUSB*` and `/dev/ttyACM*`
-- Ensure your user is in the `dialout` group
+### Classification never runs
 
-### Builds are very slow or flaky under WSL2
+- Backend status is not `available`
+- ADC wiring is wrong
+- HTTPS client cannot reach `/inference/classify`
 
-Do not build from `/mnt/c/...`. Move the repo into the Linux filesystem (for example `~/code/...`).
+## Validation
 
-### Device boots, then halts with error LED
+Use `firmware/TEST_PLAN.md` for the hardware validation checklist. The most important pilot checks are:
 
-The serial number is missing from NVS. Provision `device.serial` before booting normally.
-
-### Device always starts in provisioning mode
-
-Likely causes:
-
-- No Wi-Fi credentials in NVS
-- Saved SSID/password are wrong
-- Wi-Fi connect timed out after 20 s
-- Reconnect exceeded 3 failures and firmware fell back to SoftAP
-
-### `/scan` works, but backend calls fail
-
-Check all of the following:
-
-- `HAZARD_HERO_BACKEND_URL` is set to the correct backend for the build
-- `server_certs/ca_cert.pem` is not the placeholder
-- `device.auth_token` exists in NVS
-- The backend exposes `/api/v1/devices/{serial}/status` and `/api/v1/inference/classify`
-
-### OTA fails immediately
-
-Common causes:
-
-- Placeholder CA certificate still embedded
-- OTA host certificate does not match the URL / trust chain
-- Firmware binary is larger than one OTA slot
-- No runtime code is currently invoking `ota_perform_update()`
-
-### NVS provisioning image flashes, but values are not read
-
-Verify all three of these match the code:
-
-- Offset: `0x9000`
-- Size: `0x6000`
-- Keys/namespaces: `device.serial`, `device.auth_token`, `wifi.wifi_ssid`, `wifi.wifi_pass`
-
-### `idf.py erase-flash` fixed one problem and created another
-
-That command wipes the NVS partition too. Reflash your device identity and Wi-Fi credentials afterward.
+- boot and LED behavior
+- Wi-Fi provisioning
+- status polling
+- wave sampling and classification
+- recovery from temporary Wi-Fi loss

@@ -1,12 +1,12 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
-import { useRoute, useNavigation } from '@react-navigation/native';
+import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import { RootStackParamList } from '@/types/navigation';
-import { notificationAPI } from '@/api/api';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 import { spacing, layout } from '@/theme/spacing';
+import { DeviceEvent } from '@/types/device';
 
 function formatDate(iso: string): string {
     const d = new Date(iso);
@@ -21,52 +21,78 @@ function formatDate(iso: string): string {
     });
 }
 
+function formatEventTitle(event: DeviceEvent): string {
+    switch (event.event_type) {
+        case 'assistance_requested':
+            return 'Assistance requested';
+        case 'assistance_acknowledged':
+            return 'Request acknowledged';
+        case 'assistance_resolved':
+            return 'Request resolved';
+        case 'pilot_seeded':
+            return 'Pilot sign created';
+        default:
+            return event.event_type.replace(/_/g, ' ');
+    }
+}
+
+function formatEventBody(event: DeviceEvent): string {
+    const message = typeof event.payload?.message === 'string' ? event.payload.message : null;
+    if (message) return message;
+
+    const previousStatus = typeof event.payload?.previous_status === 'string'
+        ? event.payload.previous_status
+        : null;
+    const newStatus = typeof event.payload?.new_status === 'string'
+        ? event.payload.new_status
+        : null;
+    const confidence = typeof event.payload?.confidence === 'number'
+        ? `${Math.round(event.payload.confidence * 100)}% confidence`
+        : null;
+
+    const parts = [
+        previousStatus && newStatus ? `${previousStatus} -> ${newStatus}` : newStatus,
+        confidence,
+    ].filter(Boolean);
+
+    if (parts.length > 0) {
+        return parts.join(' • ');
+    }
+
+    return 'Recorded device event for the pilot sign.';
+}
+
 export default function NotificationDetailScreen() {
     const route = useRoute<RouteProp<RootStackParamList, 'NotificationDetail'>>();
-    const navigation = useNavigation();
-    const { notification } = route.params;
-
-    const handleAcknowledge = async () => {
-        try {
-            await notificationAPI.markAsRead(notification.id);
-            navigation.goBack();
-        } catch (err) {
-            console.error('Failed to acknowledge notification:', err);
-        }
-    };
+    const { event } = route.params;
 
     return (
         <ScrollView style={s.container} contentContainerStyle={s.content}>
             <View style={s.header}>
-                <Text style={s.title}>{notification.title}</Text>
-                <Text style={s.date}>{formatDate(notification.created_at)}</Text>
+                <Text style={s.title}>{formatEventTitle(event)}</Text>
+                <Text style={s.date}>{formatDate(event.created_at)}</Text>
             </View>
 
             <View style={s.bodyCard}>
-                <Text style={s.body}>{notification.body}</Text>
+                <Text style={s.body}>{formatEventBody(event)}</Text>
             </View>
 
             <View style={s.meta}>
                 <View style={s.metaRow}>
-                    <Text style={s.metaLabel}>Status</Text>
-                    <View style={[s.badge, notification.read ? s.badgeRead : s.badgeUnread]}>
-                        <Text style={[s.badgeText, notification.read ? s.badgeTextRead : s.badgeTextUnread]}>
-                            {notification.read ? 'Read' : 'Unread'}
+                    <Text style={s.metaLabel}>Event type</Text>
+                    <Text style={s.metaValue}>{event.event_type}</Text>
+                </View>
+                {'new_status' in event.payload || 'previous_status' in event.payload ? (
+                    <View style={[s.metaRow, s.metaRowSpaced]}>
+                        <Text style={s.metaLabel}>Transition</Text>
+                        <Text style={s.metaValue}>
+                            {typeof event.payload.previous_status === 'string' ? event.payload.previous_status : 'unknown'}
+                            {' -> '}
+                            {typeof event.payload.new_status === 'string' ? event.payload.new_status : 'unknown'}
                         </Text>
                     </View>
-                </View>
+                ) : null}
             </View>
-
-            {!notification.read && (
-                <Pressable
-                    onPress={handleAcknowledge}
-                    style={({ pressed }) => [s.ackButton, pressed && { opacity: 0.85 }]}
-                    accessibilityRole="button"
-                    accessibilityLabel="Acknowledge this notification"
-                >
-                    <Text style={s.ackButtonText}>Acknowledge</Text>
-                </Pressable>
-            )}
         </ScrollView>
     );
 }
@@ -97,7 +123,7 @@ const s = StyleSheet.create({
         padding: spacing.md,
         marginBottom: spacing.lg,
         borderWidth: StyleSheet.hairlineWidth,
-        borderColor: colors.border,
+        borderColor: colors.divider,
     },
     body: {
         ...typography.body,
@@ -110,7 +136,7 @@ const s = StyleSheet.create({
         padding: spacing.md,
         marginBottom: spacing.xl,
         borderWidth: StyleSheet.hairlineWidth,
-        borderColor: colors.border,
+        borderColor: colors.divider,
     },
     metaRow: {
         flexDirection: 'row',
@@ -122,35 +148,12 @@ const s = StyleSheet.create({
         color: colors.textSecondary,
         fontFamily: 'Montserrat_500Medium',
     },
-    badge: {
-        paddingHorizontal: 10,
-        paddingVertical: 4,
-        borderRadius: 12,
+    metaRowSpaced: {
+        marginTop: spacing.sm,
     },
-    badgeUnread: {
-        backgroundColor: colors.primary + '18',
-    },
-    badgeRead: {
-        backgroundColor: colors.gray + '30',
-    },
-    badgeText: {
+    metaValue: {
         ...typography.bodySmall,
+        color: colors.textPrimary,
         fontFamily: 'Montserrat_600SemiBold',
-    },
-    badgeTextUnread: {
-        color: colors.primary,
-    },
-    badgeTextRead: {
-        color: colors.textMuted,
-    },
-    ackButton: {
-        backgroundColor: colors.primary,
-        paddingVertical: 14,
-        borderRadius: 9999,
-        alignItems: 'center',
-    },
-    ackButtonText: {
-        ...typography.button,
-        color: colors.white,
     },
 });

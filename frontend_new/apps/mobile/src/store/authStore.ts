@@ -7,7 +7,7 @@ import axios from 'axios';
 import { getApiV1BaseUrl } from '@hazard-hero/shared';
 import { User } from '../types/types';
 import { tokenStorage } from '../lib/auth';
-import { authAPI, pushTokenAPI } from '../api/api';
+import { authAPI } from '../api/api';
 import { getAuthRedirectUri } from '../utils/authRedirect';
 console.log('[STORE] All authStore imports resolved');
 
@@ -18,7 +18,6 @@ interface AuthState {
     isAuthenticated: boolean;
     isLoading: boolean;
     sessionExpiredMessage: string | null;
-    _pushToken: string | null;
     login: () => Promise<void>;
     handleAuthCode: (code: string) => Promise<void>;
     setUser: (user: User | null, token: string | null, refreshToken?: string | null) => Promise<void>;
@@ -26,7 +25,6 @@ interface AuthState {
     logout: () => Promise<void>;
     restoreSession: () => Promise<void>;
     handleSessionExpired: () => void;
-    setPushToken: (token: string | null) => void;
 }
 
 let lastExchangedCode: string | null = null;
@@ -38,9 +36,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     isAuthenticated: false,
     isLoading: true,
     sessionExpiredMessage: null,
-    _pushToken: null,
-
-    setPushToken: (pushToken) => set({ _pushToken: pushToken }),
 
     login: async () => {
         try {
@@ -116,16 +111,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     },
 
     logout: async () => {
-        // Unregister push token before clearing auth state
-        const currentPushToken = get()._pushToken;
-        if (currentPushToken) {
-            try {
-                await pushTokenAPI.unregister(currentPushToken);
-            } catch (error) {
-                console.warn('[Auth] Failed to unregister push token:', error);
-            }
-        }
-
         let logoutUrl: string | undefined;
         try {
             const response = await authAPI.initiateLogout();
@@ -134,7 +119,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             console.error('[Auth] Error calling logout API:', error);
         } finally {
             await tokenStorage.clear();
-            set({ user: null, token: null, refreshToken: null, isAuthenticated: false, _pushToken: null });
+            set({ user: null, token: null, refreshToken: null, isAuthenticated: false });
         }
 
         if (logoutUrl) {

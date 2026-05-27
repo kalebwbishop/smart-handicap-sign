@@ -1,5 +1,3 @@
-"""Wire up the shared deploy-box auth module for Hazard Hero."""
-
 from functools import lru_cache
 from urllib.parse import urljoin
 
@@ -86,7 +84,6 @@ def _get_compatible_workos_client(config: AuthConfig) -> WorkOSClient:
     return client
 
 
-# Keep the shared deploy-box auth module working across WorkOS SDK internals.
 deploy_box_client.get_workos_client = _get_compatible_workos_client
 deploy_box_routes.get_workos_client = _get_compatible_workos_client
 deploy_box_middleware.get_workos_client = _get_compatible_workos_client
@@ -94,7 +91,6 @@ deploy_box_auth.get_workos_client = _get_compatible_workos_client
 
 
 async def _get_user_with_profile(workos_user_id: str) -> dict | None:
-    """Hazard Hero ``/auth/me`` query that JOINs the profiles table."""
     pool = await get_pool()
     row = await pool.fetchrow(
         """SELECT u.*, p.display_name, p.bio, p.profile_image_url,
@@ -138,10 +134,6 @@ _deps_cache = None
 
 
 def build_auth_dependencies():
-    """Create the shared auth dependencies (get_current_user, optional_auth).
-
-    Cached so middleware re-exports and the router share the same instances.
-    """
     global _deps_cache
     if _deps_cache is None:
         _deps_cache = create_auth_dependencies(get_auth_config())
@@ -149,7 +141,6 @@ def build_auth_dependencies():
 
 
 def build_auth_router():
-    """Create the auth router, sharing the same get_current_user dependency."""
     cfg = get_auth_config()
     get_current_user, _ = build_auth_dependencies()
     return create_router(cfg, get_current_user=get_current_user)

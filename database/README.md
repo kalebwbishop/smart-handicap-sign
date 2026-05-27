@@ -1,12 +1,12 @@
 # Database
 
-PostgreSQL 15 schema assets for Hazard Hero.
+PostgreSQL 15 schema assets for the one-sign Hazard Hero pilot.
 
 ## Canonical assets
 
 - `schemas/shs_schema.sql` — bootstrap entrypoint used by Docker and local setup
-- `schemas/shs_schema_v2.sql` — canonical schema content loaded by `shs_schema.sql`
-- `seeds/dev_data_v2.sql` — current development seed data
+- `schemas/shs_schema_v2.sql` — canonical pilot schema loaded by `shs_schema.sql`
+- `seeds/dev_data_v2.sql` — deterministic pilot seed data
 - `scripts/migrate_v2.ts` — default migration entrypoint
 
 ## Commands
@@ -22,45 +22,35 @@ Both scripts load `../backend/.env` and expect `POSTGRES_CONNECTION_STRING` (or 
 
 ## Migration behavior
 
-`npm run migrate` uses `scripts/migrate_v2.ts` to reset the target database to the canonical device schema by applying `schemas/shs_schema_v2.sql`.
+`npm run migrate` drops and recreates the database as the pilot schema. It is destructive by design and should only be used where data reset is acceptable.
 
-## Production deployment
+## Pilot schema overview
 
-`.github/workflows/ci-cd.yml` runs `npm run migrate` before Terraform deploys a new backend revision.
+The pilot database keeps only the tables needed for a single operator + single sign workflow:
 
-The current migration is destructive by design. Use it only where resetting the database is acceptable.
-
-## Schema overview
-
-Primary v2 tables:
-
-- `users`, `profiles`
-- `organizations`, `organization_members`
-- `sites`
+- `users`
+- `profiles`
 - `devices`
-- `parking_spaces`
-- `installations`
 - `device_events`
-- `notifications`
-- `push_tokens`
-- `audit_logs`
 
-## Key enums
+## Device states
 
-- `org_role`: `owner`, `admin`, `installer`, `member`
-- `device_lifecycle_status`: `manufactured`, `unclaimed`, `claiming`, `active`, `lost`, `revoked`, `retired`
-- `device_operational_status`: `available`, `assistance_requested`, `assistance_in_progress`, `offline`, `error`, `training_ready`, `training_positive`, `training_negative`
-- `claim_status_type`: `unused`, `used`, `revoked`, `expired`
-- `accessible_parking_type`: `standard`, `van_accessible`, `temporary`, `reserved`
+`device_operational_status` supports only the pilot loop and basic health states:
+
+- `available`
+- `assistance_requested`
+- `assistance_in_progress`
+- `offline`
+- `error`
+
+Training states, organization tables, installation/claim workflow tables, push tokens, notifications, and billing/subscription fields are intentionally removed from the canonical schema.
 
 ## Seeding
 
-`npm run seed` applies only `seeds/dev_data_v2.sql`. The v2 seed includes:
+`npm run seed` applies `seeds/dev_data_v2.sql`, which creates:
 
-- sample users and organizations
-- organization memberships with installer/admin/owner roles
-- sites and parking spaces
-- devices in multiple lifecycle states
-- installations and device events
+- one pilot operator record
+- one pilot sign with a known serial number
+- one sample device event
 
-Run the seed only after `npm run migrate` has completed successfully.
+The seeded device token is `pilot-device-token` with serial `SHS-2605-S01-A7K-00001-J` for local pilot testing.

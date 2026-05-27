@@ -29,19 +29,10 @@ const linking: LinkingOptions<RootStackParamList> = {
                     code: String,
                 },
             },
-            ClaimValidate: 'setup',
-            QRScan: 'scan',
         },
     },
-    // Remap short query param names (serial, claim) to screen param names
     getStateFromPath: (path, options) => {
-        let remapped = path;
-        if (remapped.includes('setup')) {
-            remapped = remapped
-                .replace(/([?&])serial=/, '$1serial_number=')
-                .replace(/([?&])claim=/, '$1claim_id=');
-        }
-        return defaultGetStateFromPath(remapped, options);
+        return defaultGetStateFromPath(path, options);
     },
 };
 

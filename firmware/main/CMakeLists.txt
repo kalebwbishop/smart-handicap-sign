@@ -7,9 +7,8 @@ idf_component_register(
         "wifi_manager.c"
         "provisioning_server.c"
         "https_client.c"
-        "ota_update.c"
     INCLUDE_DIRS "."
-    PRIV_REQUIRES esp_adc esp_driver_gpio esp_event esp_http_client esp_http_server esp_netif esp_timer esp_wifi json nvs_flash app_update esp_https_ota
+    PRIV_REQUIRES esp_adc esp_driver_gpio esp_event esp_http_client esp_http_server esp_netif esp_timer esp_wifi json nvs_flash
     EMBED_TXTFILES "${PROJECT_DIR}/server_certs/ca_cert.pem"
 )
 
