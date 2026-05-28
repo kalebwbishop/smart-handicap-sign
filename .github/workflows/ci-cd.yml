@@ -85,6 +85,7 @@ jobs:
           BUILD_CONTEXT="$RUNNER_TEMP/hazard-hero-build-context"
           rm -rf "$BUILD_CONTEXT"
           mkdir -p "$BUILD_CONTEXT/smart-handicap-sign/backend" "$BUILD_CONTEXT/deploy-box-python"
+          cp config.json "$BUILD_CONTEXT/smart-handicap-sign/config.json"
           rsync -a --exclude='.env' --exclude='venv' --exclude='__pycache__' --exclude='.pytest_cache' --exclude='logs' backend/ "$BUILD_CONTEXT/smart-handicap-sign/backend/"
           rsync -a --exclude='.git' .external/deploy-box-python/ "$BUILD_CONTEXT/deploy-box-python/"
           echo "path=$BUILD_CONTEXT" >> "$GITHUB_OUTPUT"
