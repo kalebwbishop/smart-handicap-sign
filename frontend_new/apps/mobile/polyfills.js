@@ -40,19 +40,21 @@ if (typeof window !== 'undefined') {
     }
 }
 
-if (typeof document !== 'undefined') {
-    if (!document.cookie) {
-        Object.defineProperty(document, 'cookie', {
+const documentRef = globalThis.document;
+
+if (typeof documentRef !== 'undefined') {
+    if (!documentRef.cookie) {
+        Object.defineProperty(documentRef, 'cookie', {
             get() { return ''; },
             set() {},
             configurable: true,
         });
     }
-    if (!document.styleSheets) {
-        document.styleSheets = [];
+    if (!documentRef.styleSheets) {
+        documentRef.styleSheets = [];
     }
-    if (!document.querySelector) {
-        document.querySelector = () => null;
-        document.querySelectorAll = () => [];
+    if (!documentRef.querySelector) {
+        documentRef.querySelector = () => null;
+        documentRef.querySelectorAll = () => [];
     }
 }

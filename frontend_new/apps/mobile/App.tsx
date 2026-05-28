@@ -21,6 +21,10 @@ import {
     registerForExpoPushToken,
     storeExpoPushToken,
 } from './src/lib/pushNotifications';
+import {
+    consumePendingNotificationOpen,
+    handleNotificationOpen,
+} from './src/lib/notificationOpenNavigation';
 console.log('[APP] All App.tsx imports resolved');
 
 const navigationRef = createNavigationContainerRef<RootStackParamList>();
@@ -70,7 +74,21 @@ export default function App() {
 
     const code = useQueryParam("code");
     const [processedCode, setProcessedCode] = React.useState<string | null>(null);
+    const pendingNotificationOpenRef = React.useRef(false);
     const { setUser, isAuthenticated } = useAuthStore();
+
+    const navigateHomeAfterNotificationOpen = React.useCallback(() => {
+        const nextState = handleNotificationOpen({
+            hasPendingNotificationOpen: pendingNotificationOpenRef.current,
+            isNavigationReady: navigationRef.isReady(),
+        });
+
+        pendingNotificationOpenRef.current = nextState.hasPendingNotificationOpen;
+
+        if (nextState.shouldNavigateHome) {
+            navigationRef.navigate('Home');
+        }
+    }, []);
 
     useEffect(() => {
         if (!code || code === processedCode) return;
@@ -99,19 +117,17 @@ export default function App() {
         }
 
         const subscription = Notifications.addNotificationResponseReceivedListener(() => {
-            if (navigationRef.isReady()) {
-                navigationRef.navigate('Home');
-            }
+            navigateHomeAfterNotificationOpen();
         });
 
         void Notifications.getLastNotificationResponseAsync().then((response) => {
-            if (response && navigationRef.isReady()) {
-                navigationRef.navigate('Home');
+            if (response) {
+                navigateHomeAfterNotificationOpen();
             }
         });
 
         return () => subscription.remove();
-    }, []);
+    }, [navigateHomeAfterNotificationOpen]);
 
     useEffect(() => {
         if (!isAuthenticated || Platform.OS === 'web') {
@@ -158,7 +174,21 @@ export default function App() {
     return (
         <View style={styles.container}>
             <View style={[styles.appContainer, Platform.OS === 'web' && styles.webAppContainer]}>
-                <NavigationContainer linking={linking} ref={navigationRef}>
+                <NavigationContainer
+                    linking={linking}
+                    onReady={() => {
+                        const nextState = consumePendingNotificationOpen({
+                            hasPendingNotificationOpen: pendingNotificationOpenRef.current,
+                        });
+
+                        pendingNotificationOpenRef.current = nextState.hasPendingNotificationOpen;
+
+                        if (nextState.shouldNavigateHome) {
+                            navigationRef.navigate('Home');
+                        }
+                    }}
+                    ref={navigationRef}
+                >
                     <RootNavigator />
                 </NavigationContainer>
                 <StatusBar style="auto" />

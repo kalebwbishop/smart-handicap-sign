@@ -25,16 +25,16 @@ function createDevice(overrides: Partial<Device> = {}): Device {
 }
 
 describe('pilotStatus', () => {
-    const envKey = 'EXPO_PUBLIC_DEVICE_STALE_MINUTES';
-    const originalStaleMinutes = process.env[envKey];
+    const env = globalThis.process?.env ?? {};
+    const originalStaleMinutes = env.EXPO_PUBLIC_DEVICE_STALE_MINUTES;
 
     afterEach(() => {
         if (typeof originalStaleMinutes === 'undefined') {
-            delete process.env[envKey];
+            delete env.EXPO_PUBLIC_DEVICE_STALE_MINUTES;
             return;
         }
 
-        process.env[envKey] = originalStaleMinutes;
+        env.EXPO_PUBLIC_DEVICE_STALE_MINUTES = originalStaleMinutes;
     });
 
     it('marks a device stale after 15 minutes without being seen', () => {
@@ -44,14 +44,14 @@ describe('pilotStatus', () => {
     });
 
     it('uses the configured stale threshold from the Expo public environment', () => {
-        process.env[envKey] = '5';
+        env.EXPO_PUBLIC_DEVICE_STALE_MINUTES = '5';
         const device = createDevice({ last_seen_at: '2026-05-27T15:00:00Z' });
 
         expect(isDeviceStale(device, new Date('2026-05-27T15:06:00Z'))).toBe(true);
     });
 
     it('falls back to 15 minutes when the configured stale threshold is invalid', () => {
-        process.env[envKey] = 'not-a-number';
+        env.EXPO_PUBLIC_DEVICE_STALE_MINUTES = 'not-a-number';
         const device = createDevice({ last_seen_at: '2026-05-27T15:00:00Z' });
 
         expect(isDeviceStale(device, new Date('2026-05-27T15:06:00Z'))).toBe(false);

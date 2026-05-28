@@ -1,7 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
+    AppState,
+    AppStateStatus,
     Modal,
+    Platform,
     Pressable,
     RefreshControl,
     ScrollView,
@@ -10,7 +13,7 @@ import {
     View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { devicesAPI, notificationAPI } from '@/api/api';
 import { useAuthStore } from '@/store/authStore';
@@ -21,6 +24,7 @@ import { colors } from '@/theme/colors';
 import { layout, shadows, spacing } from '@/theme/spacing';
 import { typography } from '@/theme/typography';
 import { getPilotStatus, isDeviceStale } from './pilotStatus';
+import { shouldRefreshOnAppActive, shouldRefreshOnHomeFocus } from './homeRefresh';
 
 const POLL_INTERVAL_MS = 30_000;
 const HOME_SCREEN_REQUEST_TIMEOUT_MS = 10_000;
@@ -51,6 +55,7 @@ function formatLastSeen(iso: string | null): string {
 
 export default function HomeScreen() {
     const insets = useSafeAreaInsets();
+    const isFocused = useIsFocused();
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const { user, logout, ensureFreshSession } = useAuthStore();
 
@@ -73,6 +78,8 @@ export default function HomeScreen() {
 
     const fetchInFlightRef = useRef(false);
     const hasLoadedOnceRef = useRef(false);
+    const hasFocusedHomeRef = useRef(false);
+    const appStateRef = useRef<AppStateStatus>(AppState.currentState);
 
     const userName = user?.name?.split(' ')[0] || user?.email || 'Operator';
     const userInitial = userName.charAt(0).toUpperCase();
@@ -152,6 +159,21 @@ export default function HomeScreen() {
         fetchData();
     }, [fetchData]);
 
+    useFocusEffect(
+        useCallback(() => {
+            const shouldRefresh = shouldRefreshOnHomeFocus({
+                hasLoadedOnce: hasLoadedOnceRef.current,
+                hasFocusedBefore: hasFocusedHomeRef.current,
+            });
+
+            hasFocusedHomeRef.current = true;
+
+            if (shouldRefresh) {
+                void triggerRefresh({ auto: true });
+            }
+        }, [triggerRefresh]),
+    );
+
     useEffect(() => {
         const delay = Math.max(0, nextRefreshAt - Date.now());
         const timeout = setTimeout(() => {
@@ -168,6 +190,29 @@ export default function HomeScreen() {
 
         return () => clearInterval(interval);
     }, []);
+
+    useEffect(() => {
+        if (Platform.OS === 'web') {
+            return;
+        }
+
+        const subscription = AppState.addEventListener('change', (nextAppState) => {
+            const shouldRefresh = shouldRefreshOnAppActive({
+                hasLoadedOnce: hasLoadedOnceRef.current,
+                isScreenFocused: isFocused,
+                previousAppState: appStateRef.current,
+                nextAppState,
+            });
+
+            appStateRef.current = nextAppState;
+
+            if (shouldRefresh) {
+                void triggerRefresh({ auto: true });
+            }
+        });
+
+        return () => subscription.remove();
+    }, [isFocused, triggerRefresh]);
 
     const onRefresh = useCallback(async () => {
         await triggerRefresh({ showSpinner: true });
