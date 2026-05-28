@@ -82,6 +82,7 @@ CREATE TABLE devices (
     auth_token_hash    VARCHAR(128),
     auth_token_salt    VARCHAR(64),
     operational_status device_operational_status NOT NULL DEFAULT 'available',
+    last_seen_at       TIMESTAMPTZ,
     name               TEXT,
     created_at         TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     updated_at         TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP

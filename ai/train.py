@@ -17,16 +17,22 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
+from config import TRAINING_CONFIG, get_training_checkpoint_dir, get_training_checkpoint_path
 from data import WaveDetectionDataset
-from model import WaveDetector
+from model import DEFAULT_DROPOUT, WaveDetector
 
-CHECKPOINT_DIR = os.path.join(os.path.dirname(__file__), "checkpoints")
+CHECKPOINT_DIR = str(get_training_checkpoint_dir())
+DEFAULT_ACCURACY_THRESHOLD = TRAINING_CONFIG["accuracy_threshold"]
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
 
-def _accuracy(preds: torch.Tensor, targets: torch.Tensor, threshold: float = 0.5) -> float:
+def _accuracy(
+    preds: torch.Tensor,
+    targets: torch.Tensor,
+    threshold: float = DEFAULT_ACCURACY_THRESHOLD,
+) -> float:
     predicted = (preds >= threshold).float()
     return (predicted == targets).float().mean().item()
 
@@ -70,13 +76,13 @@ def _run_epoch(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train wave-detection model")
-    parser.add_argument("--train-size",  type=int,   default=50_000, help="Training set size")
-    parser.add_argument("--val-size",    type=int,   default=10_000, help="Validation set size")
-    parser.add_argument("--epochs",      type=int,   default=20,     help="Number of epochs")
-    parser.add_argument("--batch",       type=int,   default=64,     help="Batch size")
-    parser.add_argument("--lr",          type=float, default=1e-3,   help="Learning rate")
-    parser.add_argument("--dropout",     type=float, default=0.3,    help="Dropout rate")
-    parser.add_argument("--seed",        type=int,   default=42,     help="Random seed")
+    parser.add_argument("--train-size",  type=int,   default=TRAINING_CONFIG["train_size"], help="Training set size")
+    parser.add_argument("--val-size",    type=int,   default=TRAINING_CONFIG["val_size"], help="Validation set size")
+    parser.add_argument("--epochs",      type=int,   default=TRAINING_CONFIG["epochs"], help="Number of epochs")
+    parser.add_argument("--batch",       type=int,   default=TRAINING_CONFIG["batch_size"], help="Batch size")
+    parser.add_argument("--lr",          type=float, default=TRAINING_CONFIG["learning_rate"], help="Learning rate")
+    parser.add_argument("--dropout",     type=float, default=DEFAULT_DROPOUT, help="Dropout rate")
+    parser.add_argument("--seed",        type=int,   default=TRAINING_CONFIG["seed"], help="Random seed")
     args = parser.parse_args()
 
     # ── device ───────────────────────────────────────────────────────────
@@ -88,15 +94,28 @@ def main() -> None:
     train_ds = WaveDetectionDataset(size=args.train_size, seed=args.seed)
     val_ds   = WaveDetectionDataset(size=args.val_size,   seed=args.seed + 1)
 
-    train_loader = DataLoader(train_ds, batch_size=args.batch, shuffle=True,  num_workers=0)
-    val_loader   = DataLoader(val_ds,   batch_size=args.batch, shuffle=False, num_workers=0)
+    train_loader = DataLoader(
+        train_ds,
+        batch_size=args.batch,
+        shuffle=True,
+        num_workers=TRAINING_CONFIG["num_workers"],
+    )
+    val_loader = DataLoader(
+        val_ds,
+        batch_size=args.batch,
+        shuffle=False,
+        num_workers=TRAINING_CONFIG["num_workers"],
+    )
 
     # ── model / loss / optimiser ─────────────────────────────────────────
     model = WaveDetector(dropout=args.dropout).to(device)
     criterion = nn.BCELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-        optimizer, mode="min", factor=0.5, patience=3,
+        optimizer,
+        mode=TRAINING_CONFIG["scheduler"]["mode"],
+        factor=TRAINING_CONFIG["scheduler"]["factor"],
+        patience=TRAINING_CONFIG["scheduler"]["patience"],
     )
 
     total_params = sum(p.numel() for p in model.parameters())
@@ -105,7 +124,7 @@ def main() -> None:
     # ── training loop ────────────────────────────────────────────────────
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
     best_val_loss = float("inf")
-    best_path = os.path.join(CHECKPOINT_DIR, "best.pt")
+    best_path = str(get_training_checkpoint_path())
 
     print(f"\n{'Epoch':>5}  {'Train Loss':>10}  {'Train Acc':>9}  {'Val Loss':>10}  {'Val Acc':>9}  {'Time':>6}")
     print("-" * 60)

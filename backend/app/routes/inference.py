@@ -7,14 +7,19 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from app.ai.config import INFERENCE_CONFIG, SIGNAL_CONFIG
+from app.ai.debug_plot import render_signal_debug_plot
 from app.ai.infer import WaveClassifier
+from app.config.settings import get_settings
 from app.middleware.device_auth import AuthenticatedDevice, get_authenticated_device
 from app.services import device_service
 from app.utils.logger import logger
 
 router = APIRouter(prefix="/inference", tags=["inference"])
 
-WAVE_THRESHOLD = 0.5
+WAVE_THRESHOLD = INFERENCE_CONFIG["threshold"]
+SAMPLE_COUNT = SIGNAL_CONFIG["sample_count"]
+MAX_ADC_VALUE = SIGNAL_CONFIG["max_value"]
 
 
 class ClassifyRequest(BaseModel):
@@ -25,9 +30,9 @@ class ClassifyRequest(BaseModel):
     )
     samples: List[int] = Field(
         ...,
-        min_length=512,
-        max_length=512,
-        description="Exactly 512 integers in the range 0-4095 (ESP32 12-bit ADC)",
+        min_length=SAMPLE_COUNT,
+        max_length=SAMPLE_COUNT,
+        description=f"Exactly {SAMPLE_COUNT} integers in the range 0-{MAX_ADC_VALUE} (ESP32 12-bit ADC)",
     )
 
 
@@ -49,6 +54,8 @@ async def classify(
     payload: ClassifyRequest,
     device: AuthenticatedDevice = Depends(get_authenticated_device),
 ):
+    await device_service.update_device_last_seen(device.serial_number)
+
     if payload.serial_number and payload.serial_number != device.serial_number:
         return JSONResponse(
             status_code=403,
@@ -73,6 +80,15 @@ async def classify(
         result["label"],
         result["confidence"],
     )
+
+    settings = get_settings()
+    if settings.inference_debug_plot_enabled:
+        render_signal_debug_plot(
+            payload.samples,
+            serial_number=payload.serial_number,
+            label=result["label"],
+            confidence=result["confidence"],
+        )
 
     if result["label"] == "wave" and payload.serial_number:
         try:

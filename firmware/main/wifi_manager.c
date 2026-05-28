@@ -260,7 +260,7 @@ bool wifi_sta_is_connected(void)
     return s_sta_connected;
 }
 
-esp_err_t wifi_sta_disconnect(void)
+esp_err_t wifi_manager_sta_disconnect(void)
 {
     if (!s_initialized) {
         return ESP_ERR_INVALID_STATE;
@@ -288,7 +288,7 @@ esp_err_t wifi_ap_start(void)
         return ESP_ERR_INVALID_STATE;
     }
 
-    esp_err_t err = wifi_sta_disconnect();
+    esp_err_t err = wifi_manager_sta_disconnect();
     if (err != ESP_OK) {
         return err;
     }

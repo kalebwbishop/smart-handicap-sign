@@ -15,6 +15,7 @@ Run these from `database/`:
 
 ```bash
 npm run migrate
+npm run migrate:last-seen
 npm run seed
 ```
 
@@ -23,6 +24,8 @@ Both scripts load `../backend/.env` and expect `POSTGRES_CONNECTION_STRING` (or 
 ## Migration behavior
 
 `npm run migrate` drops and recreates the database as the pilot schema. It is destructive by design and should only be used where data reset is acceptable.
+
+`npm run migrate:last-seen` is an additive migration that only ensures `devices.last_seen_at` exists on an already-provisioned pilot database.
 
 ## Pilot schema overview
 

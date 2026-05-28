@@ -107,6 +107,9 @@ smart-handicap-sign/
    uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
    ```
 
+   To open a live matplotlib graph for every inference payload during local debugging,
+   set `INFERENCE_DEBUG_PLOT_ENABLED=true` in `backend/.env` before starting the backend.
+
 6. Run the frontend:
 
    ```bash

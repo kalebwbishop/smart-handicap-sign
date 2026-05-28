@@ -5,7 +5,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "adc_sampler.h"
 #include "cJSON.h"
+#include "esp_crt_bundle.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
 #include "nvs_storage.h"
@@ -13,7 +15,6 @@
 #define HTTP_TIMEOUT_MS 15000
 #define HTTP_RX_BUFFER_SIZE 2048
 #define HTTP_TX_BUFFER_SIZE 4096
-#define CLASSIFY_SAMPLE_COUNT 512
 #define CLASSIFY_PATH "/inference/classify"
 #define STATUS_PATH_FORMAT "/devices/%s/status"
 #define AUTH_HEADER_PREFIX "Bearer "
@@ -21,9 +22,6 @@
 #define STATUS_URL_EXTRA_LEN 32
 
 static const char *TAG = "https_client";
-
-extern const char ca_cert_pem_start[] asm("_binary_ca_cert_pem_start");
-extern const char ca_cert_pem_end[] asm("_binary_ca_cert_pem_end");
 
 typedef struct {
     char *data;
@@ -198,8 +196,8 @@ static esp_err_t validate_samples(const int *samples, int sample_count)
         return ESP_ERR_INVALID_ARG;
     }
 
-    if (sample_count != CLASSIFY_SAMPLE_COUNT) {
-        ESP_LOGE(TAG, "Expected %d ADC samples, got %d", CLASSIFY_SAMPLE_COUNT, sample_count);
+    if (sample_count != SAMPLES_PER_BATCH) {
+        ESP_LOGE(TAG, "Expected %d ADC samples, got %d", SAMPLES_PER_BATCH, sample_count);
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -243,7 +241,7 @@ static esp_err_t perform_request(const char *url,
 
     esp_http_client_config_t config = {
         .url = url,
-        .cert_pem = ca_cert_pem_start,
+        .crt_bundle_attach = esp_crt_bundle_attach,
         .method = method,
         .timeout_ms = HTTP_TIMEOUT_MS,
         .buffer_size = HTTP_RX_BUFFER_SIZE,
@@ -348,10 +346,8 @@ esp_err_t https_client_init(const char *base_url)
     s_base_url[base_url_len] = '\0';
     s_initialized = true;
 
-    size_t cert_len = (size_t)(ca_cert_pem_end - ca_cert_pem_start);
     ESP_LOGI(TAG, "HTTPS client initialized for %s", s_base_url);
     ESP_LOGI(TAG, "TLS certificate common-name validation is enabled");
-    ESP_LOGD(TAG, "Embedded CA cert length: %u bytes", (unsigned int)cert_len);
     return ESP_OK;
 }
 

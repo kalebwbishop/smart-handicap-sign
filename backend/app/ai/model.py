@@ -10,6 +10,11 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
+from app.ai.config import MODEL_CONFIG
+
+DEFAULT_DROPOUT = MODEL_CONFIG["dropout"]
+_CONV_BLOCKS = MODEL_CONFIG["conv_blocks"]
+
 
 class WaveDetector(nn.Module):
     """
@@ -23,28 +28,29 @@ class WaveDetector(nn.Module):
     Head    : Dropout(0.3) → Linear(128 → 1) → Sigmoid
     """
 
-    def __init__(self, dropout: float = 0.3) -> None:
+    def __init__(self, dropout: float = DEFAULT_DROPOUT) -> None:
         super().__init__()
 
-        self.features = nn.Sequential(
-            # Block 1  — 512 → 256
-            nn.Conv1d(1, 32, kernel_size=7, padding=3),
-            nn.BatchNorm1d(32),
-            nn.ReLU(inplace=True),
-            nn.MaxPool1d(kernel_size=2),
+        feature_layers: list[nn.Module] = []
+        for block in _CONV_BLOCKS:
+            feature_layers.extend(
+                [
+                    nn.Conv1d(
+                        block["in_channels"],
+                        block["out_channels"],
+                        kernel_size=block["kernel_size"],
+                        padding=block["padding"],
+                    ),
+                    nn.BatchNorm1d(block["out_channels"]),
+                    nn.ReLU(inplace=True),
+                ]
+            )
+            if "pool_size" in block:
+                feature_layers.append(nn.MaxPool1d(kernel_size=block["pool_size"]))
+            else:
+                feature_layers.append(nn.AdaptiveAvgPool1d(1))
 
-            # Block 2  — 256 → 128
-            nn.Conv1d(32, 64, kernel_size=5, padding=2),
-            nn.BatchNorm1d(64),
-            nn.ReLU(inplace=True),
-            nn.MaxPool1d(kernel_size=2),
-
-            # Block 3  — 128 → 1 (global avg pool)
-            nn.Conv1d(64, 128, kernel_size=3, padding=1),
-            nn.BatchNorm1d(128),
-            nn.ReLU(inplace=True),
-            nn.AdaptiveAvgPool1d(1),               # (batch, 128, 1)
-        )
+        self.features = nn.Sequential(*feature_layers)
 
         self.classifier = nn.Sequential(
             nn.Dropout(dropout),

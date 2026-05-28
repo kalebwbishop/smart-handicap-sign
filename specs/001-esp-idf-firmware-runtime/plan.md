@@ -32,15 +32,15 @@ Backend, database, frontend, AI, infrastructure, and documentation are affected 
 
 - **Module Boundaries**: PASS. Primary implementation belongs in `firmware/`. Backend, database, frontend, AI, infrastructure, and docs are touched only through contracts, tests, schema alignment, or documentation updates. No cross-module imports are planned.
 - **Backend Raw SQL/FastAPI Pattern**: PASS. Any backend contract fixes stay in `backend/app/routes/`, `backend/app/services/`, `backend/app/middleware/`, or tests, using Pydantic models and asyncpg parameterized SQL.
-- **Security/Auth**: PASS. Classification remains device-authenticated with `Authorization: Bearer <serial>:<token>`. Local `/configure` must require a device-specific setup or claim code and must not return saved Wi-Fi passwords, device tokens, or verifier material. Device auth failures must be logged without secrets.
-- **Authorization Matrix And Abuse Resistance**: PASS WITH ACTION. Device status, classify, and local provisioning contracts must document unauthenticated, invalid token/code, revoked/expired verifier, replay, brute-force, wrong-serial, and valid caller behavior. `/configure` will lock for 5 minutes after 5 failed code validations in the current boot session.
+- **Security/Auth**: PASS. Classification remains device-authenticated with `Authorization: Bearer <serial>:<token>`. Local `/configure` remains unauthenticated in pilot provisioning mode and must not return saved Wi-Fi passwords or device tokens. Device auth failures must be logged without secrets.
+- **Authorization Matrix And Abuse Resistance**: PASS WITH ACTION. Device status, classify, and local provisioning contracts must document unauthenticated, malformed payload, wrong-serial, invalid-token, and valid caller behavior. Pilot `/configure` should reject malformed Wi-Fi payloads without writing credentials.
 - **Device Lifecycle Security**: PASS WITH ACTION. Token issuance remains manufacturing/backend-only, token rotation is out of scope, revoked/missing tokens fail closed, field reset clears Wi-Fi only, and firmware/config-version reporting is required with backend minimum-version enforcement.
 - **Schema/API Coupling**: PASS WITH DESIGN ACTION. The v2 `devices` table must expose lifecycle status, operational status, token hash/salt, firmware metadata, and serial identity expected by backend and firmware. If `operational_status` is absent, add it non-destructively and update v2 migration/seed/register behavior.
 - **Frontend Patterns**: PASS. Any provisioning client changes stay in `frontend/src/api/espApi.ts` and related setup screens/types, using existing Axios/storage/navigation/theme patterns where backend interaction is involved.
 - **Firmware Target**: PASS. Active runtime is ESP-IDF C under `firmware/`; `hardware/` MicroPython files are not production behavior for this feature.
 - **Testing/Validation**: PASS. Required gates include firmware build, backend security/contract pytest, database v2 migration where schema changes, frontend lint/test if provisioning UI/API changes, and firmware hardware validation from `firmware/TEST_PLAN.md`.
-- **Docs/Compatibility**: PASS. Firmware README, firmware test plan, quickstart, and contracts must document provisioning authorization, identity/token requirements, status polling, fail-closed behavior, classify payloads, LED mapping, OTA validity, and certificate/backend URL setup.
-- **Frontend Accessibility**: PASS WITH ACTION. Setup/claim code UI must include accessible labels, hints, role/state semantics, error announcement, invalid-field focus behavior, and non-color-only status indicators.
+- **Docs/Compatibility**: PASS. Firmware README, firmware test plan, quickstart, and contracts must document pilot provisioning behavior, identity/token requirements, status polling, fail-closed behavior, classify payloads, LED mapping, OTA validity, and certificate/backend URL setup.
+- **Frontend Accessibility**: PASS WITH ACTION. Provisioning UI must include accessible labels, hints, role/state semantics, error announcement, invalid-field focus behavior, and non-color-only status indicators.
 - **Observability/Operations**: PASS WITH ACTION. The work must define secret-safe structured logs, device events, metrics definitions, operator visibility, and recovery steps for provisioning, auth, status, classify, certificate, and OTA failures.
 
 ## Project Structure
@@ -124,7 +124,7 @@ Research decisions are captured in [research.md](research.md). Key outcomes:
 - Keep ESP-IDF under `firmware/` as the only production runtime for this feature.
 - Treat backend status `available` as the only state that permits sampling and classification.
 - Treat status polling failures, malformed status payloads, and unknown status strings as fail-closed conditions with zero classification submissions.
-- Enforce local `/configure` authorization with a device-specific setup/claim verifier available before Wi-Fi is configured; do not rely on backend reachability during provisioning.
+- Keep local `/configure` simple for the pilot by accepting Wi-Fi credentials without a claim or setup code; do not rely on backend reachability during provisioning.
 - Preserve exact backend paths: `GET /api/v1/devices/{serial_number}/status` and `POST /api/v1/inference/classify`.
 - Preserve the 512-sample, raw 12-bit ADC payload contract and validate it in firmware and backend tests.
 - Use non-destructive v2 schema alignment if `devices.operational_status` is missing from the visible schema.
@@ -143,11 +143,11 @@ Research decisions are captured in [research.md](research.md). Key outcomes:
 
 ### Frontend Design
 
-- **Screens**: Setup guide or Wi-Fi setup surfaces that call the ESP32 local AP must collect/pass the setup or claim code when configuring Wi-Fi. Existing staff-facing device and claim screens remain separate from local AP behavior.
-- **API Clients**: Update `frontend/src/api/espApi.ts` so `configureWifi` sends `ssid`, `password`, and a setup/claim code field accepted by the local provisioning contract.
-- **State/Navigation**: No new navigation architecture is planned. Any added setup-code data should flow through existing setup or claim screens/types.
-- **Theme/UI States**: Provisioning UI must cover loading, scan failure, invalid setup/claim code, AP unreachable, credential rejection, and success/reboot states using existing theme tokens and accessible labels.
-- **Accessibility**: Setup/claim code inputs and provisioning actions must include accessibility labels, hints, role/state semantics, screen-reader error announcement, focus movement to invalid fields after validation failure, and non-color-only indicators for success, error, disabled, and loading states.
+- **Screens**: Setup guide or Wi-Fi setup surfaces that call the ESP32 local AP must collect Wi-Fi details only. Existing staff-facing device and claim screens remain separate from local AP behavior.
+- **API Clients**: Update `frontend/src/api/espApi.ts` so `configureWifi` sends only `ssid` and `password` to the local provisioning contract.
+- **State/Navigation**: No new navigation architecture is planned. Provisioning state should stay local to the setup screens.
+- **Theme/UI States**: Provisioning UI must cover loading, scan failure, AP unreachable, credential rejection, and success/reboot states using existing theme tokens and accessible labels.
+- **Accessibility**: Provisioning inputs and actions must include accessibility labels, hints, role/state semantics, screen-reader error announcement, focus movement to invalid fields after validation failure, and non-color-only indicators for success, error, disabled, and loading states.
 
 ### Database Design
 
@@ -177,19 +177,19 @@ Backend services should expose this mapping through one helper used by the statu
 
 - **Target Runtime**: ESP-IDF C under `firmware/`.
 - **Payloads/Endpoints**: Runtime calls `GET /devices/{serial}/status` and `POST /inference/classify` using a base URL that already includes `/api/v1`. Local provisioning exposes `/status`, `/scan`, and `/configure` only while in provisioning mode.
-- **Provisioning Auth**: `/configure` requires a device-specific setup or claim code in the JSON body. The firmware verifies it against NVS-stored verifier material or an equivalent manufacturing-provisioned local verifier before saving Wi-Fi credentials.
-- **Provisioning Abuse Resistance**: `/configure` accepts exactly one of `claim_id` or `setup_code`, rejects both-present input, rejects missing input, returns generic invalid-code responses, and locks credential writes for 5 minutes after 5 failed setup/claim code validation attempts during the current boot session. Local setup/claim verifier material remains reusable for Wi-Fi reconfiguration until manufacturing, backend registration data, or service tooling revokes or rotates it. When verifier status or expiry metadata is provisioned, revoked or expired metadata must make the verifier unusable before any Wi-Fi credential write.
-- **Identity/Auth Storage**: NVS must provide serial number, auth token, Wi-Fi credentials, and setup/claim verifier material where required. Missing serial or token must block normal runtime or enter a recoverable setup/error path rather than silently submitting unauthenticated telemetry.
-- **Token And Reset Policy**: Device tokens are issued by manufacturing/backend registration tooling only; firmware never creates tokens. Token rotation is out of scope for this feature, but missing, malformed, revoked, expired, or invalid tokens fail closed and require service/manufacturing tooling to restore. Field reset clears Wi-Fi credentials only and preserves serial number, auth token, and setup/claim verifier material.
-- **Firmware Version Compatibility**: Firmware reports app and configuration versions through `X-Firmware-Version` and `X-Firmware-Config-Version` headers on backend runtime requests. Backend enforces configured minimum supported firmware/config versions, and older firmware that cannot enforce setup-code `/configure` is unsupported for secure provisioning and must not receive a compatibility bypass. Version parsing follows the format and comparison policy in the backend API design section.
+- **Provisioning Auth**: `/configure` is unauthenticated in the pilot flow and accepts Wi-Fi credentials directly.
+- **Provisioning Abuse Resistance**: `/configure` rejects malformed or oversized JSON, rejects missing SSIDs, and must not write Wi-Fi credentials on invalid requests.
+- **Identity/Auth Storage**: NVS must provide serial number, auth token, and Wi-Fi credentials where required. Missing serial or token must block normal runtime or enter a recoverable setup/error path rather than silently submitting unauthenticated telemetry.
+- **Token And Reset Policy**: Device tokens are issued by manufacturing/backend registration tooling only; firmware never creates tokens. Token rotation is out of scope for this feature, but missing, malformed, revoked, expired, or invalid tokens fail closed and require service/manufacturing tooling to restore. Field reset clears Wi-Fi credentials only and preserves serial number and auth token.
+- **Firmware Version Compatibility**: Firmware reports app and configuration versions through `X-Firmware-Version` and `X-Firmware-Config-Version` headers on backend runtime requests. Backend enforces configured minimum supported firmware/config versions. Version parsing follows the format and comparison policy in the backend API design section.
 - **Firmware Event Reporting**: Firmware reports firmware-observed operational events through `POST /api/v1/devices/{serial_number}/events` with device bearer auth and firmware version headers once connectivity permits upload. Required event types are status failure, status recovery, OTA validation, and successful provisioning summary. Payloads must be small, bounded, deduplicated where practical, and secret-free.
 - **Reliability**: Status polling uses bounded retries and backoff. Any unusable status response pauses sampling, shows error/offline LED behavior, and retries. Sampling collects exactly 512 ADC1 readings at the configured interval while feeding the watchdog. OTA pending verification is marked valid only after the first successful HTTPS status response for the same serial.
 
 ### Observability And Operations Design
 
-- **Structured Logs**: Firmware and backend logs must include secret-safe fields for provisioning attempts, setup-code lockouts, token failures, status polling failures and recoveries, classify submissions, wave detections, certificate failures, firmware version observations, and OTA validation.
+- **Structured Logs**: Firmware and backend logs must include secret-safe fields for provisioning attempts, token failures, status polling failures and recoveries, classify submissions, wave detections, certificate failures, firmware version observations, and OTA validation.
 - **Device Events And Auditability**: Backend-observed events should record wave detection, authentication failure threshold exceeded, and observed firmware version. Firmware-observed events should be accepted through the firmware event-reporting contract for status failure and recovery, OTA validation, and successful local provisioning summaries once backend connectivity is available. Event payloads must not include Wi-Fi passwords, device tokens, setup codes, hashes, or salts.
-- **Metrics Definitions**: The feature must define counter or timer names/descriptions for setup-code validation failures, setup-code lockouts, status poll failures, status recoveries, classify submissions, auth failures, OTA validation, and provisioning success. A dedicated metrics backend is not required in the first implementation if equivalent structured logs/device events preserve the signals.
+- **Metrics Definitions**: The feature must define counter or timer names/descriptions for status poll failures, status recoveries, classify submissions, auth failures, OTA validation, and provisioning success. A dedicated metrics backend is not required in the first implementation if equivalent structured logs/device events preserve the signals.
 - **Operator Recovery**: Firmware docs and quickstart must tell operators to use firmware serial logs for pre-connect provisioning failures and backend logs/device event history for connected-device failures.
 - **Recovery Steps**: Operators should first confirm the device serial in firmware logs, then check backend logs and `device_events` by serial for auth failures, firmware-version rejection, status-poll failures, OTA validation, and provisioning summaries. If token material is missing or revoked, recovery requires manufacturing/service tooling; normal field reset must only clear Wi-Fi credentials. Unsupported firmware must be upgraded rather than granted a runtime bypass.
 
@@ -201,12 +201,12 @@ Backend services should expose this mapping through one helper used by the statu
 ### Infrastructure/Operations Design
 
 - **Docker/Terraform/Azure**: No infrastructure code change is planned unless certificate/backend URL validation reveals deployment mismatch. Firmware docs must state backend URL and certificate expectations.
-- **Environment Variables/Secrets**: Device tokens, setup/claim codes, CA/private key material, WorkOS secrets, and backend credentials must not be committed. Examples use fake values only.
+- **Environment Variables/Secrets**: Device tokens, CA/private key material, WorkOS secrets, and backend credentials must not be committed. Examples use fake values only.
 
 ### Post-Design Constitution Re-check
 
 - **Module Boundaries**: PASS. Contracts are documented in `specs/001-esp-idf-firmware-runtime/contracts/`; implementation remains module-local.
-- **Security/Auth**: PASS. Device classify auth, local provisioning code verification, secret hygiene, and fail-closed status behavior are represented in plan, data model, contracts, and quickstart.
+- **Security/Auth**: PASS. Device classify auth, pilot provisioning behavior, secret hygiene, and fail-closed status behavior are represented in plan, data model, contracts, and quickstart.
 - **Schema/API Coupling**: PASS WITH ACTION. The plan explicitly requires non-destructive v2 schema alignment for `devices.operational_status` if absent.
 - **Firmware Target**: PASS. All runtime behavior is scoped to ESP-IDF under `firmware/`.
 - **Testing/Validation**: PASS. Firmware, backend, database, frontend, AI, infrastructure, and docs gates are selected according to touched modules.
@@ -225,7 +225,7 @@ Backend services should expose this mapping through one helper used by the statu
 | AI | `cd ai` then `pytest` only if inference/model files or checkpoint contracts change; otherwise document not run as not touched |
 | Infrastructure | Relevant Docker Compose/Terraform validation only if backend URL, certificates, or deployment files change |
 | Documentation | Review firmware README, test plan, quickstart, and contracts for stale MicroPython or signs-v1 production language |
-| Accessibility | Validate provisioning setup-code fields, errors, disabled/loading states, and focus behavior against React Native accessibility expectations where the platform/tooling permits |
+| Accessibility | Validate provisioning Wi-Fi fields, errors, disabled/loading states, and focus behavior against React Native accessibility expectations where the platform/tooling permits |
 | Observability | Review structured log fields, device event payloads, metric definitions, and operator recovery docs for secret leakage and support usefulness |
 
 ## Complexity Tracking
@@ -240,6 +240,6 @@ No constitutional violations or intentional complexity exceptions are planned. T
 
 - **Data Migration**: No destructive migration. If `devices.operational_status` is missing, add the v2 status column/enum with a safe default and update seeds/register scripts.
 - **Backward Compatibility**: Active ESP-IDF firmware supersedes MicroPython production behavior. Backend classify retains deprecated `sign_id` input where already supported, but v2 serial identity is the runtime path. Status endpoint remains exact path and trailing-slash behavior is unchanged.
-- **Rollback Plan**: Firmware rollback uses existing dual OTA slot behavior; do not mark a pending image valid until status polling succeeds. Backend/database changes should be reversible by removing additive status columns only after confirming no runtime depends on them. Frontend provisioning changes can roll back to the previous `espApi.ts` payload only for firmware that does not require setup-code auth.
-- **Operational Risk**: Main risks are field devices stuck in provisioning due to missing setup-code verifier, certificate/backend URL mismatch, missing device token in NVS, schema drift around `operational_status`, and unavailable ESP-IDF hardware validation. Each risk must be visible in tasks and final validation notes.
-- **Security And Support Risk**: Brute-force setup-code attempts, unsupported old firmware, missing/revoked tokens, inaccessible frontend setup flows, and missing observability can block field recovery or hide unsafe runtime behavior. The task list must treat these as implementation blockers rather than polish.
+- **Rollback Plan**: Firmware rollback uses existing dual OTA slot behavior; do not mark a pending image valid until status polling succeeds. Backend/database changes should be reversible by removing additive status columns only after confirming no runtime depends on them. Frontend provisioning changes can roll back to the previous `espApi.ts` payload if the pilot needs to restore an earlier setup flow.
+- **Operational Risk**: Main risks are field devices stuck in provisioning due to malformed Wi-Fi payloads, certificate/backend URL mismatch, missing device token in NVS, schema drift around `operational_status`, and unavailable ESP-IDF hardware validation. Each risk must be visible in tasks and final validation notes.
+- **Security And Support Risk**: Malformed provisioning requests, unsupported old firmware, missing/revoked tokens, inaccessible frontend setup flows, and missing observability can block field recovery or hide unsafe runtime behavior. The task list must treat these as implementation blockers rather than polish.

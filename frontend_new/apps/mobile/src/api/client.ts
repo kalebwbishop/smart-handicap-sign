@@ -1,12 +1,12 @@
 console.log('[CLIENT] client.ts module evaluating...');
 import axios, { AxiosRequestConfig } from 'axios';
 import { setupAuthInterceptor } from 'deploy-box-react-native/src/auth/authInterceptor';
-import { getApiV1BaseUrl } from '@hazard-hero/shared';
 import { tokenStorage } from '../lib/auth';
+import { getExpoPublicApiUrl, resolveApiV1BaseUrl } from './baseUrl';
 
-const API_URL = getApiV1BaseUrl(process.env.EXPO_PUBLIC_API_URL);
+const API_URL = resolveApiV1BaseUrl();
 console.log('[CLIENT] API_URL resolved to:', API_URL);
-console.log('[CLIENT] EXPO_PUBLIC_API_URL env:', process.env.EXPO_PUBLIC_API_URL);
+console.log('[CLIENT] EXPO_PUBLIC_API_URL env:', getExpoPublicApiUrl());
 
 const axiosInstance = axios.create({
     baseURL: API_URL,

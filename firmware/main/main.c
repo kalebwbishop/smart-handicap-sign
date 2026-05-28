@@ -9,6 +9,7 @@
 #include "esp_task_wdt.h"
 
 #include "adc_sampler.h"
+#include "connection_policy.h"
 #include "https_client.h"
 #include "led_driver.h"
 #include "nvs_storage.h"
@@ -16,7 +17,7 @@
 #include "wifi_manager.h"
 
 #ifndef HAZARD_HERO_BACKEND_URL
-#define HAZARD_HERO_BACKEND_URL "https://api.example.com/api/v1"
+#define HAZARD_HERO_BACKEND_URL "https://tqr9vxj0-8000.usw3.devtunnels.ms/api/v1"
 #endif
 
 #define NETWORK_STABILITY_DELAY_MS 2000
@@ -182,14 +183,22 @@ static esp_err_t reconnect_wifi(int *failure_count)
     memset(ssid, 0, sizeof(ssid));
     if (err == ESP_OK) {
         *failure_count = 0;
+        esp_err_t validated_err = nvs_wifi_set_validated(true);
+        if (validated_err != ESP_OK) {
+            ESP_LOGW(TAG, "Connected to WiFi but failed to persist validated flag: %s", esp_err_to_name(validated_err));
+        }
         ESP_LOGI(TAG, "WiFi reconnect succeeded");
         return ESP_OK;
     }
 
     (*failure_count)++;
     ESP_LOGW(TAG, "WiFi reconnect failed (%d/%d): %s", *failure_count, MAX_RECONNECT_FAILURES, esp_err_to_name(err));
-    if (*failure_count >= MAX_RECONNECT_FAILURES) {
+    if (should_enter_provisioning_on_reconnect_failure(nvs_wifi_is_validated(), *failure_count, MAX_RECONNECT_FAILURES)) {
         enter_provisioning_mode("Exceeded maximum WiFi reconnect failures");
+    }
+    if (*failure_count >= MAX_RECONNECT_FAILURES) {
+        ESP_LOGW(TAG, "Saved WiFi credentials were previously validated; staying out of provisioning mode");
+        *failure_count = 0;
     }
 
     return err;
@@ -239,7 +248,15 @@ void app_main(void)
     memset(wifi_ssid, 0, sizeof(wifi_ssid));
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "Initial WiFi connection failed: %s", esp_err_to_name(err));
-        enter_provisioning_mode("Unable to connect with saved WiFi credentials");
+        if (should_enter_provisioning_on_initial_connect_failure(nvs_wifi_is_validated())) {
+            enter_provisioning_mode("Unable to connect with saved WiFi credentials");
+        }
+        ESP_LOGW(TAG, "Saved WiFi credentials were previously validated; continuing without provisioning mode");
+    } else {
+        esp_err_t validated_err = nvs_wifi_set_validated(true);
+        if (validated_err != ESP_OK) {
+            ESP_LOGW(TAG, "Connected to WiFi but failed to persist validated flag: %s", esp_err_to_name(validated_err));
+        }
     }
 
     vTaskDelay(pdMS_TO_TICKS(NETWORK_STABILITY_DELAY_MS));

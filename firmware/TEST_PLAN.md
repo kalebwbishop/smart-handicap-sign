@@ -9,7 +9,7 @@ This plan validates the **single pilot sign** on real ESP32 hardware.
 3. Confirm `firmware\version.txt` matches the intended pilot build.
 4. Set `HAZARD_HERO_BACKEND_URL` to the pilot backend.
 5. Verify `server_certs\ca_cert.pem` matches the backend certificate chain.
-6. Decide whether Wi-Fi credentials will be preloaded or entered through provisioning.
+6. Preload the pilot sign's serial number, auth token, and Wi-Fi credentials.
 7. Record baseline free heap after boot if memory profiling is in scope.
 
 ## Basic functionality tests
@@ -30,14 +30,14 @@ This plan validates the **single pilot sign** on real ESP32 hardware.
 
 ### 3. AP provisioning mode
 
+Use this only as a recovery path, not the normal pilot install flow.
+
 - Clear Wi-Fi credentials from NVS and reboot.
 - Expected: device starts SoftAP with `SmartSign-XXXX`.
 - Query `http://192.168.4.1/status` and verify AP mode is active.
 - Query `http://192.168.4.1/scan` and verify nearby networks are returned.
-- POST `/configure` without `claim_id` or `setup_code`; expected: `400`, no Wi-Fi write.
-- POST `/configure` with both `claim_id` and `setup_code`; expected: `400`, no Wi-Fi write.
-- POST invalid setup data; expected: generic auth failure, no Wi-Fi write.
-- POST valid Wi-Fi credentials plus exactly one valid verifier; expected: board reboots and joins Wi-Fi.
+- POST `/configure` without `ssid`; expected: `400`, no Wi-Fi write.
+- POST valid Wi-Fi credentials to `/configure`; expected: board reboots and joins Wi-Fi.
 
 ### 4. Identity readiness
 
@@ -58,7 +58,7 @@ This plan validates the **single pilot sign** on real ESP32 hardware.
 
 - Put the backend into `available`.
 - Observe logs before and after `adc_sampler_collect_batch()`.
-- Expected: 512 samples are collected and `POST /inference/classify` succeeds.
+- Expected: 200 samples are collected and `POST /inference/classify` succeeds.
 - Expected: ADC failures are logged and the device remains responsive.
 
 ### 3. LED and backend state integration

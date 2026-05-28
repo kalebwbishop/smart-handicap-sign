@@ -29,7 +29,10 @@ If that loop works reliably with one installed sign, the pilot is successful.
 - `available`
 - `assistance_requested`
 - `assistance_in_progress`
+- `offline`
 - return to `available`
+
+For pilot purposes, `offline` should mean the sign has missed its expected backend check-ins long enough that staff should not trust the displayed availability until the device reconnects.
 
 ### Required working surfaces in this repo
 
@@ -98,6 +101,7 @@ These items may remain in the repo, but they should be treated as **out of scope
 ### Backend
 
 - Confirm `assistance_requested -> assistance_in_progress -> available` is the only supported operator loop for pilot
+- Define the freshness rule that moves a sign into `offline`
 - Ensure acknowledge and resolve actions create auditable device events
 - Ensure one wave does not create noisy duplicate requests while already in a requested/in-progress state
 - Ensure device status polling remains lightweight and stable
@@ -107,6 +111,7 @@ These items may remain in the repo, but they should be treated as **out of scope
 
 - Make the home screen robust when exactly one device is present
 - Show the most recent request clearly
+- Show `offline` as a distinct state, not as generic failure text
 - Prevent double taps on acknowledge / resolve actions
 - Show actionable failure states if the backend call fails
 - Keep navigation minimal for pilot users
@@ -153,6 +158,7 @@ These items may remain in the repo, but they should be treated as **out of scope
 - [ ] Sign can reach Wi-Fi reliably from the installation location
 - [ ] Sign can reach backend endpoints reliably
 - [ ] Sign status polling works
+- [ ] Sign transitions to `offline` when expected connectivity is lost and recovers when connectivity returns
 - [ ] Wave classification requests succeed
 - [ ] LED/status indication is correct for each pilot state
 
@@ -177,6 +183,7 @@ These items may remain in the repo, but they should be treated as **out of scope
 
 - [ ] `GET /health` returns healthy in the pilot environment
 - [ ] `GET /api/v1/devices/{serial_number}/status` returns the current device state for the pilot sign
+- [ ] The backend marks the sign `offline` after the defined missed-check-in window
 - [ ] `POST /api/v1/inference/classify` accepts valid 512-sample payloads from the pilot device
 - [ ] A positive classification changes the sign to `assistance_requested`
 - [ ] A positive classification creates a device event
@@ -190,6 +197,7 @@ These items may remain in the repo, but they should be treated as **out of scope
 - [ ] Operator login succeeds
 - [ ] Home screen loads with the pilot sign visible
 - [ ] Sign status updates are visible without confusing navigation
+- [ ] `offline` is clearly distinguishable from `available` and request states
 - [ ] A newly requested assistance event becomes visible to staff quickly enough for the pilot
 - [ ] Acknowledge action updates UI and backend state correctly
 - [ ] Resolve action updates UI and backend state correctly
@@ -221,6 +229,8 @@ These items may remain in the repo, but they should be treated as **out of scope
 - [ ] If the backend is down, the device fails safely
 - [ ] If the app is unavailable, the request still exists in backend state/event history
 - [ ] If a request is already active, additional detections do not break the workflow
+- [ ] If the device stops checking in, the sign becomes `offline` within the expected window
+- [ ] If the device reconnects after being offline, it returns to the correct backend-driven state
 - [ ] If the sign reboots, it returns to the correct backend-driven state
 
 ## Suggested pilot exit criteria

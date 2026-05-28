@@ -6,6 +6,7 @@ import LandingScreen from '../screens/LandingScreen';
 import LoginScreen from '../screens/LoginScreen';
 import HomeScreen from '../screens/HomeScreen';
 import NotificationDetailScreen from '../screens/NotificationDetailScreen';
+import ProvisionSignScreen from '../screens/ProvisionSignScreen';
 import { useAuthStore } from '../store/authStore';
 import { ActivityIndicator, Platform, View } from 'react-native';
 import { colors } from '../theme/colors';
@@ -83,6 +84,11 @@ export default function RootNavigator() {
                     options={{ title: 'Hazard Hero', headerShown: false }}
                 />
             )}
+            <Stack.Screen
+                name="ProvisionSign"
+                component={ProvisionSignScreen}
+                options={{ title: 'Set Up Test Sign' }}
+            />
         </Stack.Navigator>
     );
 }

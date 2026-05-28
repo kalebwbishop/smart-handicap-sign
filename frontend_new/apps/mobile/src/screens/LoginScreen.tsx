@@ -73,7 +73,6 @@ const s = StyleSheet.create({
         aspectRatio: 1,
         marginBottom: spacing.lg,
     },
-
     button: {
         backgroundColor: colors.ctaPrimary,
         paddingVertical: 12,

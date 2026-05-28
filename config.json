@@ -1,0 +1,79 @@
+{
+  "ai": {
+    "signal": {
+      "sample_interval_ms": 20,
+      "sample_count": 200,
+      "max_value": 4095
+    },
+    "paths": {
+      "training_checkpoint_dir": "ai/checkpoints",
+      "runtime_checkpoint_dir": "backend/app/ai/checkpoints",
+      "checkpoint_name": "best.pt"
+    },
+    "model": {
+      "dropout": 0.3,
+      "conv_blocks": [
+        {
+          "in_channels": 1,
+          "out_channels": 32,
+          "kernel_size": 7,
+          "padding": 3,
+          "pool_size": 2
+        },
+        {
+          "in_channels": 32,
+          "out_channels": 64,
+          "kernel_size": 5,
+          "padding": 2,
+          "pool_size": 2
+        },
+        {
+          "in_channels": 64,
+          "out_channels": 128,
+          "kernel_size": 3,
+          "padding": 1
+        }
+      ]
+    },
+    "dataset": {
+      "default_size": 50000,
+      "sine": {
+        "cycles": [1, 32],
+        "amplitude_fraction": [0.15, 0.5],
+        "dc_offset_fraction": [0.25, 0.75],
+        "noise_fraction": [0, 0.03]
+      },
+      "square": {
+        "cycles": [1, 32],
+        "amplitude_fraction": [0.15, 0.5],
+        "dc_offset_fraction": [0.25, 0.75],
+        "noise_fraction": [0, 0.03]
+      },
+      "noise": {
+        "low_fraction": [0, 0.3],
+        "high_fraction": [0.7, 1.0]
+      },
+      "silence": {
+        "jitter_fraction": [0, 0.01]
+      }
+    },
+    "training": {
+      "train_size": 50000,
+      "val_size": 10000,
+      "epochs": 20,
+      "batch_size": 64,
+      "num_workers": 0,
+      "learning_rate": 0.001,
+      "seed": 42,
+      "accuracy_threshold": 0.5,
+      "scheduler": {
+        "mode": "min",
+        "factor": 0.5,
+        "patience": 3
+      }
+    },
+    "inference": {
+      "threshold": 0.5
+    }
+  }
+}

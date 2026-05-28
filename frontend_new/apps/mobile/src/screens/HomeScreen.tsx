@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     ActivityIndicator,
     Modal,
@@ -14,31 +14,15 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { devicesAPI } from '@/api/api';
 import { useAuthStore } from '@/store/authStore';
-import { Device, DeviceEvent, DeviceLifecycleStatus } from '@/types/device';
+import { Device, DeviceEvent } from '@/types/device';
 import { RootStackParamList } from '@/types/navigation';
 import { colors } from '@/theme/colors';
 import { layout, shadows, spacing } from '@/theme/spacing';
 import { typography } from '@/theme/typography';
+import { getPilotStatus, isDeviceStale } from './pilotStatus';
 
 const POLL_INTERVAL_MS = 30_000;
-
-const LIFECYCLE_STATUS: Record<DeviceLifecycleStatus, { label: string; color: string }> = {
-    active: { label: 'Ready for requests', color: '#34C759' },
-    manufactured: { label: 'Not active yet', color: colors.textMuted },
-    unclaimed: { label: 'Not active yet', color: colors.textMuted },
-    claiming: { label: 'Setup in progress', color: colors.warning },
-    lost: { label: 'Needs support', color: colors.negative },
-    revoked: { label: 'Needs support', color: colors.negative },
-    retired: { label: 'Offline', color: colors.textMuted },
-};
-
-const OPERATIONAL_STATUS: Record<string, { label: string; color: string; tone: string }> = {
-    available: { label: 'Available', color: '#34C759', tone: '#34C75912' },
-    assistance_requested: { label: 'Assistance Requested', color: colors.negative, tone: '#FF3B3012' },
-    assistance_in_progress: { label: 'Assistance In Progress', color: colors.warning, tone: '#FF950012' },
-    offline: { label: 'Offline', color: colors.textMuted, tone: '#86868B12' },
-    error: { label: 'Needs Attention', color: colors.warning, tone: '#FF950012' },
-};
+const HOME_SCREEN_REQUEST_TIMEOUT_MS = 10_000;
 
 function formatRelativeTime(iso: string): string {
     const diff = Date.now() - new Date(iso).getTime();
@@ -48,6 +32,19 @@ function formatRelativeTime(iso: string): string {
     const hours = Math.floor(minutes / 60);
     if (hours < 24) return `${hours}h ago`;
     return `${Math.floor(hours / 24)}d ago`;
+}
+
+function formatLastSeen(iso: string | null): string {
+    if (!iso) {
+        return 'Last seen never';
+    }
+
+    const date = new Date(iso);
+    if (Number.isNaN(date.getTime())) {
+        return 'Last seen unknown';
+    }
+
+    return `Last seen ${date.toLocaleString()} (${formatRelativeTime(iso)})`;
 }
 
 function formatEventTitle(event: DeviceEvent): string {
@@ -82,17 +79,6 @@ function formatEventBody(event: DeviceEvent): string {
         .join(' • ') || 'Recorded device event for the pilot sign.';
 }
 
-function getPilotStatus(device: Device) {
-    if (device.lifecycle_status === 'active' && device.operational_status) {
-        return OPERATIONAL_STATUS[device.operational_status] ?? OPERATIONAL_STATUS.available;
-    }
-
-    return {
-        ...LIFECYCLE_STATUS[device.lifecycle_status],
-        tone: `${LIFECYCLE_STATUS[device.lifecycle_status].color}12`,
-    };
-}
-
 export default function HomeScreen() {
     const insets = useSafeAreaInsets();
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -109,36 +95,61 @@ export default function HomeScreen() {
 
     const [events, setEvents] = useState<DeviceEvent[]>([]);
     const [eventsLoading, setEventsLoading] = useState(true);
+    const [eventsError, setEventsError] = useState<string | null>(null);
+    const fetchInFlightRef = useRef(false);
+    const hasLoadedOnceRef = useRef(false);
 
     const userName = user?.name?.split(' ')[0] || user?.email || 'Operator';
     const userInitial = userName.charAt(0).toUpperCase();
 
     const fetchData = useCallback(async () => {
-        setDeviceLoading(true);
-        setEventsLoading(true);
+        if (fetchInFlightRef.current) {
+            return;
+        }
+
+        fetchInFlightRef.current = true;
+        if (!hasLoadedOnceRef.current) {
+            setDeviceLoading(true);
+            setEventsLoading(true);
+        }
 
         try {
             await ensureFreshSession();
-            const devices = await devicesAPI.list();
+            const devices = await devicesAPI.list(undefined, { timeout: HOME_SCREEN_REQUEST_TIMEOUT_MS });
             if (devices.length === 0) {
                 setDevice(null);
                 setEvents([]);
                 setDeviceError('No pilot sign is linked to this account yet.');
+                setEventsError(null);
                 return;
             }
 
             const pilotDevice = devices[0];
             setDevice(pilotDevice);
             setDeviceError(null);
-            const deviceEvents = await devicesAPI.getEvents(pilotDevice.serial_number);
-            setEvents(deviceEvents);
+
+            try {
+                const deviceEvents = await devicesAPI.getEvents(
+                    pilotDevice.serial_number,
+                    { timeout: HOME_SCREEN_REQUEST_TIMEOUT_MS },
+                );
+                setEvents(deviceEvents);
+                setEventsError(null);
+            } catch (error) {
+                console.error('[HomeScreen] Failed to load pilot sign events:', error);
+                setEvents([]);
+                setEventsError('Recent request history is temporarily unavailable.');
+            }
         } catch (error) {
             console.error('[HomeScreen] Failed to load pilot sign or events:', error);
             setDeviceError('Unable to load the pilot sign right now.');
             setEvents([]);
+            setEventsError(null);
         } finally {
             setDeviceLoading(false);
             setEventsLoading(false);
+            fetchInFlightRef.current = false;
+            hasLoadedOnceRef.current = true;
         }
     }, [ensureFreshSession]);
 
@@ -168,8 +179,9 @@ export default function HomeScreen() {
             await ensureFreshSession();
             const updated = await devicesAPI.acknowledge(device.serial_number);
             setDevice(updated);
-            const deviceEvents = await devicesAPI.getEvents(device.serial_number);
+            const deviceEvents = await devicesAPI.getEvents(device.serial_number, { timeout: HOME_SCREEN_REQUEST_TIMEOUT_MS });
             setEvents(deviceEvents);
+            setEventsError(null);
         } catch (error) {
             console.error('[HomeScreen] Failed to acknowledge request:', error);
         } finally {
@@ -185,8 +197,9 @@ export default function HomeScreen() {
             await ensureFreshSession();
             const updated = await devicesAPI.resolve(device.serial_number);
             setDevice(updated);
-            const deviceEvents = await devicesAPI.getEvents(device.serial_number);
+            const deviceEvents = await devicesAPI.getEvents(device.serial_number, { timeout: HOME_SCREEN_REQUEST_TIMEOUT_MS });
             setEvents(deviceEvents);
+            setEventsError(null);
         } catch (error) {
             console.error('[HomeScreen] Failed to resolve request:', error);
         } finally {
@@ -204,7 +217,19 @@ export default function HomeScreen() {
         }
     }, [logout]);
 
+    const handleOpenProvisioning = useCallback(() => {
+        setMenuVisible(false);
+        navigation.navigate('ProvisionSign');
+    }, [navigation]);
+
     const status = useMemo(() => (device ? getPilotStatus(device) : null), [device]);
+    const effectiveOperationalStatus = useMemo(() => {
+        if (!device || isDeviceStale(device)) {
+            return 'offline';
+        }
+
+        return device.operational_status;
+    }, [device]);
     const recentRequestCount = events.filter((event) => event.event_type === 'assistance_requested').length;
 
     return (
@@ -251,6 +276,15 @@ export default function HomeScreen() {
                             </View>
 
                             <View style={styles.menuDivider} />
+
+                            <Pressable
+                                accessibilityRole="button"
+                                onPress={handleOpenProvisioning}
+                                style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+                            >
+                                <Text style={styles.menuItemIcon}>⚙️</Text>
+                                <Text style={styles.menuItemText}>Configure test sign</Text>
+                            </Pressable>
 
                             <Pressable
                                 accessibilityRole="button"
@@ -301,7 +335,7 @@ export default function HomeScreen() {
                             <>
                                 <Text style={styles.signName}>{device.name || 'Pilot sign'}</Text>
                                 <Text style={styles.signMeta}>Serial {device.serial_number}</Text>
-                                <Text style={styles.signMeta}>Last update {formatRelativeTime(device.updated_at)}</Text>
+                                <Text style={styles.signMeta}>{formatLastSeen(device.last_seen_at)}</Text>
 
                                 <View style={[styles.statusBanner, { backgroundColor: status?.tone ?? colors.offWhite }]}>
                                     <Text style={[styles.statusBannerText, { color: status?.color ?? colors.textPrimary }]}>
@@ -309,7 +343,7 @@ export default function HomeScreen() {
                                     </Text>
                                 </View>
 
-                                {device.operational_status === 'assistance_requested' ? (
+                                {effectiveOperationalStatus === 'assistance_requested' ? (
                                     <Pressable
                                         accessibilityLabel="Acknowledge assistance request"
                                         accessibilityRole="button"
@@ -329,7 +363,7 @@ export default function HomeScreen() {
                                     </Pressable>
                                 ) : null}
 
-                                {device.operational_status === 'assistance_in_progress' ? (
+                                {effectiveOperationalStatus === 'assistance_in_progress' ? (
                                     <Pressable
                                         accessibilityLabel="Resolve assistance request"
                                         accessibilityRole="button"
@@ -369,6 +403,12 @@ export default function HomeScreen() {
                             <View style={styles.emptyState}>
                                 <ActivityIndicator color={colors.primary} size="small" />
                                 <Text style={styles.emptyTitle}>Loading recent requests…</Text>
+                            </View>
+                        ) : eventsError ? (
+                            <View style={styles.emptyState}>
+                                <Text style={styles.emptyIcon}>⚠️</Text>
+                                <Text style={styles.emptyTitle}>History unavailable</Text>
+                                <Text style={styles.emptyBody}>{eventsError}</Text>
                             </View>
                         ) : events.length === 0 ? (
                             <View style={styles.emptyState}>

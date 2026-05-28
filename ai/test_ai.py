@@ -23,6 +23,7 @@ from torch.utils.data import DataLoader
 # Ensure the ai/ directory is importable
 sys.path.insert(0, os.path.dirname(__file__))
 
+from config import CONFIG, get_training_checkpoint_path
 from model import WaveDetector
 from data import (
     WaveDetectionDataset,
@@ -34,6 +35,15 @@ from data import (
 )
 from train import _accuracy, _run_epoch
 from infer import WaveClassifier, SEQ_LEN
+
+
+class TestConfig:
+    def test_signal_config_matches_public_constants(self):
+        assert CONFIG["signal"]["sample_count"] == SEQ_LEN
+        assert CONFIG["signal"]["max_value"] == MAX_VAL
+
+    def test_default_checkpoint_path_matches_config(self):
+        assert str(get_training_checkpoint_path()) == TRAINED_CHECKPOINT
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -56,7 +66,7 @@ class TestWaveDetector:
     def test_forward_output_shape(self, batch_size: int):
         model = WaveDetector()
         model.eval()
-        x = torch.randn(batch_size, 1, 512)
+        x = torch.randn(batch_size, 1, SEQ_LEN)
         out = model(x)
         assert out.shape == (batch_size, 1)
 
@@ -64,7 +74,7 @@ class TestWaveDetector:
         """Sigmoid output must be in [0, 1]."""
         model = WaveDetector()
         model.eval()
-        x = torch.randn(32, 1, 512)
+        x = torch.randn(32, 1, SEQ_LEN)
         with torch.no_grad():
             out = model(x)
         assert (out >= 0).all() and (out <= 1).all()
@@ -73,7 +83,7 @@ class TestWaveDetector:
         """Same input produces same output in eval mode."""
         model = WaveDetector()
         model.eval()
-        x = torch.randn(4, 1, 512)
+        x = torch.randn(4, 1, SEQ_LEN)
         with torch.no_grad():
             out1 = model(x)
             out2 = model(x)
@@ -89,7 +99,7 @@ class TestWaveDetector:
         """Gradients should flow through the model during training."""
         model = WaveDetector()
         model.train()
-        x = torch.randn(4, 1, 512)
+        x = torch.randn(4, 1, SEQ_LEN)
         target = torch.tensor([[1.0], [0.0], [1.0], [0.0]])
         out = model(x)
         loss = nn.BCELoss()(out, target)
@@ -113,33 +123,33 @@ class TestSignalGenerators:
         return np.random.default_rng(42)
 
     def test_sine_shape_and_range(self, rng):
-        sig = _random_sine(512, rng)
-        assert sig.shape == (512,)
+        sig = _random_sine(SEQ_LEN, rng)
+        assert sig.shape == (SEQ_LEN,)
         assert sig.min() >= 0 and sig.max() <= MAX_VAL
 
     def test_square_shape_and_range(self, rng):
-        sig = _random_square(512, rng)
-        assert sig.shape == (512,)
+        sig = _random_square(SEQ_LEN, rng)
+        assert sig.shape == (SEQ_LEN,)
         assert sig.min() >= 0 and sig.max() <= MAX_VAL
 
     def test_noise_shape_and_range(self, rng):
-        sig = _random_noise(512, rng)
-        assert sig.shape == (512,)
+        sig = _random_noise(SEQ_LEN, rng)
+        assert sig.shape == (SEQ_LEN,)
         assert sig.min() >= 0 and sig.max() <= MAX_VAL
 
     def test_silence_shape_and_range(self, rng):
-        sig = _random_silence(512, rng)
-        assert sig.shape == (512,)
+        sig = _random_silence(SEQ_LEN, rng)
+        assert sig.shape == (SEQ_LEN,)
         assert sig.min() >= 0 and sig.max() <= MAX_VAL
 
     def test_sine_is_periodic(self, rng):
         """Sine should have noticeable variance (not flat)."""
-        sig = _random_sine(512, rng)
+        sig = _random_sine(SEQ_LEN, rng)
         assert np.std(sig) > 100  # non-trivial variation
 
     def test_silence_is_nearly_flat(self, rng):
         """Silence should have very low variance relative to range."""
-        sig = _random_silence(512, rng)
+        sig = _random_silence(SEQ_LEN, rng)
         relative_std = np.std(sig) / MAX_VAL
         assert relative_std < 0.05
 
@@ -159,7 +169,7 @@ class TestWaveDetectionDataset:
     def test_item_shapes(self):
         ds = WaveDetectionDataset(size=20, seed=0)
         x, y = ds[0]
-        assert x.shape == (1, 512)
+        assert x.shape == (1, SEQ_LEN)
         assert y.shape == ()
 
     def test_item_types(self):
@@ -211,7 +221,7 @@ class TestWaveDetectionDataset:
         ds = WaveDetectionDataset(size=32, seed=0)
         loader = DataLoader(ds, batch_size=8, shuffle=False)
         batch_x, batch_y = next(iter(loader))
-        assert batch_x.shape == (8, 1, 512)
+        assert batch_x.shape == (8, 1, SEQ_LEN)
         assert batch_y.shape == (8,)
 
 
@@ -315,7 +325,7 @@ class TestWaveClassifier:
 
     def test_classify_output_format(self, checkpoint_path):
         clf = WaveClassifier(checkpoint_path=checkpoint_path, device="cpu")
-        signal = [32768] * SEQ_LEN  # flat mid-range signal
+        signal = [MAX_VAL // 2] * SEQ_LEN  # flat mid-range signal
         result = clf.classify(signal)
         assert "label" in result
         assert "confidence" in result
@@ -324,13 +334,13 @@ class TestWaveClassifier:
 
     def test_classify_numpy_input(self, checkpoint_path):
         clf = WaveClassifier(checkpoint_path=checkpoint_path, device="cpu")
-        signal = np.full(SEQ_LEN, 32768, dtype=np.int32)
+        signal = np.full(SEQ_LEN, MAX_VAL // 2, dtype=np.int32)
         result = clf.classify(signal)
         assert result["label"] in ("wave", "non-wave")
 
     def test_classify_wrong_length_raises(self, checkpoint_path):
         clf = WaveClassifier(checkpoint_path=checkpoint_path, device="cpu")
-        with pytest.raises(ValueError, match="Expected 512 samples"):
+        with pytest.raises(ValueError, match=rf"Expected {SEQ_LEN} samples"):
             clf.classify([100] * 256)
 
     def test_classify_out_of_range_raises(self, checkpoint_path):
@@ -347,7 +357,7 @@ class TestWaveClassifier:
 
     def test_threshold_parameter(self, checkpoint_path):
         clf = WaveClassifier(checkpoint_path=checkpoint_path, device="cpu")
-        signal = [32768] * SEQ_LEN
+        signal = [MAX_VAL // 2] * SEQ_LEN
         result_low = clf.classify(signal, threshold=0.01)
         result_high = clf.classify(signal, threshold=0.99)
         # With threshold=0.01 most outputs become "wave"; with 0.99 most become "non-wave"
@@ -359,7 +369,7 @@ class TestWaveClassifier:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-TRAINED_CHECKPOINT = os.path.join(os.path.dirname(__file__), "checkpoints", "best.pt")
+TRAINED_CHECKPOINT = str(get_training_checkpoint_path())
 
 
 @pytest.mark.skipif(not os.path.exists(TRAINED_CHECKPOINT), reason="No trained checkpoint available")
@@ -372,8 +382,10 @@ class TestTrainedModel:
 
     def test_classifies_sine_as_wave(self, clf):
         """A clean sine wave should be classified as wave with high confidence."""
-        t = np.arange(512, dtype=np.float64)
-        signal = (32768 + 16000 * np.sin(2 * np.pi * 8 * t / 512)).astype(int)
+        t = np.arange(SEQ_LEN, dtype=np.float64)
+        midpoint = MAX_VAL / 2
+        amplitude = MAX_VAL * 0.24
+        signal = (midpoint + amplitude * np.sin(2 * np.pi * 8 * t / SEQ_LEN)).astype(int)
         signal = np.clip(signal, 0, MAX_VAL)
         result = clf.classify(signal.tolist())
         assert result["label"] == "wave"
@@ -381,8 +393,10 @@ class TestTrainedModel:
 
     def test_classifies_square_as_wave(self, clf):
         """A clean square wave should be classified as wave."""
-        t = np.arange(512, dtype=np.float64)
-        signal = (32768 + 16000 * np.sign(np.sin(2 * np.pi * 5 * t / 512))).astype(int)
+        t = np.arange(SEQ_LEN, dtype=np.float64)
+        midpoint = MAX_VAL / 2
+        amplitude = MAX_VAL * 0.24
+        signal = (midpoint + amplitude * np.sign(np.sin(2 * np.pi * 5 * t / SEQ_LEN))).astype(int)
         signal = np.clip(signal, 0, MAX_VAL)
         result = clf.classify(signal.tolist())
         assert result["label"] == "wave"
@@ -391,14 +405,14 @@ class TestTrainedModel:
     def test_classifies_noise_as_non_wave(self, clf):
         """Random noise should be classified as non-wave."""
         rng = np.random.default_rng(99)
-        signal = rng.integers(0, MAX_VAL, size=512).tolist()
+        signal = rng.integers(0, MAX_VAL, size=SEQ_LEN).tolist()
         result = clf.classify(signal)
         assert result["label"] == "non-wave"
         assert result["confidence"] < 0.3
 
     def test_classifies_silence_as_non_wave(self, clf):
         """A flat/silent signal should be classified as non-wave."""
-        signal = [32768] * 512
+        signal = [MAX_VAL // 2] * SEQ_LEN
         result = clf.classify(signal)
         assert result["label"] == "non-wave"
         assert result["confidence"] < 0.3

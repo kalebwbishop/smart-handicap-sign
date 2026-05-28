@@ -12,20 +12,22 @@ As a library (inside the backend service):
 
 from __future__ import annotations
 
-import os
-
 import numpy as np
 import torch
 
+from app.ai.config import (
+    INFERENCE_CONFIG,
+    SIGNAL_CONFIG,
+    get_runtime_checkpoint_path,
+)
 from app.ai.model import WaveDetector
 
-SEQ_LEN = 512
-# ESP32 ADC is configured for 12-bit resolution (0–4095).
-# The synthetic training data uses a 0–65535 range, but real hardware
-# samples arrive in 0–4095 so we normalise by the 12-bit maximum here.
-MAX_VAL = 2**12 - 1  # 4095
+SEQ_LEN = SIGNAL_CONFIG["sample_count"]
+# ESP32 ADC is configured for 12-bit resolution (0–4095), and the shared AI
+# config now uses the same range for both training and runtime inference.
+MAX_VAL = SIGNAL_CONFIG["max_value"]
 
-DEFAULT_CHECKPOINT = os.path.join(os.path.dirname(__file__), "checkpoints", "best.pt")
+DEFAULT_CHECKPOINT = str(get_runtime_checkpoint_path())
 
 
 class WaveClassifier:
@@ -42,7 +44,7 @@ class WaveClassifier:
 
     @torch.no_grad()
     def classify(
-        self, signal: list[int] | np.ndarray, threshold: float = 0.5
+        self, signal: list[int] | np.ndarray, threshold: float = INFERENCE_CONFIG["threshold"]
     ) -> dict[str, str | float]:
         """
         Classify a single 512-int signal.

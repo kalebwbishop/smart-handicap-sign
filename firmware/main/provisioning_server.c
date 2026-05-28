@@ -15,14 +15,10 @@
 #include "wifi_manager.h"
 
 #define SCAN_RESULT_LIMIT 20
-#define CONFIGURE_MAX_FAILED_CODES 5
-#define CONFIGURE_LOCKOUT_MS (5 * 60 * 1000)
 
 static const char *TAG = "prov_server";
 
 static httpd_handle_t s_server;
-static int s_failed_code_attempts;
-static TickType_t s_lockout_until_tick;
 
 static void add_cors_headers(httpd_req_t *req)
 {
@@ -128,11 +124,6 @@ static esp_err_t scan_get_handler(httpd_req_t *req)
 
 static esp_err_t configure_post_handler(httpd_req_t *req)
 {
-    TickType_t now = xTaskGetTickCount();
-    if (s_lockout_until_tick != 0 && now < s_lockout_until_tick) {
-        return send_json_response(req, "429 Too Many Requests", "{\"error\":\"Provisioning temporarily locked\"}");
-    }
-
     if (req->content_len <= 0 || req->content_len > 512) {
         return send_json_response(req, "400 Bad Request", "{\"error\":\"Invalid request body\"}");
     }
@@ -156,34 +147,12 @@ static esp_err_t configure_post_handler(httpd_req_t *req)
 
     const cJSON *ssid = cJSON_GetObjectItemCaseSensitive(json, "ssid");
     const cJSON *password = cJSON_GetObjectItemCaseSensitive(json, "password");
-    const cJSON *claim_id = cJSON_GetObjectItemCaseSensitive(json, "claim_id");
-    const cJSON *setup_code = cJSON_GetObjectItemCaseSensitive(json, "setup_code");
     if (!cJSON_IsString(ssid) || ssid->valuestring == NULL || ssid->valuestring[0] == '\0') {
         cJSON_Delete(json);
         return send_json_response(req, "400 Bad Request", "{\"error\":\"ssid is required\"}");
     }
 
-    bool has_claim_id = cJSON_IsString(claim_id) && claim_id->valuestring != NULL && claim_id->valuestring[0] != '\0';
-    bool has_setup_code = cJSON_IsString(setup_code) && setup_code->valuestring != NULL && setup_code->valuestring[0] != '\0';
-    if (has_claim_id == has_setup_code) {
-        cJSON_Delete(json);
-        return send_json_response(req, "400 Bad Request", "{\"error\":\"Provide exactly one setup or claim code\"}");
-    }
-
-    const char *submitted_code = has_claim_id ? claim_id->valuestring : setup_code->valuestring;
-    if (!nvs_setup_code_verify(submitted_code)) {
-        s_failed_code_attempts++;
-        if (s_failed_code_attempts >= CONFIGURE_MAX_FAILED_CODES) {
-            s_lockout_until_tick = now + pdMS_TO_TICKS(CONFIGURE_LOCKOUT_MS);
-            ESP_LOGW(TAG, "Provisioning code lockout activated after repeated failures");
-        }
-        cJSON_Delete(json);
-        return send_json_response(req, "403 Forbidden", "{\"error\":\"Invalid setup code\"}");
-    }
-
     err = nvs_wifi_save(ssid->valuestring, cJSON_IsString(password) && password->valuestring != NULL ? password->valuestring : "");
-    s_failed_code_attempts = 0;
-    s_lockout_until_tick = 0;
     cJSON_Delete(json);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to save WiFi config: %s", esp_err_to_name(err));
@@ -223,6 +192,7 @@ esp_err_t provisioning_server_start(void)
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.server_port = 80;
     config.uri_match_fn = httpd_uri_match_wildcard;
+    config.max_open_sockets = 5;
 
     esp_err_t err = httpd_start(&s_server, &config);
     if (err != ESP_OK) {

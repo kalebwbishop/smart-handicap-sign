@@ -1,0 +1,71 @@
+import type { Device, DeviceLifecycleStatus } from '../types/device';
+import { colors } from '../theme/colors';
+
+type EnvReader = {
+    process?: {
+        env?: Record<string, string | undefined>;
+    };
+};
+
+const DEFAULT_STALE_THRESHOLD_MINUTES = 15;
+const STALE_THRESHOLD_ENV_KEY = 'EXPO_PUBLIC_DEVICE_STALE_MINUTES';
+
+const LIFECYCLE_STATUS: Record<DeviceLifecycleStatus, { label: string; color: string }> = {
+    active: { label: 'Ready for requests', color: '#34C759' },
+    manufactured: { label: 'Not active yet', color: colors.textMuted },
+    unclaimed: { label: 'Not active yet', color: colors.textMuted },
+    claiming: { label: 'Setup in progress', color: colors.warning },
+    lost: { label: 'Needs support', color: colors.negative },
+    revoked: { label: 'Needs support', color: colors.negative },
+    retired: { label: 'Offline', color: colors.textMuted },
+};
+
+const OPERATIONAL_STATUS: Record<string, { label: string; color: string; tone: string }> = {
+    available: { label: 'Available', color: '#34C759', tone: '#34C75912' },
+    assistance_requested: { label: 'Assistance Requested', color: colors.negative, tone: '#FF3B3012' },
+    assistance_in_progress: { label: 'Assistance In Progress', color: colors.warning, tone: '#FF950012' },
+    offline: { label: 'Offline', color: colors.textMuted, tone: '#86868B12' },
+    error: { label: 'Needs Attention', color: colors.warning, tone: '#FF950012' },
+};
+
+function getConfiguredStaleThresholdMinutes(): number {
+    const rawValue = (globalThis as typeof globalThis & EnvReader).process?.env?.[STALE_THRESHOLD_ENV_KEY]?.trim();
+    if (!rawValue) {
+        return DEFAULT_STALE_THRESHOLD_MINUTES;
+    }
+
+    const parsedMinutes = Number(rawValue);
+    if (!Number.isFinite(parsedMinutes) || parsedMinutes <= 0) {
+        return DEFAULT_STALE_THRESHOLD_MINUTES;
+    }
+
+    return parsedMinutes;
+}
+
+export function isDeviceStale(device: Device, now = new Date()): boolean {
+    if (!device.last_seen_at) {
+        return true;
+    }
+
+    const lastSeenMs = new Date(device.last_seen_at).getTime();
+    if (Number.isNaN(lastSeenMs)) {
+        return true;
+    }
+
+    return now.getTime() - lastSeenMs > getConfiguredStaleThresholdMinutes() * 60 * 1000;
+}
+
+export function getPilotStatus(device: Device, now = new Date()) {
+    if (isDeviceStale(device, now)) {
+        return OPERATIONAL_STATUS.offline;
+    }
+
+    if (device.lifecycle_status === 'active' && device.operational_status) {
+        return OPERATIONAL_STATUS[device.operational_status] ?? OPERATIONAL_STATUS.available;
+    }
+
+    return {
+        ...LIFECYCLE_STATUS[device.lifecycle_status],
+        tone: `${LIFECYCLE_STATUS[device.lifecycle_status].color}12`,
+    };
+}

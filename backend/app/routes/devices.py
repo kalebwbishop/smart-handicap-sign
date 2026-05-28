@@ -23,6 +23,7 @@ class DeviceOut(BaseModel):
     current_site_id: Optional[str] = None
     current_parking_space_id: Optional[str] = None
     name: Optional[str] = None
+    last_seen_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
@@ -65,6 +66,7 @@ async def list_devices(
 @router.get("/{serial_number}/status", response_model=DeviceStatusOut)
 async def get_device_status(serial_number: str):
     device = await _get_device_or_404(serial_number)
+    await device_service.update_device_last_seen(serial_number)
     status = device.get("operational_status") or "available"
     return {
         "serial_number": serial_number,

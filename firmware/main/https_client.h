@@ -24,7 +24,7 @@ typedef struct {
 // base_url: e.g., "https://your-server.com/api/v1"
 esp_err_t https_client_init(const char *base_url);
 
-// POST /inference/classify with 512 ADC samples
+// POST /inference/classify with SAMPLES_PER_BATCH ADC samples
 // serial_number and auth_token are read from NVS
 esp_err_t https_client_classify(const int *samples, int sample_count, classify_result_t *result);
 

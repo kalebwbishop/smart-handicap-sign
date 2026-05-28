@@ -1,0 +1,58 @@
+import { Client } from 'pg';
+import * as path from 'path';
+import * as dotenv from 'dotenv';
+
+const envPath = path.resolve(__dirname, '../../backend/.env');
+console.log(`Loading environment from: ${envPath}`);
+dotenv.config({ path: envPath });
+
+const POSTGRES_CONNECTION_STRING =
+    process.env.POSTGRES_CONNECTION_STRING ??
+    process.env.DATABASE_URL;
+
+if (!POSTGRES_CONNECTION_STRING) {
+    console.error('POSTGRES_CONNECTION_STRING environment variable is not set');
+    process.exit(1);
+}
+
+const connectionString = POSTGRES_CONNECTION_STRING;
+
+function resolveSslConfig(connectionString: string) {
+    if (process.env.NODE_ENV === 'production') {
+        return { rejectUnauthorized: true };
+    }
+
+    if (connectionString.includes('azure.com')) {
+        return { rejectUnauthorized: false };
+    }
+
+    return undefined;
+}
+
+async function migrateLastSeenAt() {
+    const client = new Client({
+        connectionString,
+        ssl: resolveSslConfig(connectionString),
+    });
+
+    try {
+        console.log('Connecting to database...');
+        await client.connect();
+        console.log('Connected to database');
+
+        await client.query(`
+            ALTER TABLE devices
+            ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;
+        `);
+
+        console.log('last_seen_at migration applied successfully');
+    } catch (error) {
+        console.error('last_seen_at migration failed:', error);
+        process.exit(1);
+    } finally {
+        await client.end();
+        console.log('Database connection closed');
+    }
+}
+
+migrateLastSeenAt();

@@ -36,9 +36,10 @@ class TestClassifyEndpoint:
         client = TestClient(app, raise_server_exceptions=False)
         return client
 
+    @patch("app.routes.inference.device_service.update_device_last_seen", new_callable=AsyncMock)
     @patch("app.routes.inference.device_service.transition_device_status", new_callable=AsyncMock)
     @patch("app.routes.inference._get_classifier")
-    def test_classify_uses_server_threshold(self, mock_clf, mock_transition, app):
+    def test_classify_uses_server_threshold(self, mock_clf, mock_transition, mock_last_seen, app):
         fake_clf = MagicMock()
         fake_clf.classify.return_value = {"label": "non-wave", "confidence": 0.3}
         mock_clf.return_value = fake_clf
@@ -53,6 +54,70 @@ class TestClassifyEndpoint:
         assert response.status_code == 200
         _, kwargs = fake_clf.classify.call_args
         assert kwargs["threshold"] == WAVE_THRESHOLD
+        mock_last_seen.assert_awaited_once_with(FAKE_DEVICE.serial_number)
+
+    @patch("app.routes.inference.render_signal_debug_plot")
+    @patch("app.routes.inference.get_settings")
+    @patch("app.routes.inference.device_service.transition_device_status", new_callable=AsyncMock)
+    @patch("app.routes.inference.device_service.update_device_last_seen", new_callable=AsyncMock)
+    @patch("app.routes.inference._get_classifier")
+    def test_classify_plots_signal_when_debug_mode_enabled(
+        self,
+        mock_clf,
+        mock_last_seen,
+        mock_transition,
+        mock_get_settings,
+        mock_plot,
+        app,
+    ):
+        fake_clf = MagicMock()
+        fake_clf.classify.return_value = {"label": "non-wave", "confidence": 0.3}
+        mock_clf.return_value = fake_clf
+        mock_transition.return_value = _transition_result(False, "invalid_status_transition")
+        mock_get_settings.return_value = MagicMock(inference_debug_plot_enabled=True)
+
+        with self._client(app) as client:
+            response = client.post("/api/v1/inference/classify", json={
+                "serial_number": FAKE_DEVICE.serial_number,
+                "samples": [100] * 512,
+            })
+
+        assert response.status_code == 200
+        mock_plot.assert_called_once_with(
+            [100] * 512,
+            serial_number=FAKE_DEVICE.serial_number,
+            label="non-wave",
+            confidence=0.3,
+        )
+
+    @patch("app.routes.inference.render_signal_debug_plot")
+    @patch("app.routes.inference.get_settings")
+    @patch("app.routes.inference.device_service.transition_device_status", new_callable=AsyncMock)
+    @patch("app.routes.inference.device_service.update_device_last_seen", new_callable=AsyncMock)
+    @patch("app.routes.inference._get_classifier")
+    def test_classify_skips_signal_plot_when_debug_mode_disabled(
+        self,
+        mock_clf,
+        mock_last_seen,
+        mock_transition,
+        mock_get_settings,
+        mock_plot,
+        app,
+    ):
+        fake_clf = MagicMock()
+        fake_clf.classify.return_value = {"label": "non-wave", "confidence": 0.3}
+        mock_clf.return_value = fake_clf
+        mock_transition.return_value = _transition_result(False, "invalid_status_transition")
+        mock_get_settings.return_value = MagicMock(inference_debug_plot_enabled=False)
+
+        with self._client(app) as client:
+            response = client.post("/api/v1/inference/classify", json={
+                "serial_number": FAKE_DEVICE.serial_number,
+                "samples": [100] * 512,
+            })
+
+        assert response.status_code == 200
+        mock_plot.assert_not_called()
 
     def test_classify_rejects_unauthenticated(self, client_anon):
         response = client_anon.post("/api/v1/inference/classify", json={

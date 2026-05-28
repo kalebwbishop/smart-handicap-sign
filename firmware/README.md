@@ -7,7 +7,7 @@ ESP-IDF firmware for the **single pilot sign**. This firmware is intentionally f
 - Connects one ESP32 sign to Wi-Fi
 - Polls backend status for the installed sign
 - Samples the photoresistor on **GPIO 34**
-- Sends **512 ADC samples** to `POST /inference/classify` only when the sign is `available`
+- Sends **200 ADC samples** to `POST /inference/classify` only when the sign is `available`
 - Mirrors backend-driven sign state on the LED at **GPIO 2**
 - Falls back to SoftAP provisioning when Wi-Fi credentials are missing or invalid
 
@@ -41,7 +41,7 @@ Main loop:
 - Poll `GET /devices/{serial}/status`
 - Update the LED to match backend status
 - If status is not `available`, wait 3 seconds and poll again
-- If status is `available`, collect 512 samples over 12.8 seconds
+- If status is `available`, collect 200 samples over about 4.0 seconds
 - Send the sample batch to `POST /inference/classify`
 
 ## Supported sign states
@@ -53,8 +53,6 @@ The pilot relies on these core operational states:
 - `assistance_in_progress`
 - `offline`
 - `error`
-
-The LED driver still supports training states, but they are not part of the pilot operator workflow.
 
 ## Hardware assumptions
 
@@ -109,6 +107,49 @@ idf.py -p /dev/ttyUSB0 flash
 idf.py -p /dev/ttyUSB0 monitor
 ```
 
+### Windows quick-start for a plugged-in ESP32
+
+If the board is already connected over USB on Windows, this is the fastest pilot workflow:
+
+1. Find the serial port:
+
+   ```powershell
+   Get-CimInstance Win32_SerialPort | Select-Object DeviceID, Description
+   ```
+
+2. Build in WSL with ESP-IDF:
+
+   ```cmd
+   wsl -d Ubuntu -- bash -lc "source /root/esp/esp-idf/export.sh && cd /mnt/c/Users/kaleb/repos/apps/smart-handicap-sign/firmware && idf.py build"
+   ```
+
+3. Install `esptool` on Windows if needed:
+
+   ```cmd
+   py -m pip install esptool
+   ```
+
+4. Flash the WSL-built image from Windows:
+
+   ```cmd
+   py -m esptool --chip esp32 -p COM3 -b 460800 --before default_reset --after hard_reset write_flash --flash_mode dio --flash_size 4MB --flash_freq 40m 0x1000 firmware\build\bootloader\bootloader.bin 0x8000 firmware\build\partition_table\partition-table.bin 0x10000 firmware\build\hazard-hero-firmware.bin
+   ```
+
+5. If you want logs after flashing, open a serial monitor separately.
+
+   ```cmd
+   py -m serial.tools.miniterm COM3 115200
+   ```
+
+#### Why this flow
+
+`idf.py` inside WSL cannot use Windows serial ports such as `COM3` directly. The reliable path on this repo is:
+
+1. **build in WSL**
+2. **flash from Windows**
+
+Replace `COM3` with the port shown for the connected ESP32. If the flash step says the port is busy, close any serial monitor or terminal already attached to that port.
+
 ## Required configuration
 
 ### Backend URL
@@ -125,24 +166,25 @@ Use the real pilot backend URL, including `/api/v1`.
 
 The sign uses these identity values:
 
+- `device.serial`
 - `device.auth_token`
 
 Notes:
 
-- `device.serial` should be preloaded for the pilot when possible.
+- `device.serial` should be preloaded for the pilot.
 - If `device.serial` is missing, current firmware regenerates it from the device MAC address and stores it in NVS.
-- `device.auth_token` still needs to be provisioned for normal backend communication.
+- `device.auth_token` should be preloaded before pilot installation.
 
 ### Wi-Fi credentials
 
-The sign needs these NVS values or must receive them through provisioning:
+For the pilot, preload these NVS values before installation:
 
 - `wifi.wifi_ssid`
 - `wifi.wifi_pass`
 
-## Provisioning in the field
+## Recovery provisioning
 
-If Wi-Fi credentials are missing or reconnect attempts fail repeatedly, firmware starts a SoftAP provisioning server.
+Manual provisioning is the primary pilot path. If Wi-Fi credentials are missing or reconnect attempts fail repeatedly, firmware can still start a SoftAP provisioning server as a recovery tool.
 
 ### Provisioning details
 
@@ -165,7 +207,7 @@ curl http://192.168.4.1/status
 curl http://192.168.4.1/scan
 curl -X POST http://192.168.4.1/configure \
   -H "Content-Type: application/json" \
-  -d "{\"ssid\":\"OfficeWiFi\",\"password\":\"correct-horse-battery-staple\",\"claim_id\":\"ABCD-EF23\"}"
+  -d "{\"ssid\":\"OfficeWiFi\",\"password\":\"correct-horse-battery-staple\"}"
 ```
 
 ## NVS preload option
@@ -179,8 +221,6 @@ key,type,encoding,value
 device,namespace,,
 serial,data,string,HH-ESP32-0001
 auth_token,data,string,replace-with-device-auth-token
-setup_code_hash,data,string,replace-with-fake-local-verifier-hash
-setup_code_salt,data,string,replace-with-fake-local-verifier-salt
 wifi,namespace,,
 wifi_ssid,data,string,OfficeWiFi
 wifi_pass,data,string,correct-horse-battery-staple
@@ -193,6 +233,15 @@ python $IDF_PATH/components/nvs_flash/nvs_partition_generator/nvs_partition_gen.
   generate device_config.csv device_nvs.bin 0x6000
 
 python -m esptool --port /dev/ttyUSB0 write_flash 0x9000 device_nvs.bin
+```
+
+Windows example:
+
+```powershell
+python %IDF_PATH%\components\nvs_flash\nvs_partition_generator\nvs_partition_gen.py `
+  generate device_config.csv device_nvs.bin 0x6000
+
+python -m esptool --port COM3 write_flash 0x9000 device_nvs.bin
 ```
 
 ## Partition table
@@ -209,9 +258,9 @@ The pilot firmware uses a **single application partition** instead of an OTA lay
 
 | Setting | Value |
 |---|---|
-| Sample count | `512` |
-| Sample interval | `25 ms` |
-| Sampling window | `12.8 s` |
+| Sample count | `200` |
+| Sample interval | `20 ms` |
+| Sampling window | `~4.0 s` |
 | Status poll interval | `3000 ms` |
 | Wi-Fi connect timeout | `20000 ms` |
 | Watchdog timeout | `30000 ms` |
@@ -234,7 +283,7 @@ Before installing the pilot sign:
 1. Set the backend URL.
 2. Replace `server_certs/ca_cert.pem` with the CA needed for the pilot backend.
 3. Flash the firmware.
-4. Provision serial number, auth token, and Wi-Fi credentials.
+4. Manually preload serial number, auth token, and Wi-Fi credentials.
 5. Verify the sign can poll status.
 6. Verify a real wave triggers `assistance_requested`.
 7. Verify the operator can acknowledge and resolve the request.

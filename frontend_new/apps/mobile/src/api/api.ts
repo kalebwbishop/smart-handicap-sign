@@ -4,4 +4,6 @@ import apiClient from "./client";
 export const {
   authAPI,
   devicesAPI,
+  deviceClaimsAPI,
+  sitesAPI,
 } = createApiServices(apiClient);

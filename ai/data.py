@@ -1,7 +1,7 @@
 """
 Synthetic dataset for wave detection.
 
-Generates 512-sample integer signals (0-65535) in four categories:
+Generates 512-sample integer signals (0-4095) in four categories:
   - sine wave      (label = 1)
   - square wave    (label = 1)
   - random noise   (label = 0)
@@ -16,10 +16,16 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
-MAX_VAL = 2**16 - 1  # 65535
-# NOTE: Synthetic training data uses a 16-bit range (0–65535).  The real
-# ESP32 hardware ADC is 12-bit (0–4095).  The backend inference code
-# (backend/app/ai/infer.py) normalises by 4095 to match the hardware.
+from config import DATASET_CONFIG, SIGNAL_CONFIG
+
+MAX_VAL = SIGNAL_CONFIG["max_value"]
+SEQ_LEN = SIGNAL_CONFIG["sample_count"]
+_SINE_CONFIG = DATASET_CONFIG["sine"]
+_SQUARE_CONFIG = DATASET_CONFIG["square"]
+_NOISE_CONFIG = DATASET_CONFIG["noise"]
+_SILENCE_CONFIG = DATASET_CONFIG["silence"]
+# NOTE: Synthetic training data now matches the device ADC range so both the
+# standalone AI module and backend inference normalise the same input scale.
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -27,19 +33,18 @@ MAX_VAL = 2**16 - 1  # 65535
 
 def _random_sine(n: int, rng: np.random.Generator) -> np.ndarray:
     """Generate a sine wave with random frequency, amplitude, phase, and DC offset."""
-    # 1-32 full cycles across 512 samples keeps the signal clearly periodic
-    cycles = rng.uniform(1, 32)
+    cycles = rng.uniform(*_SINE_CONFIG["cycles"])
     freq = cycles * 2 * np.pi / n
     phase = rng.uniform(0, 2 * np.pi)
 
-    amplitude = rng.uniform(0.15, 0.5) * MAX_VAL  # 15-50 % of full range
-    dc_offset = rng.uniform(0.25, 0.75) * MAX_VAL
+    amplitude = rng.uniform(*_SINE_CONFIG["amplitude_fraction"]) * MAX_VAL
+    dc_offset = rng.uniform(*_SINE_CONFIG["dc_offset_fraction"]) * MAX_VAL
 
     t = np.arange(n, dtype=np.float64)
     signal = dc_offset + amplitude * np.sin(freq * t + phase)
 
     # Add a touch of noise so the model doesn't overfit to perfectly clean waves
-    noise_level = rng.uniform(0, 0.03) * MAX_VAL
+    noise_level = rng.uniform(*_SINE_CONFIG["noise_fraction"]) * MAX_VAL
     signal += rng.normal(0, noise_level, size=n)
 
     return np.clip(signal, 0, MAX_VAL).astype(np.float64)
@@ -47,26 +52,26 @@ def _random_sine(n: int, rng: np.random.Generator) -> np.ndarray:
 
 def _random_square(n: int, rng: np.random.Generator) -> np.ndarray:
     """Generate a square wave with random frequency, amplitude, and DC offset."""
-    cycles = rng.uniform(1, 32)
+    cycles = rng.uniform(*_SQUARE_CONFIG["cycles"])
     freq = cycles * 2 * np.pi / n
     phase = rng.uniform(0, 2 * np.pi)
 
-    amplitude = rng.uniform(0.15, 0.5) * MAX_VAL
-    dc_offset = rng.uniform(0.25, 0.75) * MAX_VAL
+    amplitude = rng.uniform(*_SQUARE_CONFIG["amplitude_fraction"]) * MAX_VAL
+    dc_offset = rng.uniform(*_SQUARE_CONFIG["dc_offset_fraction"]) * MAX_VAL
 
     t = np.arange(n, dtype=np.float64)
     signal = dc_offset + amplitude * np.sign(np.sin(freq * t + phase))
 
-    noise_level = rng.uniform(0, 0.03) * MAX_VAL
+    noise_level = rng.uniform(*_SQUARE_CONFIG["noise_fraction"]) * MAX_VAL
     signal += rng.normal(0, noise_level, size=n)
 
     return np.clip(signal, 0, MAX_VAL).astype(np.float64)
 
 
 def _random_noise(n: int, rng: np.random.Generator) -> np.ndarray:
-    """Generate uniform random noise across the full 0-65535 range."""
-    low = rng.uniform(0, 0.3) * MAX_VAL
-    high = rng.uniform(0.7, 1.0) * MAX_VAL
+    """Generate uniform random noise across the full configured ADC range."""
+    low = rng.uniform(*_NOISE_CONFIG["low_fraction"]) * MAX_VAL
+    high = rng.uniform(*_NOISE_CONFIG["high_fraction"]) * MAX_VAL
     signal = rng.uniform(low, high, size=n)
     return np.clip(signal, 0, MAX_VAL).astype(np.float64)
 
@@ -74,7 +79,7 @@ def _random_noise(n: int, rng: np.random.Generator) -> np.ndarray:
 def _random_silence(n: int, rng: np.random.Generator) -> np.ndarray:
     """Generate a near-constant (silent / DC) signal with tiny jitter."""
     dc = rng.uniform(0, MAX_VAL)
-    jitter = rng.uniform(0, 0.01) * MAX_VAL
+    jitter = rng.uniform(*_SILENCE_CONFIG["jitter_fraction"]) * MAX_VAL
     signal = dc + rng.normal(0, jitter, size=n)
     return np.clip(signal, 0, MAX_VAL).astype(np.float64)
 
@@ -104,7 +109,12 @@ class WaveDetectionDataset(Dataset):
         Reproducibility seed.
     """
 
-    def __init__(self, size: int = 50_000, seq_len: int = 512, seed: int | None = None):
+    def __init__(
+        self,
+        size: int = DATASET_CONFIG["default_size"],
+        seq_len: int = SEQ_LEN,
+        seed: int | None = None,
+    ):
         super().__init__()
         self.size = size
         self.seq_len = seq_len

@@ -49,10 +49,9 @@ Before building/flashing production-like firmware, confirm:
 - `HAZARD_HERO_BACKEND_URL` includes `/api/v1` and points at the target backend.
 - `firmware/server_certs/ca_cert.pem` trusts that backend certificate chain.
 - NVS contains the serial number and device auth token.
-- NVS or equivalent manufacturing data contains the setup/claim verifier needed by local `/configure`.
 - Wi-Fi credentials are either preloaded or intentionally absent to test SoftAP provisioning.
 - Device auth token material was issued by manufacturing/backend registration tooling; firmware must not generate token material.
-- Field reset clears Wi-Fi credentials only and must preserve serial number, auth token, and setup/claim verifier material.
+- Field reset clears Wi-Fi credentials only and must preserve serial number and auth token material.
 
 Example NVS CSV shape for bench testing after implementation may include fields like these, with fake values only:
 
@@ -61,8 +60,6 @@ key,type,encoding,value
 device,namespace,,
 serial,data,string,SHS-2605-S01-A7K-00003-W
 auth_token,data,string,fake-device-token-for-local-test
-setup_code_hash,data,string,fakehashnotforproduction
-setup_code_salt,data,string,fakesaltnotforproduction
 wifi,namespace,,
 wifi_ssid,data,string,ExampleNetwork
 wifi_pass,data,string,fake-password-for-docs-only
@@ -91,29 +88,15 @@ curl http://192.168.4.1/status
 curl http://192.168.4.1/scan
 curl -X POST http://192.168.4.1/configure `
   -H "Content-Type: application/json" `
-  -d '{"ssid":"ExampleNetwork","password":"fake-password-for-docs-only","claim_id":"ABCD-EF23"}'
-
-curl -X POST http://192.168.4.1/configure `
-  -H "Content-Type: application/json" `
-  -d '{"ssid":"ExampleNetwork","password":"fake-password-for-docs-only","setup_code":"SETUP-1234"}'
-
-curl -X POST http://192.168.4.1/configure `
-  -H "Content-Type: application/json" `
   -d '{"ssid":"ExampleNetwork","password":"fake-password-for-docs-only"}'
-
-curl -X POST http://192.168.4.1/configure `
-  -H "Content-Type: application/json" `
-  -d '{"ssid":"ExampleNetwork","password":"fake-password-for-docs-only","claim_id":"ABCD-EF23","setup_code":"SETUP-1234"}'
 ```
 
 Expected behavior:
 
 - `/status` confirms AP mode without secrets.
 - `/scan` returns nearby networks without secrets.
-- `/configure` rejects missing `claim_id`/`setup_code`, both-present code fields, invalid codes, revoked or expired verifier metadata when provisioned, and oversized or malformed JSON.
-- Five failed setup/claim code validations lock `/configure` credential writes for 5 minutes and do not save Wi-Fi credentials.
-- `/configure` error messages remain generic and do not reveal secret validation details.
-- `/configure` saves Wi-Fi credentials only after code verification succeeds.
+- `/configure` rejects missing SSID and oversized or malformed JSON.
+- `/configure` saves Wi-Fi credentials and reboots after a valid request.
 - Device exits provisioning after it reconnects as a station.
 
 ## 6. Validate Runtime Status Gating
@@ -168,15 +151,13 @@ Expected behavior:
 
 Expected secret-free support signals:
 
-- Firmware serial logs show pre-connect provisioning failures, setup-code lockouts, Wi-Fi connection failures, certificate failures, status polling failures, and OTA validation decisions without Wi-Fi passwords, device tokens, setup codes, hashes, or salts.
+- Firmware serial logs show pre-connect provisioning failures, Wi-Fi connection failures, certificate failures, status polling failures, and OTA validation decisions without Wi-Fi passwords or device tokens.
 - Backend logs or device event history show connected-device wave detection, auth failure threshold exceeded, status failure and recovery, OTA validation, observed firmware version, and provisioning success summaries without secrets.
-- Metrics definitions or equivalent structured log/device-event signals exist for setup-code failures, setup-code lockouts, status poll failures and recoveries, classify submissions, auth failures, OTA validation, provisioning success, and firmware version observations.
+- Metrics definitions or equivalent structured log/device-event signals exist for status poll failures and recoveries, classify submissions, auth failures, OTA validation, provisioning success, and firmware version observations.
 - Operators can recover by checking firmware serial logs for pre-connect failures, backend logs/device event history for connected-device failures, and manufacturing/service tooling for missing or revoked token material.
 
 Suggested counter or timer names for the first implementation, whether emitted through metrics, structured logs, or device events:
 
-- `hazard_hero_setup_code_failures_total`
-- `hazard_hero_setup_code_lockouts_total`
 - `hazard_hero_status_poll_failures_total`
 - `hazard_hero_status_poll_recoveries_total`
 - `hazard_hero_classify_submissions_total`
@@ -188,11 +169,11 @@ Suggested counter or timer names for the first implementation, whether emitted t
 
 Operator recovery checklist:
 
-1. Read firmware serial logs for the reported serial number, firmware/config version, Wi-Fi retry state, certificate failures, setup-code lockouts, and OTA validation decisions.
+1. Read firmware serial logs for the reported serial number, firmware/config version, Wi-Fi retry state, certificate failures, and OTA validation decisions.
 2. Inspect backend logs and `device_events` for the same serial number to find auth failures, unsupported firmware version rejection, status recovery, wave detection, and firmware-reported event summaries.
 3. For unsupported firmware, upgrade the device image; do not bypass minimum firmware/config version policy.
 4. For missing, revoked, or expired token material, use manufacturing or service tooling to restore identity. Field reset is Wi-Fi-only and must not erase identity material.
-5. For provisioning failures, verify the local setup/claim verifier, Wi-Fi SSID/password, and backend certificate/backend URL after connectivity returns.
+5. For provisioning failures, verify the Wi-Fi SSID/password, and backend certificate/backend URL after connectivity returns.
 
 ## 10. Run Regression Gates
 

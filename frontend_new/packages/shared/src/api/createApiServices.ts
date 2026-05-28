@@ -101,12 +101,15 @@ export function createApiServices(apiClient: ApiClient) {
   };
 
   const devicesAPI = {
-    list: async (params?: { organization_id?: string; lifecycle_status?: DeviceLifecycleStatus }): Promise<Device[]> => {
+    list: async (
+      params?: { organization_id?: string; lifecycle_status?: DeviceLifecycleStatus },
+      config?: unknown,
+    ): Promise<Device[]> => {
       const query = new URLSearchParams();
       if (params?.organization_id) query.append("organization_id", params.organization_id);
       if (params?.lifecycle_status) query.append("lifecycle_status", params.lifecycle_status);
       const qs = query.toString();
-      return apiClient.get<Device[]>(`/devices${qs ? `?${qs}` : ""}`);
+      return apiClient.get<Device[]>(`/devices${qs ? `?${qs}` : ""}`, config);
     },
     getBySerial: async (serialNumber: string): Promise<Device> => {
       return apiClient.get<Device>(`/devices/${encodeURIComponent(serialNumber)}`);
@@ -129,8 +132,8 @@ export function createApiServices(apiClient: ApiClient) {
     regenerateClaim: async (serialNumber: string): Promise<{ claim_id: string }> => {
       return apiClient.post<{ claim_id: string }>(`/devices/${encodeURIComponent(serialNumber)}/regenerate-claim`);
     },
-    getEvents: async (serialNumber: string): Promise<DeviceEvent[]> => {
-      return apiClient.get<DeviceEvent[]>(`/devices/${encodeURIComponent(serialNumber)}/events`);
+    getEvents: async (serialNumber: string, config?: unknown): Promise<DeviceEvent[]> => {
+      return apiClient.get<DeviceEvent[]>(`/devices/${encodeURIComponent(serialNumber)}/events`, config);
     },
   };
 

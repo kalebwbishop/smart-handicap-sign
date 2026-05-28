@@ -4,10 +4,10 @@ import { Platform, Linking } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import * as ExpoLinking from 'expo-linking';
 import axios from 'axios';
-import { getApiV1BaseUrl } from '@hazard-hero/shared';
 import { User } from '../types/types';
 import { tokenStorage } from '../lib/auth';
 import { authAPI } from '../api/api';
+import { resolveApiV1BaseUrl } from '../api/baseUrl';
 import { getAuthRedirectUri } from '../utils/authRedirect';
 console.log('[STORE] All authStore imports resolved');
 
@@ -276,7 +276,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
  * intercepted apiClient, which would cause infinite loops.
  */
 async function apiClient_refresh(refreshToken: string) {
-    const API_URL = getApiV1BaseUrl(process.env.EXPO_PUBLIC_API_URL);
+    const API_URL = resolveApiV1BaseUrl();
     console.log('[Auth] apiClient_refresh — calling', `${API_URL}/auth/refresh`);
     try {
         const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });

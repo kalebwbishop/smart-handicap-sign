@@ -44,27 +44,12 @@ static const led_step_t ERROR_STEPS[] = {
     {100, 800},
 };
 
-static const led_step_t TRAINING_READY_STEPS[] = {
-    {500, 500},
-};
-
-static const led_step_t TRAINING_POSITIVE_STEPS[] = {
-    {1000, 0},
-};
-
-static const led_step_t TRAINING_NEGATIVE_STEPS[] = {
-    {100, 100},
-};
-
 static const led_pattern_t LED_PATTERNS[STATUS_COUNT] = {
     [STATUS_AVAILABLE] = {.steps = AVAILABLE_STEPS, .step_count = 1},
     [STATUS_ASSISTANCE_REQUESTED] = {.steps = ASSISTANCE_REQUESTED_STEPS, .step_count = 1},
     [STATUS_ASSISTANCE_IN_PROGRESS] = {.steps = ASSISTANCE_IN_PROGRESS_STEPS, .step_count = 2},
     [STATUS_OFFLINE] = {.steps = OFFLINE_STEPS, .step_count = 1},
     [STATUS_ERROR] = {.steps = ERROR_STEPS, .step_count = 3},
-    [STATUS_TRAINING_READY] = {.steps = TRAINING_READY_STEPS, .step_count = 1},
-    [STATUS_TRAINING_POSITIVE] = {.steps = TRAINING_POSITIVE_STEPS, .step_count = 1},
-    [STATUS_TRAINING_NEGATIVE] = {.steps = TRAINING_NEGATIVE_STEPS, .step_count = 1},
 };
 
 static device_status_t s_current_status = STATUS_OFFLINE;
@@ -254,15 +239,6 @@ device_status_t led_driver_status_from_string(const char *status_str)
     }
     if (strcmp(status_str, "error") == 0) {
         return STATUS_ERROR;
-    }
-    if (strcmp(status_str, "training_ready") == 0) {
-        return STATUS_TRAINING_READY;
-    }
-    if (strcmp(status_str, "training_positive") == 0) {
-        return STATUS_TRAINING_POSITIVE;
-    }
-    if (strcmp(status_str, "training_negative") == 0) {
-        return STATUS_TRAINING_NEGATIVE;
     }
 
     return STATUS_OFFLINE;

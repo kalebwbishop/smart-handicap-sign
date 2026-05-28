@@ -179,9 +179,9 @@ X-Firmware-Config-Version: 2026.05.12
 **Payload Rules**:
 
 - Payloads must be bounded JSON objects suitable for storage in `device_events.payload`.
-- Payloads must not include Wi-Fi passwords, device tokens, setup/claim codes, verifier hashes, salts, private keys, or certificate private material.
+- Payloads must not include Wi-Fi passwords, device tokens, verifier hashes, salts, private keys, or certificate private material.
 - Firmware should deduplicate repeated status failures where practical and send summaries after connectivity is restored.
-- Backend structured logs and `device_events` payloads must include serial/device identifiers and reason categories only; they must never include bearer tokens, setup/claim codes, hashes, salts, Wi-Fi passwords, private keys, or certificate private material.
+- Backend structured logs and `device_events` payloads must include serial/device identifiers and reason categories only; they must never include bearer tokens, hashes, salts, Wi-Fi passwords, private keys, or certificate private material.
 
 **Success Response `201 application/json`**:
 

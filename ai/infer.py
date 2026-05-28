@@ -6,7 +6,7 @@ Usage
 As a library:
     from infer import WaveClassifier
     clf = WaveClassifier("checkpoints/best.pt")
-    result = clf.classify([12345, 54321, ...])   # list of 512 ints (0-65535)
+    result = clf.classify([1234, 3210, ...])   # list of 512 ints (0-4095)
     print(result)  # {"label": "wave", "confidence": 0.97}
 
 From the command line (reads a JSON array from stdin):
@@ -17,18 +17,18 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
 
 import numpy as np
 import torch
 
+from config import INFERENCE_CONFIG, SIGNAL_CONFIG, get_training_checkpoint_path
 from model import WaveDetector
 
-SEQ_LEN = 512
-MAX_VAL = 2**16 - 1  # 65535
+SEQ_LEN = SIGNAL_CONFIG["sample_count"]
+MAX_VAL = SIGNAL_CONFIG["max_value"]
 
-DEFAULT_CHECKPOINT = os.path.join(os.path.dirname(__file__), "checkpoints", "best.pt")
+DEFAULT_CHECKPOINT = str(get_training_checkpoint_path())
 
 
 class WaveClassifier:
@@ -45,7 +45,9 @@ class WaveClassifier:
 
     @torch.no_grad()
     def classify(
-        self, signal: list[int] | np.ndarray, threshold: float = 0.5
+        self,
+        signal: list[int] | np.ndarray,
+        threshold: float = INFERENCE_CONFIG["threshold"],
     ) -> dict[str, str | float]:
         """
         Classify a single 512-int signal.
@@ -53,7 +55,7 @@ class WaveClassifier:
         Parameters
         ----------
         signal : list[int] | ndarray
-            Exactly 512 integers in the range 0-65535.
+            Exactly 512 integers in the range 0-4095.
         threshold : float
             Decision boundary (default 0.5).
 
@@ -84,7 +86,7 @@ def main() -> None:
         "--checkpoint", type=str, default=DEFAULT_CHECKPOINT, help="Path to model checkpoint",
     )
     parser.add_argument(
-        "--threshold", type=float, default=0.5, help="Decision threshold",
+        "--threshold", type=float, default=INFERENCE_CONFIG["threshold"], help="Decision threshold",
     )
     args = parser.parse_args()
 

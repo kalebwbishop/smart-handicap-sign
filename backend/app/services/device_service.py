@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 from typing import Any, Optional
 
@@ -23,6 +23,7 @@ _DEVICE_COLUMNS = """
     hardware_revision,
     firmware_version,
     operational_status,
+    last_seen_at,
     name,
     created_at,
     updated_at
@@ -85,6 +86,27 @@ async def list_devices(*, skip: int = 0, limit: int = 100) -> list[dict]:
         limit,
     )
     return [_row_to_dict(row) for row in rows]
+
+
+async def update_device_last_seen(
+    serial_number: str,
+    *,
+    seen_at: Optional[datetime] = None,
+) -> Optional[dict]:
+    pool = await get_pool()
+    timestamp = seen_at or datetime.now(timezone.utc)
+    row = await pool.fetchrow(
+        f"""
+        UPDATE devices
+        SET last_seen_at = $2,
+            updated_at = NOW()
+        WHERE serial_number = $1
+        RETURNING {_DEVICE_COLUMNS}
+        """,
+        serial_number,
+        timestamp,
+    )
+    return _row_to_dict(row) if row else None
 
 
 async def transition_device_status(

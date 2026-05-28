@@ -33,6 +33,7 @@ export interface Device {
   current_site_id: string | null;
   current_parking_space_id: string | null;
   name: string | null;
+  last_seen_at: string | null;
   created_at: string;
   updated_at: string;
 }

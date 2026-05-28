@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     port: int = 8000
     environment: str = "development"
     log_level: str = "info"
+    inference_debug_plot_enabled: bool = False
 
     # Database
     postgres_connection_string: str = "postgresql://devuser:devpassword@localhost:5432/social_stack_dev"

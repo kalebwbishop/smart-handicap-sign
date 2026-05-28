@@ -17,37 +17,28 @@ describe('configureWifi', () => {
         jest.clearAllMocks();
     });
 
-    it('sends claim_id when claimId is provided', async () => {
-        await configureWifi('OfficeWiFi', 'fake-password', { claimId: 'ABCD-EF23' });
+    it('sends only wifi credentials to the provisioning endpoint', async () => {
+        await configureWifi('OfficeWiFi', 'fake-password');
 
         expect(global.fetch).toHaveBeenCalledWith(
             'http://192.168.4.1/configure',
             expect.objectContaining({
                 method: 'POST',
-                body: JSON.stringify({ ssid: 'OfficeWiFi', password: 'fake-password', claim_id: 'ABCD-EF23' }),
+                body: JSON.stringify({ ssid: 'OfficeWiFi', password: 'fake-password' }),
             })
         );
     });
 
-    it('sends setup_code when setupCode is provided', async () => {
-        await configureWifi('OfficeWiFi', '', { setupCode: 'SETUP-1234' });
+    it('allows open networks with an empty password', async () => {
+        await configureWifi('OfficeWiFi', '');
 
         expect(global.fetch).toHaveBeenCalledWith(
             'http://192.168.4.1/configure',
             expect.objectContaining({
                 method: 'POST',
-                body: JSON.stringify({ ssid: 'OfficeWiFi', password: '', setup_code: 'SETUP-1234' }),
+                body: JSON.stringify({ ssid: 'OfficeWiFi', password: '' }),
             })
         );
-    });
-
-    it('rejects missing or ambiguous setup credentials before fetch', async () => {
-        await expect(configureWifi('OfficeWiFi', 'fake-password', {})).rejects.toThrow('Provide exactly one setup or claim code.');
-        await expect(
-            configureWifi('OfficeWiFi', 'fake-password', { claimId: 'ABCD-EF23', setupCode: 'SETUP-1234' })
-        ).rejects.toThrow('Provide exactly one setup or claim code.');
-
-        expect(global.fetch).not.toHaveBeenCalled();
     });
 
     it('propagates ESP error bodies', async () => {
@@ -57,13 +48,13 @@ describe('configureWifi', () => {
             json: jest.fn().mockResolvedValue({ error: 'Invalid setup code' }),
         });
 
-        await expect(configureWifi('OfficeWiFi', 'fake-password', { claimId: 'WRONG' })).rejects.toThrow('Invalid setup code');
+        await expect(configureWifi('OfficeWiFi', 'fake-password')).rejects.toThrow('Invalid setup code');
     });
 
     it('turns request timeout into AP unreachable guidance', async () => {
         global.fetch = jest.fn().mockRejectedValue(Object.assign(new Error('aborted'), { name: 'AbortError' }));
 
-        await expect(configureWifi('OfficeWiFi', 'fake-password', { claimId: 'ABCD-EF23' })).rejects.toThrow(
+        await expect(configureWifi('OfficeWiFi', 'fake-password')).rejects.toThrow(
             'Could not reach the SmartSign device. Make sure you are connected to the SmartSign WiFi network.'
         );
     });
