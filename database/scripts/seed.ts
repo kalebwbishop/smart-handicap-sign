@@ -10,14 +10,14 @@ dotenv.config({ path: envPath });
 const POSTGRES_CONNECTION_STRING =
     process.env.POSTGRES_CONNECTION_STRING ??
     process.env.DATABASE_URL;
-const seedPath = path.join(__dirname, '../seeds/dev_data_v2.sql');
+const signSeedPath = path.join(__dirname, '../seeds/dev_data_v2.sql');
 
 if (!POSTGRES_CONNECTION_STRING) {
     console.error('❌ POSTGRES_CONNECTION_STRING environment variable is not set');
     process.exit(1);
 }
 
-async function runSeeds() {
+async function loadPilotSign() {
     const client = new Client({
         connectionString: POSTGRES_CONNECTION_STRING,
         ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: true } : undefined
@@ -28,27 +28,21 @@ async function runSeeds() {
         await client.connect();
         console.log('✅ Connected to database');
 
-        // Warn if running in production
-        if (process.env.NODE_ENV === 'production') {
-            console.warn('⚠️  WARNING: You are running seeds in production environment!');
-            console.warn('⚠️  This should only be done if you are certain this is safe.');
+        if (!fs.existsSync(signSeedPath)) {
+            throw new Error(`Pilot sign SQL file not found: ${signSeedPath}`);
         }
 
-        if (!fs.existsSync(seedPath)) {
-            throw new Error(`Seed file not found: ${seedPath}`);
-        }
+        const seedSQL = fs.readFileSync(signSeedPath, 'utf-8');
 
-        const seedSQL = fs.readFileSync(seedPath, 'utf-8');
-
-        console.log(`⏳ Running seed: ${path.basename(seedPath)}...`);
+        console.log(`⏳ Loading pilot sign: ${path.basename(signSeedPath)}...`);
 
         await client.query(seedSQL);
 
-        console.log(`✅ Seed completed: ${path.basename(seedPath)}`);
+        console.log(`✅ Pilot sign loaded: ${path.basename(signSeedPath)}`);
 
-        console.log('🎉 All seeds completed successfully!');
+        console.log('🎉 Pilot sign load completed successfully!');
     } catch (error) {
-        console.error('❌ Seeding failed:', error);
+        console.error('❌ Pilot sign load failed:', error);
         process.exit(1);
     } finally {
         await client.end();
@@ -56,5 +50,4 @@ async function runSeeds() {
     }
 }
 
-// Run seeds
-runSeeds();
+loadPilotSign();

@@ -595,7 +595,7 @@
             <div class="metric">
               <div class="subtle-label">Runtime contract</div>
               <strong>Uses firmware headers</strong>
-              <div class="tiny">Sends auth, firmware version, config version, and a 512-sample payload.</div>
+              <div class="tiny">Sends auth, firmware version, config version, and a 200-sample payload.</div>
             </div>
             <div class="metric">
               <div class="subtle-label">Fast loop</div>
@@ -667,8 +667,8 @@
           </div>
           <div class="status-card">
             <div class="subtle-label">Current batch</div>
-            <div class="status-value mono" style="font-size: 1rem;" id="batchSummary">wave / 512 samples</div>
-            <div class="tiny" id="batchMeta">Amplitude and noise are adjustable before sending.</div>
+            <div class="status-value mono" style="font-size: 1rem;" id="batchSummary">wave / 200 samples</div>
+            <div class="tiny" id="batchMeta">20ms interval. Amplitude and noise are adjustable before sending.</div>
           </div>
         </aside>
       </div>
@@ -725,7 +725,7 @@
             <div class="section-head">
               <div>
                 <div class="eyebrow">Signal lab</div>
-                <h2>Generate a deterministic 512-sample batch</h2>
+                <h2>Generate a deterministic 200-sample batch</h2>
                 <p>The chart updates live and the outgoing payload is sent exactly as shown.</p>
               </div>
               <div class="chip-row">
@@ -829,6 +829,14 @@
     </main>
 
     <script>
+      // Keep these runtime signal values aligned with config.json.
+      const SIGNAL_CONFIG = {
+        sampleIntervalMs: 20,
+        sampleCount: 200,
+        maxValue: 4095,
+        inferenceThreshold: 0.5,
+      };
+
       const state = {
         samples: [],
         lastSalt: null,
@@ -954,18 +962,18 @@
       }
 
       function clampSample(value) {
-        return Math.max(0, Math.min(4095, Math.round(value)));
+        return Math.max(0, Math.min(SIGNAL_CONFIG.maxValue, Math.round(value)));
       }
 
       function generateSamples(mode) {
         const amplitude = Number(elements.amplitude.value || 980);
         const noiseFloor = Number(elements.noiseFloor.value || 85);
         const random = createRandom(mode.length * 97);
-        const base = 2048;
+        const base = Math.floor(SIGNAL_CONFIG.maxValue / 2);
         const samples = [];
 
-        for (let index = 0; index < 512; index += 1) {
-          const phase = index / 511;
+        for (let index = 0; index < SIGNAL_CONFIG.sampleCount; index += 1) {
+          const phase = index / (SIGNAL_CONFIG.sampleCount - 1);
           let value = base;
 
           if (mode === "wave" || mode === "training_positive") {
@@ -1014,7 +1022,7 @@
           ctx.stroke();
         }
 
-        const midY = height - (2048 / 4095) * height;
+        const midY = height - (Math.floor(SIGNAL_CONFIG.maxValue / 2) / SIGNAL_CONFIG.maxValue) * height;
         ctx.strokeStyle = "rgba(255, 211, 106, 0.35)";
         ctx.setLineDash([8, 8]);
         ctx.beginPath();
@@ -1034,7 +1042,7 @@
 
         state.samples.forEach((sample, index) => {
           const x = (index / (state.samples.length - 1)) * width;
-          const y = height - (sample / 4095) * height;
+          const y = height - (sample / SIGNAL_CONFIG.maxValue) * height;
           if (index === 0) {
             ctx.moveTo(x, y);
           } else {
@@ -1046,8 +1054,8 @@
 
         const min = Math.min(...state.samples);
         const max = Math.max(...state.samples);
-        elements.batchSummary.textContent = `${elements.batchMode.value} / 512 samples`;
-        elements.batchMeta.textContent = `Range ${min}-${max} | amplitude ${elements.amplitude.value} | noise ${elements.noiseFloor.value}`;
+        elements.batchSummary.textContent = `${elements.batchMode.value} / ${SIGNAL_CONFIG.sampleCount} samples`;
+        elements.batchMeta.textContent = `Range ${min}-${max} | ${SIGNAL_CONFIG.sampleIntervalMs}ms interval | amplitude ${elements.amplitude.value} | noise ${elements.noiseFloor.value}`;
       }
 
       async function sha256Hex(message) {

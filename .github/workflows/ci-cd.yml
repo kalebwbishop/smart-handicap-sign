@@ -144,7 +144,7 @@ jobs:
         working-directory: terraform
         run: |
           if ! KEY_VAULT_NAME="$(terraform output -raw key_vault_name 2>/dev/null)"; then
-            echo "Expected an existing Terraform state with a key_vault_name output. Bootstrap the environment and seed Key Vault secrets before using this workflow." >&2
+            echo "Expected an existing Terraform state with a key_vault_name output. Bootstrap the environment and create Key Vault secrets before using this workflow." >&2
             exit 1
           fi
 
@@ -175,12 +175,19 @@ jobs:
           echo "::add-mask::$POSTGRES_CONNECTION_STRING"
           printf 'value=%s\n' "$POSTGRES_CONNECTION_STRING" >> "$GITHUB_OUTPUT"
 
-      - name: Run database migration
+      - name: Run database schema migration
         working-directory: database
         env:
           NODE_ENV: production
           POSTGRES_CONNECTION_STRING: ${{ steps.db_connection.outputs.value }}
         run: npm run migrate
+
+      - name: Load pilot sign
+        working-directory: database
+        env:
+          NODE_ENV: production
+          POSTGRES_CONNECTION_STRING: ${{ steps.db_connection.outputs.value }}
+        run: npm run load:sign
 
   apply:
     needs:

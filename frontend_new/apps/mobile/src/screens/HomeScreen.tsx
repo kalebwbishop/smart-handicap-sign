@@ -14,7 +14,7 @@ import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { devicesAPI } from '@/api/api';
 import { useAuthStore } from '@/store/authStore';
-import { Device, DeviceEvent } from '@/types/device';
+import { Device } from '@/types/device';
 import { RootStackParamList } from '@/types/navigation';
 import { colors } from '@/theme/colors';
 import { layout, shadows, spacing } from '@/theme/spacing';
@@ -47,38 +47,6 @@ function formatLastSeen(iso: string | null): string {
     return `Last seen ${date.toLocaleString()} (${formatRelativeTime(iso)})`;
 }
 
-function formatEventTitle(event: DeviceEvent): string {
-    switch (event.event_type) {
-        case 'assistance_requested':
-            return 'Assistance requested';
-        case 'assistance_acknowledged':
-            return 'Request acknowledged';
-        case 'assistance_resolved':
-            return 'Request resolved';
-        case 'pilot_seeded':
-            return 'Pilot sign created';
-        default:
-            return event.event_type.replace(/_/g, ' ');
-    }
-}
-
-function formatEventBody(event: DeviceEvent): string {
-    const payload = event.payload ?? {};
-    if (typeof payload.message === 'string') {
-        return payload.message;
-    }
-
-    const previousStatus = typeof payload.previous_status === 'string' ? payload.previous_status : null;
-    const newStatus = typeof payload.new_status === 'string' ? payload.new_status : null;
-    const confidence = typeof payload.confidence === 'number'
-        ? `Confidence ${Math.round(payload.confidence * 100)}%`
-        : null;
-
-    return [previousStatus && newStatus ? `${previousStatus} -> ${newStatus}` : newStatus, confidence]
-        .filter(Boolean)
-        .join(' • ') || 'Recorded device event for the pilot sign.';
-}
-
 export default function HomeScreen() {
     const insets = useSafeAreaInsets();
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -93,9 +61,6 @@ export default function HomeScreen() {
     const [deviceError, setDeviceError] = useState<string | null>(null);
     const [deviceActionLoading, setDeviceActionLoading] = useState(false);
 
-    const [events, setEvents] = useState<DeviceEvent[]>([]);
-    const [eventsLoading, setEventsLoading] = useState(true);
-    const [eventsError, setEventsError] = useState<string | null>(null);
     const fetchInFlightRef = useRef(false);
     const hasLoadedOnceRef = useRef(false);
 
@@ -110,7 +75,6 @@ export default function HomeScreen() {
         fetchInFlightRef.current = true;
         if (!hasLoadedOnceRef.current) {
             setDeviceLoading(true);
-            setEventsLoading(true);
         }
 
         try {
@@ -118,36 +82,18 @@ export default function HomeScreen() {
             const devices = await devicesAPI.list(undefined, { timeout: HOME_SCREEN_REQUEST_TIMEOUT_MS });
             if (devices.length === 0) {
                 setDevice(null);
-                setEvents([]);
                 setDeviceError('No pilot sign is linked to this account yet.');
-                setEventsError(null);
                 return;
             }
 
             const pilotDevice = devices[0];
             setDevice(pilotDevice);
             setDeviceError(null);
-
-            try {
-                const deviceEvents = await devicesAPI.getEvents(
-                    pilotDevice.serial_number,
-                    { timeout: HOME_SCREEN_REQUEST_TIMEOUT_MS },
-                );
-                setEvents(deviceEvents);
-                setEventsError(null);
-            } catch (error) {
-                console.error('[HomeScreen] Failed to load pilot sign events:', error);
-                setEvents([]);
-                setEventsError('Recent request history is temporarily unavailable.');
-            }
         } catch (error) {
-            console.error('[HomeScreen] Failed to load pilot sign or events:', error);
+            console.error('[HomeScreen] Failed to load pilot sign:', error);
             setDeviceError('Unable to load the pilot sign right now.');
-            setEvents([]);
-            setEventsError(null);
         } finally {
             setDeviceLoading(false);
-            setEventsLoading(false);
             fetchInFlightRef.current = false;
             hasLoadedOnceRef.current = true;
         }
@@ -179,9 +125,6 @@ export default function HomeScreen() {
             await ensureFreshSession();
             const updated = await devicesAPI.acknowledge(device.serial_number);
             setDevice(updated);
-            const deviceEvents = await devicesAPI.getEvents(device.serial_number, { timeout: HOME_SCREEN_REQUEST_TIMEOUT_MS });
-            setEvents(deviceEvents);
-            setEventsError(null);
         } catch (error) {
             console.error('[HomeScreen] Failed to acknowledge request:', error);
         } finally {
@@ -197,9 +140,6 @@ export default function HomeScreen() {
             await ensureFreshSession();
             const updated = await devicesAPI.resolve(device.serial_number);
             setDevice(updated);
-            const deviceEvents = await devicesAPI.getEvents(device.serial_number, { timeout: HOME_SCREEN_REQUEST_TIMEOUT_MS });
-            setEvents(deviceEvents);
-            setEventsError(null);
         } catch (error) {
             console.error('[HomeScreen] Failed to resolve request:', error);
         } finally {
@@ -217,29 +157,26 @@ export default function HomeScreen() {
         }
     }, [logout]);
 
-    const handleOpenProvisioning = useCallback(() => {
-        setMenuVisible(false);
-        navigation.navigate('ProvisionSign');
-    }, [navigation]);
+    const handleOpenSignDetails = useCallback(() => {
+        if (!device) return;
+
+        navigation.navigate('SignDetails', { device });
+    }, [device, navigation]);
 
     const status = useMemo(() => (device ? getPilotStatus(device) : null), [device]);
     const effectiveOperationalStatus = useMemo(() => {
         if (!device || isDeviceStale(device)) {
             return 'offline';
         }
-
         return device.operational_status;
     }, [device]);
-    const recentRequestCount = events.filter((event) => event.event_type === 'assistance_requested').length;
 
     return (
         <View style={styles.root}>
             <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
                 <View style={styles.headerInner}>
                     <View style={styles.headerCopy}>
-                        <Text style={styles.headerEyebrow}>Pilot operator view</Text>
                         <Text style={styles.headerTitle}>Hi, {userName}</Text>
-                        <Text style={styles.headerSubtitle}>Monitor one sign and handle requests quickly.</Text>
                     </View>
                     <Pressable
                         accessibilityLabel="Open account menu"
@@ -279,15 +216,6 @@ export default function HomeScreen() {
 
                             <Pressable
                                 accessibilityRole="button"
-                                onPress={handleOpenProvisioning}
-                                style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
-                            >
-                                <Text style={styles.menuItemIcon}>⚙️</Text>
-                                <Text style={styles.menuItemText}>Configure test sign</Text>
-                            </Pressable>
-
-                            <Pressable
-                                accessibilityRole="button"
                                 onPress={handleLogout}
                                 style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
                             >
@@ -312,12 +240,6 @@ export default function HomeScreen() {
                     <View style={styles.card}>
                         <View style={styles.sectionHeader}>
                             <Text style={styles.sectionEyebrow}>Pilot sign</Text>
-                            {status ? (
-                                <View style={[styles.statusPill, { backgroundColor: status.tone }]}>
-                                    <View style={[styles.statusDot, { backgroundColor: status.color }]} />
-                                    <Text style={[styles.statusPillText, { color: status.color }]}>{status.label}</Text>
-                                </View>
-                            ) : null}
                         </View>
 
                         {deviceLoading ? (
@@ -333,15 +255,22 @@ export default function HomeScreen() {
                             </View>
                         ) : (
                             <>
-                                <Text style={styles.signName}>{device.name || 'Pilot sign'}</Text>
-                                <Text style={styles.signMeta}>Serial {device.serial_number}</Text>
-                                <Text style={styles.signMeta}>{formatLastSeen(device.last_seen_at)}</Text>
+                                <Pressable
+                                    accessibilityLabel={`Open details for ${device.name || 'pilot sign'}`}
+                                    accessibilityRole="button"
+                                    onPress={handleOpenSignDetails}
+                                    style={({ pressed }) => [pressed && styles.pressed]}
+                                >
+                                    <Text style={styles.signName}>{device.name || 'Pilot sign'}</Text>
+                                    <Text style={styles.signMeta}>Serial {device.serial_number}</Text>
+                                    <Text style={styles.signMeta}>{formatLastSeen(device.last_seen_at)}</Text>
 
-                                <View style={[styles.statusBanner, { backgroundColor: status?.tone ?? colors.offWhite }]}>
-                                    <Text style={[styles.statusBannerText, { color: status?.color ?? colors.textPrimary }]}>
-                                        {status?.label ?? 'Status unavailable'}
-                                    </Text>
-                                </View>
+                                    <View style={[styles.statusBanner, { backgroundColor: status?.tone ?? colors.offWhite }]}>
+                                        <Text style={[styles.statusBannerText, { color: status?.color ?? colors.textPrimary }]}>
+                                            {status?.label ?? 'Status unavailable'}
+                                        </Text>
+                                    </View>
+                                </Pressable>
 
                                 {effectiveOperationalStatus === 'assistance_requested' ? (
                                     <Pressable
@@ -386,85 +315,9 @@ export default function HomeScreen() {
                         )}
                     </View>
 
-                    <View style={styles.card}>
-                        <View style={styles.sectionHeader}>
-                            <View>
-                                <Text style={styles.sectionEyebrow}>Request visibility</Text>
-                                <Text style={styles.sectionTitle}>Recent request history</Text>
-                            </View>
-                            {recentRequestCount > 0 ? (
-                                <View style={styles.badge}>
-                                    <Text style={styles.badgeText}>{recentRequestCount}</Text>
-                                </View>
-                            ) : null}
-                        </View>
-
-                        {eventsLoading ? (
-                            <View style={styles.emptyState}>
-                                <ActivityIndicator color={colors.primary} size="small" />
-                                <Text style={styles.emptyTitle}>Loading recent requests…</Text>
-                            </View>
-                        ) : eventsError ? (
-                            <View style={styles.emptyState}>
-                                <Text style={styles.emptyIcon}>⚠️</Text>
-                                <Text style={styles.emptyTitle}>History unavailable</Text>
-                                <Text style={styles.emptyBody}>{eventsError}</Text>
-                            </View>
-                        ) : events.length === 0 ? (
-                            <View style={styles.emptyState}>
-                                <Text style={styles.emptyIcon}>🔔</Text>
-                                <Text style={styles.emptyTitle}>No requests yet</Text>
-                                <Text style={styles.emptyBody}>
-                                    New assistance requests will appear here as soon as the pilot sign reports them.
-                                </Text>
-                            </View>
-                        ) : (
-                            <View style={styles.notificationList}>
-                                {events.map((event) => (
-                                    <NotificationRow
-                                        key={event.id}
-                                        event={event}
-                                        onPress={() => navigation.navigate('NotificationDetail', { event })}
-                                    />
-                                ))}
-                            </View>
-                        )}
-                    </View>
                 </View>
             </ScrollView>
         </View>
-    );
-}
-
-function NotificationRow({
-    event,
-    onPress,
-}: {
-    event: DeviceEvent;
-    onPress: () => void;
-}) {
-    return (
-        <Pressable
-            accessibilityLabel={`Open request update: ${formatEventTitle(event)}`}
-            accessibilityRole="button"
-            onPress={onPress}
-            style={({ pressed }) => [
-                styles.notificationRow,
-                pressed && styles.pressed,
-            ]}
-        >
-            <View style={styles.notificationCopy}>
-                <View style={styles.notificationHeader}>
-                    <Text numberOfLines={1} style={styles.notificationTitle}>
-                        {formatEventTitle(event)}
-                    </Text>
-                    <Text style={styles.notificationTime}>{formatRelativeTime(event.created_at)}</Text>
-                </View>
-                <Text numberOfLines={2} style={styles.notificationBody}>
-                    {formatEventBody(event)}
-                </Text>
-            </View>
-        </Pressable>
     );
 }
 
@@ -619,11 +472,6 @@ const styles = StyleSheet.create({
         color: colors.textSecondary,
         textTransform: 'uppercase',
     },
-    sectionTitle: {
-        ...typography.h4,
-        color: colors.textPrimary,
-        marginTop: spacing.xs,
-    },
     signName: {
         ...typography.h2,
         color: colors.textPrimary,
@@ -632,23 +480,6 @@ const styles = StyleSheet.create({
         ...typography.bodySmall,
         color: colors.textSecondary,
         marginTop: spacing.xs,
-    },
-    statusPill: {
-        alignItems: 'center',
-        borderRadius: layout.borderRadiusPill,
-        flexDirection: 'row',
-        paddingHorizontal: spacing.sm + 2,
-        paddingVertical: spacing.xs,
-    },
-    statusPillText: {
-        ...typography.bodySmall,
-        fontWeight: '600',
-    },
-    statusDot: {
-        borderRadius: 4,
-        height: 8,
-        marginRight: spacing.xs,
-        width: 8,
     },
     statusBanner: {
         borderRadius: layout.borderRadiusMd,
@@ -702,56 +533,6 @@ const styles = StyleSheet.create({
         color: colors.textSecondary,
         marginTop: spacing.xs,
         textAlign: 'center',
-    },
-    badge: {
-        alignItems: 'center',
-        backgroundColor: colors.primary,
-        borderRadius: 999,
-        justifyContent: 'center',
-        minWidth: 24,
-        paddingHorizontal: spacing.sm,
-        paddingVertical: spacing.xs,
-    },
-    badgeText: {
-        ...typography.bodySmall,
-        color: colors.white,
-        fontWeight: '700',
-    },
-    notificationList: {
-        gap: spacing.md,
-    },
-    notificationRow: {
-        borderColor: colors.divider,
-        borderRadius: layout.borderRadiusMd,
-        borderWidth: StyleSheet.hairlineWidth,
-        padding: spacing.md,
-    },
-    notificationRowRead: {
-        backgroundColor: colors.offWhite,
-    },
-    notificationCopy: {
-        flex: 1,
-    },
-    notificationHeader: {
-        alignItems: 'center',
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-    },
-    notificationTitle: {
-        ...typography.body,
-        color: colors.textPrimary,
-        flex: 1,
-        fontWeight: '700',
-        marginRight: spacing.sm,
-    },
-    notificationTime: {
-        ...typography.small,
-        color: colors.textMuted,
-    },
-    notificationBody: {
-        ...typography.bodySmall,
-        color: colors.textSecondary,
-        marginTop: spacing.xs,
     },
     inlineAction: {
         alignSelf: 'flex-start',

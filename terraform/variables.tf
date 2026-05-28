@@ -99,7 +99,7 @@ variable "frontend_url" {
 variable "workos_redirect_uri" {
   description = "OAuth callback URL registered with WorkOS"
   type        = string
-  default     = ""
+  default     = "https://ca-smart-handicap-sign.bluebay-3cb7e242.eastus.azurecontainerapps.io/api/v1/auth/callback"
 }
 
 variable "cors_origin" {

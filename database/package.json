@@ -8,6 +8,7 @@
     "migrate": "ts-node scripts/migrate_v2.ts",
     "migrate:v2": "ts-node scripts/migrate_v2.ts",
     "migrate:last-seen": "ts-node scripts/migrate_last_seen_at.ts",
+    "load:sign": "ts-node scripts/seed.ts",
     "seed": "ts-node scripts/seed.ts"
   },
   "dependencies": {

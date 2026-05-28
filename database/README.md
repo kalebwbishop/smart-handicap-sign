@@ -6,7 +6,7 @@ PostgreSQL 15 schema assets for the one-sign Hazard Hero pilot.
 
 - `schemas/shs_schema.sql` — bootstrap entrypoint used by Docker and local setup
 - `schemas/shs_schema_v2.sql` — canonical pilot schema loaded by `shs_schema.sql`
-- `seeds/dev_data_v2.sql` — deterministic pilot seed data
+- `seeds/dev_data_v2.sql` — deterministic pilot sign bootstrap data
 - `scripts/migrate_v2.ts` — default migration entrypoint
 
 ## Commands
@@ -16,10 +16,11 @@ Run these from `database/`:
 ```bash
 npm run migrate
 npm run migrate:last-seen
+npm run load:sign
 npm run seed
 ```
 
-Both scripts load `../backend/.env` and expect `POSTGRES_CONNECTION_STRING` (or `DATABASE_URL` for the seed script) to point at the target PostgreSQL instance.
+The scripts load `../backend/.env` and expect `POSTGRES_CONNECTION_STRING` (or `DATABASE_URL` for the sign load script) to point at the target PostgreSQL instance.
 
 ## Migration behavior
 
@@ -48,12 +49,10 @@ The pilot database keeps only the tables needed for a single operator + single s
 
 Training states, organization tables, installation/claim workflow tables, push tokens, notifications, and billing/subscription fields are intentionally removed from the canonical schema.
 
-## Seeding
+## Pilot sign bootstrap
 
-`npm run seed` applies `seeds/dev_data_v2.sql`, which creates:
+`npm run load:sign` applies `seeds/dev_data_v2.sql`, which creates only the pilot sign/device row required by the runtime API. It does not create user, profile, organization, parking-space, or device-event records.
 
-- one pilot operator record
-- one pilot sign with a known serial number
-- one sample device event
+`npm run seed` is kept as a backwards-compatible alias for the same sign-only load.
 
 The seeded device token is `pilot-device-token` with serial `SHS-2605-S01-A7K-00001-J` for local pilot testing.
