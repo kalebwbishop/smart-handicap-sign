@@ -23,6 +23,7 @@ import { getPilotStatus, isDeviceStale } from './pilotStatus';
 
 const POLL_INTERVAL_MS = 30_000;
 const HOME_SCREEN_REQUEST_TIMEOUT_MS = 10_000;
+const REFRESH_INDICATOR_TICK_MS = 250;
 
 function formatRelativeTime(iso: string): string {
     const diff = Date.now() - new Date(iso).getTime();
@@ -55,6 +56,9 @@ export default function HomeScreen() {
     const [menuVisible, setMenuVisible] = useState(false);
     const [isLoggingOut, setIsLoggingOut] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
+    const [isAutoRefreshing, setIsAutoRefreshing] = useState(false);
+    const [nextRefreshAt, setNextRefreshAt] = useState(() => Date.now() + POLL_INTERVAL_MS);
+    const [refreshClock, setRefreshClock] = useState(() => Date.now());
 
     const [device, setDevice] = useState<Device | null>(null);
     const [deviceLoading, setDeviceLoading] = useState(true);
@@ -67,12 +71,15 @@ export default function HomeScreen() {
     const userName = user?.name?.split(' ')[0] || user?.email || 'Operator';
     const userInitial = userName.charAt(0).toUpperCase();
 
-    const fetchData = useCallback(async () => {
+    const fetchData = useCallback(async ({ auto = false }: { auto?: boolean } = {}) => {
         if (fetchInFlightRef.current) {
             return;
         }
 
         fetchInFlightRef.current = true;
+        if (auto) {
+            setIsAutoRefreshing(true);
+        }
         if (!hasLoadedOnceRef.current) {
             setDeviceLoading(true);
         }
@@ -96,6 +103,9 @@ export default function HomeScreen() {
             setDeviceLoading(false);
             fetchInFlightRef.current = false;
             hasLoadedOnceRef.current = true;
+            if (auto) {
+                setIsAutoRefreshing(false);
+            }
         }
     }, [ensureFreshSession]);
 
@@ -105,11 +115,20 @@ export default function HomeScreen() {
 
     useEffect(() => {
         const interval = setInterval(() => {
-            fetchData();
+            setNextRefreshAt(Date.now() + POLL_INTERVAL_MS);
+            void fetchData({ auto: true });
         }, POLL_INTERVAL_MS);
 
         return () => clearInterval(interval);
     }, [fetchData]);
+
+    useEffect(() => {
+        const interval = setInterval(() => {
+            setRefreshClock(Date.now());
+        }, REFRESH_INDICATOR_TICK_MS);
+
+        return () => clearInterval(interval);
+    }, []);
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
@@ -170,6 +189,14 @@ export default function HomeScreen() {
         }
         return device.operational_status;
     }, [device]);
+    const millisecondsUntilRefresh = Math.max(0, nextRefreshAt - refreshClock);
+    const secondsUntilRefresh = Math.ceil(millisecondsUntilRefresh / 1000);
+    const refreshProgress = isAutoRefreshing
+        ? 1
+        : Math.min(1, Math.max(0, 1 - millisecondsUntilRefresh / POLL_INTERVAL_MS));
+    const refreshIndicatorText = isAutoRefreshing
+        ? 'Refreshing now…'
+        : `Next refresh in ${secondsUntilRefresh}s`;
 
     return (
         <View style={styles.root}>
@@ -240,6 +267,34 @@ export default function HomeScreen() {
                     <View style={styles.card}>
                         <View style={styles.sectionHeader}>
                             <Text style={styles.sectionEyebrow}>Pilot sign</Text>
+                        </View>
+
+                        <View
+                            accessibilityLabel={
+                                isAutoRefreshing
+                                    ? 'Pilot sign refresh in progress'
+                                    : `Pilot sign refreshes automatically in ${secondsUntilRefresh} seconds`
+                            }
+                            accessibilityValue={{
+                                min: 0,
+                                max: 100,
+                                now: Math.round(refreshProgress * 100),
+                                text: refreshIndicatorText,
+                            }}
+                            style={styles.refreshIndicator}
+                        >
+                            <View style={styles.refreshIndicatorHeader}>
+                                <Text style={styles.refreshIndicatorLabel}>Auto refresh</Text>
+                                <Text style={styles.refreshIndicatorValue}>{refreshIndicatorText}</Text>
+                            </View>
+                            <View style={styles.refreshIndicatorTrack}>
+                                <View
+                                    style={[
+                                        styles.refreshIndicatorFill,
+                                        { width: `${refreshProgress * 100}%` },
+                                    ]}
+                                />
+                            </View>
                         </View>
 
                         {deviceLoading ? (
@@ -471,6 +526,39 @@ const styles = StyleSheet.create({
         ...typography.label,
         color: colors.textSecondary,
         textTransform: 'uppercase',
+    },
+    refreshIndicator: {
+        backgroundColor: colors.offWhite,
+        borderRadius: layout.borderRadiusMd,
+        marginBottom: spacing.lg,
+        paddingHorizontal: spacing.md,
+        paddingVertical: spacing.md,
+    },
+    refreshIndicatorHeader: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+    },
+    refreshIndicatorLabel: {
+        ...typography.label,
+        color: colors.textSecondary,
+        textTransform: 'uppercase',
+    },
+    refreshIndicatorValue: {
+        ...typography.captionBold,
+        color: colors.primary,
+    },
+    refreshIndicatorTrack: {
+        backgroundColor: colors.divider,
+        borderRadius: layout.borderRadiusPill,
+        height: 6,
+        marginTop: spacing.sm,
+        overflow: 'hidden',
+    },
+    refreshIndicatorFill: {
+        backgroundColor: colors.primaryLight,
+        borderRadius: layout.borderRadiusPill,
+        height: '100%',
     },
     signName: {
         ...typography.h2,
