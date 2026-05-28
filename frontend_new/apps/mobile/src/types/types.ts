@@ -9,4 +9,6 @@ export type {
   OrgRole,
   Organization,
   OrgMember,
+  SignNotification,
+  NotificationPreferences,
 } from "@hazard-hero/shared";

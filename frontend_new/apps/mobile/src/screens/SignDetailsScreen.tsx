@@ -20,12 +20,11 @@ export default function SignDetailsScreen() {
     return (
         <ScrollView contentContainerStyle={styles.content} style={styles.root}>
             <View style={styles.card}>
-                <Text style={styles.eyebrow}>Pilot sign</Text>
-                <Text style={styles.title}>{device.name || 'Pilot sign'}</Text>
-                <Text style={styles.subtitle}>Device details and setup tools for this test sign.</Text>
+                <Text style={styles.title}>{device.name || 'Sign'}</Text>
 
                 <View style={styles.detailList}>
                     <DetailRow label="Serial number" value={device.serial_number} />
+                    <DetailRow label="Last seen" value={displayValue(device.last_seen_at)} />
                     <DetailRow label="Sign version" value={displayValue(device.firmware_version)} />
                     <DetailRow label="Hardware revision" value={displayValue(device.hardware_revision)} />
                     <DetailRow label="Model code" value={displayValue(device.model_code)} />
@@ -33,12 +32,12 @@ export default function SignDetailsScreen() {
                 </View>
 
                 <Pressable
-                    accessibilityLabel="Configure test sign"
+                    accessibilityLabel="Configure Wi-Fi settings for the sign"
                     accessibilityRole="button"
                     onPress={() => navigation.navigate('ProvisionSign')}
                     style={({ pressed }) => [styles.primaryAction, pressed && styles.pressed]}
                 >
-                    <Text style={styles.primaryActionText}>Configure test sign</Text>
+                    <Text style={styles.primaryActionText}>Configure Wi-Fi</Text>
                 </Pressable>
             </View>
         </ScrollView>

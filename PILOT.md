@@ -20,7 +20,7 @@ If that loop works reliably with one installed sign, the pilot is successful.
 - **One backend environment**
 - **One organization or one shared operator account**
 - **One staff-facing mobile app flow**
-- **One notification path**: app polling is acceptable; push notifications are optional
+- **One notification path**: assistance-request notifications should exist in-app and may also be delivered by push; `offline` remains a frontend-only stale indicator for now
 - **One install location**
 - **Basic event history** for requests, acknowledgements, and resolutions
 
@@ -66,7 +66,6 @@ These items may remain in the repo, but they should be treated as **out of scope
 - Device fleet management for many devices
 - Transfer / revoke / release workflows for pilot operations
 - Claim ID regeneration workflows
-- Push-token registration as a launch dependency
 - Inference debug screens as part of the operator workflow
 - OTA update workflows as a launch dependency
 - Advanced firmware provisioning flows unless needed for this one install
@@ -82,7 +81,7 @@ These items may remain in the repo, but they should be treated as **out of scope
 - **Hide or ignore** non-pilot screens from normal navigation if they distract from the operator flow.
 - **Seed one known device** and one known user instead of requiring the full installer claim process.
 - **Treat sites / parking spaces as fixed setup data** for the pilot, not operator-managed content.
-- **Use polling first**; add push later only if polling is too slow.
+- **Keep the in-app inbox authoritative** even if push delivery is enabled for assistance requests.
 - **Make the home screen the primary pilot surface** and avoid requiring operators to visit secondary admin screens.
 
 ## What may need to be added or tightened before pilot launch
@@ -101,7 +100,8 @@ These items may remain in the repo, but they should be treated as **out of scope
 ### Backend
 
 - Confirm `assistance_requested -> assistance_in_progress -> available` is the only supported operator loop for pilot
-- Define the freshness rule that moves a sign into `offline`
+- Keep the current frontend-only stale/offline indicator clear for operators without making backend offline handling a launch dependency
+- Add assistance-request notifications without changing the core sign state machine
 - Ensure acknowledge and resolve actions create auditable device events
 - Ensure one wave does not create noisy duplicate requests while already in a requested/in-progress state
 - Ensure device status polling remains lightweight and stable
@@ -158,7 +158,7 @@ These items may remain in the repo, but they should be treated as **out of scope
 - [ ] Sign can reach Wi-Fi reliably from the installation location
 - [ ] Sign can reach backend endpoints reliably
 - [ ] Sign status polling works
-- [ ] Sign transitions to `offline` when expected connectivity is lost and recovers when connectivity returns
+- [ ] If the sign stops checking in, the app still shows the existing stale/offline indicator clearly enough for pilot operators
 - [ ] Wave classification requests succeed
 - [ ] LED/status indication is correct for each pilot state
 
@@ -183,10 +183,10 @@ These items may remain in the repo, but they should be treated as **out of scope
 
 - [ ] `GET /health` returns healthy in the pilot environment
 - [ ] `GET /api/v1/devices/{serial_number}/status` returns the current device state for the pilot sign
-- [ ] The backend marks the sign `offline` after the defined missed-check-in window
 - [ ] `POST /api/v1/inference/classify` accepts valid 512-sample payloads from the pilot device
 - [ ] A positive classification changes the sign to `assistance_requested`
 - [ ] A positive classification creates a device event
+- [ ] A positive classification creates one assistance-request notification per opted-in operator
 - [ ] `POST /api/v1/devices/{serial_number}/acknowledge` changes state to `assistance_in_progress`
 - [ ] `POST /api/v1/devices/{serial_number}/resolve` changes state back to `available`
 - [ ] Invalid or unauthorized device submissions are rejected
@@ -199,6 +199,7 @@ These items may remain in the repo, but they should be treated as **out of scope
 - [ ] Sign status updates are visible without confusing navigation
 - [ ] `offline` is clearly distinguishable from `available` and request states
 - [ ] A newly requested assistance event becomes visible to staff quickly enough for the pilot
+- [ ] Assistance-request notifications can be opened, read, and opted out of by an operator
 - [ ] Acknowledge action updates UI and backend state correctly
 - [ ] Resolve action updates UI and backend state correctly
 - [ ] App handles temporary API failures with a clear retry path
@@ -229,8 +230,7 @@ These items may remain in the repo, but they should be treated as **out of scope
 - [ ] If the backend is down, the device fails safely
 - [ ] If the app is unavailable, the request still exists in backend state/event history
 - [ ] If a request is already active, additional detections do not break the workflow
-- [ ] If the device stops checking in, the sign becomes `offline` within the expected window
-- [ ] If the device reconnects after being offline, it returns to the correct backend-driven state
+- [ ] If the device stops checking in, operators still see the existing stale/offline indicator in the app
 - [ ] If the sign reboots, it returns to the correct backend-driven state
 
 ## Suggested pilot exit criteria
@@ -247,7 +247,6 @@ The pilot is ready to launch when all of the following are true:
 
 These should be evaluated **after** the pilot proves the core workflow:
 
-- Push notifications
 - Multi-sign dashboards
 - Full installer claim flow
 - Rich org/member/site administration

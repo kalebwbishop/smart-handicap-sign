@@ -1,4 +1,5 @@
-import { Device, DeviceEvent } from './device';
+import { Device } from './device';
+import { SignNotification } from './types';
 
 export type RootStackParamList = {
     Home: undefined;
@@ -6,5 +7,5 @@ export type RootStackParamList = {
     LoginScreen: undefined;
     ProvisionSign: undefined;
     SignDetails: { device: Device };
-    NotificationDetail: { event: DeviceEvent };
+    NotificationDetail: { notification: SignNotification; device?: Device | null };
 };

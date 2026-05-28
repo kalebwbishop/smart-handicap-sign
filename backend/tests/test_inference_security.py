@@ -20,8 +20,10 @@ def _override_device_auth():
     return _fake
 
 
-def _transition_result(success: bool, error_code: str | None = None):
-    return type("TransitionResult", (), {"success": success, "error_code": error_code})()
+def _transition_result(success: bool, error_code: str | None = None, **kwargs):
+    attrs = {"success": success, "error_code": error_code}
+    attrs.update(kwargs)
+    return type("TransitionResult", (), attrs)()
 
 
 class TestThresholdHardening:
@@ -140,13 +142,17 @@ class TestClassifyEndpoint:
 
         assert response.status_code == 403
 
+    @patch("app.routes.inference.send_assistance_request_push_notifications", new_callable=AsyncMock)
     @patch("app.routes.inference.device_service.transition_device_status", new_callable=AsyncMock)
     @patch("app.routes.inference._get_classifier")
-    def test_wave_updates_available_device(self, mock_clf, mock_transition, app):
+    def test_wave_updates_available_device(self, mock_clf, mock_transition, mock_push, app):
         fake_clf = MagicMock()
         fake_clf.classify.return_value = {"label": "wave", "confidence": 0.91}
         mock_clf.return_value = fake_clf
-        mock_transition.return_value = _transition_result(True)
+        mock_transition.return_value = _transition_result(
+            True,
+            notifications=[{"id": "notif-1"}],
+        )
 
         with self._client(app) as client:
             response = client.post("/api/v1/inference/classify", json={
@@ -156,10 +162,13 @@ class TestClassifyEndpoint:
 
         assert response.status_code == 200
         mock_transition.assert_awaited_once()
+        assert mock_transition.await_args.kwargs["create_notifications"] is True
+        mock_push.assert_awaited_once_with([{"id": "notif-1"}])
 
+    @patch("app.routes.inference.send_assistance_request_push_notifications", new_callable=AsyncMock)
     @patch("app.routes.inference.device_service.transition_device_status", new_callable=AsyncMock)
     @patch("app.routes.inference._get_classifier")
-    def test_wave_does_not_error_when_request_already_active(self, mock_clf, mock_transition, app):
+    def test_wave_does_not_error_when_request_already_active(self, mock_clf, mock_transition, mock_push, app):
         fake_clf = MagicMock()
         fake_clf.classify.return_value = {"label": "wave", "confidence": 0.88}
         mock_clf.return_value = fake_clf
@@ -172,3 +181,4 @@ class TestClassifyEndpoint:
             })
 
         assert response.status_code == 200
+        mock_push.assert_not_called()

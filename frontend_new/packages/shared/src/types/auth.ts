@@ -68,3 +68,16 @@ export interface SignNotification {
   created_at: string;
   updated_at: string;
 }
+
+export interface NotificationPreferences {
+  assistance_requests_enabled: boolean;
+  push_enabled: boolean;
+}
+
+export interface PushTokenRegistration {
+  expo_push_token: string;
+}
+
+export interface PushTokenRemoval {
+  removed: boolean;
+}

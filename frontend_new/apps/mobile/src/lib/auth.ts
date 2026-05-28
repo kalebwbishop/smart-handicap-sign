@@ -19,15 +19,56 @@ const TOKEN_KEYS = {
     refresh: "auth_refresh_token",
 } as const;
 
+const UNINITIALIZED = Symbol("token-cache-uninitialized");
+
+type CachedToken = string | null | typeof UNINITIALIZED;
+
 function createStaticTokenStorage(): TokenStorage {
+    let accessTokenCache: CachedToken = UNINITIALIZED;
+    let refreshTokenCache: CachedToken = UNINITIALIZED;
+
+    const readCachedToken = async (
+        cache: CachedToken,
+        read: () => Promise<string | null>,
+        writeCache: (value: string | null) => void,
+    ): Promise<string | null> => {
+        if (cache !== UNINITIALIZED) {
+            return cache;
+        }
+
+        const value = await read();
+        writeCache(value);
+        return value;
+    };
+
     if (Platform.OS === "web") {
         console.log('[AUTH] Using web (localStorage) token storage');
         return {
-            async getAccessToken() { return localStorage.getItem(TOKEN_KEYS.access); },
-            async getRefreshToken() { return localStorage.getItem(TOKEN_KEYS.refresh); },
-            async setAccessToken(token) { localStorage.setItem(TOKEN_KEYS.access, token); },
-            async setRefreshToken(token) { localStorage.setItem(TOKEN_KEYS.refresh, token); },
+            async getAccessToken() {
+                return readCachedToken(
+                    accessTokenCache,
+                    async () => localStorage.getItem(TOKEN_KEYS.access),
+                    (value) => { accessTokenCache = value; },
+                );
+            },
+            async getRefreshToken() {
+                return readCachedToken(
+                    refreshTokenCache,
+                    async () => localStorage.getItem(TOKEN_KEYS.refresh),
+                    (value) => { refreshTokenCache = value; },
+                );
+            },
+            async setAccessToken(token) {
+                accessTokenCache = token;
+                localStorage.setItem(TOKEN_KEYS.access, token);
+            },
+            async setRefreshToken(token) {
+                refreshTokenCache = token;
+                localStorage.setItem(TOKEN_KEYS.refresh, token);
+            },
             async clear() {
+                accessTokenCache = null;
+                refreshTokenCache = null;
                 localStorage.removeItem(TOKEN_KEYS.access);
                 localStorage.removeItem(TOKEN_KEYS.refresh);
             },
@@ -41,26 +82,38 @@ function createStaticTokenStorage(): TokenStorage {
     return {
         async getAccessToken() {
             console.log('[AUTH] tokenStorage.getAccessToken()');
-            const val = await SecureStore.getItemAsync(TOKEN_KEYS.access);
+            const val = await readCachedToken(
+                accessTokenCache,
+                async () => SecureStore.getItemAsync(TOKEN_KEYS.access),
+                (value) => { accessTokenCache = value; },
+            );
             console.log('[AUTH] getAccessToken result:', val ? `${val.substring(0, 10)}...` : null);
             return val;
         },
         async getRefreshToken() {
             console.log('[AUTH] tokenStorage.getRefreshToken()');
-            const val = await SecureStore.getItemAsync(TOKEN_KEYS.refresh);
+            const val = await readCachedToken(
+                refreshTokenCache,
+                async () => SecureStore.getItemAsync(TOKEN_KEYS.refresh),
+                (value) => { refreshTokenCache = value; },
+            );
             console.log('[AUTH] getRefreshToken result:', val ? `${val.substring(0, 10)}...` : null);
             return val;
         },
         async setAccessToken(token) {
             console.log('[AUTH] tokenStorage.setAccessToken()');
+            accessTokenCache = token;
             await SecureStore.setItemAsync(TOKEN_KEYS.access, token);
         },
         async setRefreshToken(token) {
             console.log('[AUTH] tokenStorage.setRefreshToken()');
+            refreshTokenCache = token;
             await SecureStore.setItemAsync(TOKEN_KEYS.refresh, token);
         },
         async clear() {
             console.log('[AUTH] tokenStorage.clear()');
+            accessTokenCache = null;
+            refreshTokenCache = null;
             await SecureStore.deleteItemAsync(TOKEN_KEYS.access);
             await SecureStore.deleteItemAsync(TOKEN_KEYS.refresh);
         },

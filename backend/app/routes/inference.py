@@ -13,6 +13,7 @@ from app.ai.infer import WaveClassifier
 from app.config.settings import get_settings
 from app.middleware.device_auth import AuthenticatedDevice, get_authenticated_device
 from app.services import device_service
+from app.services.expo_push import send_assistance_request_push_notifications
 from app.utils.logger import logger
 
 router = APIRouter(prefix="/inference", tags=["inference"])
@@ -98,9 +99,19 @@ async def classify(
                 new_status="assistance_requested",
                 event_type="assistance_requested",
                 payload={"confidence": result["confidence"]},
+                create_notifications=True,
             )
             if transition.success:
                 logger.info("Device %s set to assistance_requested", payload.serial_number)
+                created_notifications = getattr(transition, "notifications", None) or []
+                if created_notifications:
+                    try:
+                        await send_assistance_request_push_notifications(created_notifications)
+                    except Exception:
+                        logger.exception(
+                            "Failed to deliver assistance-request push notifications for %s",
+                            payload.serial_number,
+                        )
             elif transition.error_code != "invalid_status_transition":
                 logger.warning(
                     "Wave detected for %s but status update failed with %s",

@@ -7,6 +7,7 @@ DROP TABLE IF EXISTS audit_logs CASCADE;
 DROP TABLE IF EXISTS device_events CASCADE;
 DROP TABLE IF EXISTS devices CASCADE;
 DROP TABLE IF EXISTS installations CASCADE;
+DROP TABLE IF EXISTS notification_preferences CASCADE;
 DROP TABLE IF EXISTS notifications CASCADE;
 DROP TABLE IF EXISTS organization_members CASCADE;
 DROP TABLE IF EXISTS organizations CASCADE;
@@ -106,3 +107,59 @@ CREATE TABLE device_events (
 
 CREATE INDEX idx_device_events_device ON device_events(device_id);
 CREATE INDEX idx_device_events_device_created ON device_events(device_id, created_at DESC);
+
+CREATE TABLE notification_preferences (
+    user_id                       UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    assistance_requests_enabled   BOOLEAN NOT NULL DEFAULT TRUE,
+    push_enabled                  BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at                    TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at                    TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TRIGGER update_notification_preferences_updated_at
+    BEFORE UPDATE ON notification_preferences
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Assistance-request notifications should be inserted in the same transaction
+-- as the device status transition and device_events row so the alert cannot be
+-- lost if part of the workflow fails.
+CREATE TABLE notifications (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    device_id       UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    device_event_id UUID NOT NULL REFERENCES device_events(id) ON DELETE CASCADE,
+    kind            VARCHAR(50) NOT NULL,
+    title           TEXT NOT NULL,
+    body            TEXT NOT NULL,
+    read            BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT notifications_user_event_unique UNIQUE (user_id, device_event_id)
+);
+
+CREATE INDEX idx_notifications_user_created ON notifications(user_id, created_at DESC);
+CREATE INDEX idx_notifications_user_read ON notifications(user_id, read, created_at DESC);
+CREATE INDEX idx_notifications_device ON notifications(device_id, created_at DESC);
+
+CREATE TRIGGER update_notifications_updated_at
+    BEFORE UPDATE ON notifications
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TABLE push_tokens (
+    id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expo_push_token VARCHAR(255) NOT NULL UNIQUE,
+    platform        VARCHAR(20),
+    device_name     TEXT,
+    created_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    updated_at      TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_push_tokens_user ON push_tokens(user_id);
+
+CREATE TRIGGER update_push_tokens_updated_at
+    BEFORE UPDATE ON push_tokens
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();

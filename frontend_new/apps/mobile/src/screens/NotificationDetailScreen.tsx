@@ -1,12 +1,12 @@
 import React from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
-import { useRoute } from '@react-navigation/native';
+import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '@/types/navigation';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 import { spacing, layout } from '@/theme/spacing';
-import { DeviceEvent } from '@/types/device';
 
 function formatDate(iso: string): string {
     const d = new Date(iso);
@@ -21,78 +21,43 @@ function formatDate(iso: string): string {
     });
 }
 
-function formatEventTitle(event: DeviceEvent): string {
-    switch (event.event_type) {
-        case 'assistance_requested':
-            return 'Assistance requested';
-        case 'assistance_acknowledged':
-            return 'Request acknowledged';
-        case 'assistance_resolved':
-            return 'Request resolved';
-        case 'pilot_seeded':
-            return 'Pilot sign created';
-        default:
-            return event.event_type.replace(/_/g, ' ');
-    }
-}
-
-function formatEventBody(event: DeviceEvent): string {
-    const message = typeof event.payload?.message === 'string' ? event.payload.message : null;
-    if (message) return message;
-
-    const previousStatus = typeof event.payload?.previous_status === 'string'
-        ? event.payload.previous_status
-        : null;
-    const newStatus = typeof event.payload?.new_status === 'string'
-        ? event.payload.new_status
-        : null;
-    const confidence = typeof event.payload?.confidence === 'number'
-        ? `${Math.round(event.payload.confidence * 100)}% confidence`
-        : null;
-
-    const parts = [
-        previousStatus && newStatus ? `${previousStatus} -> ${newStatus}` : newStatus,
-        confidence,
-    ].filter(Boolean);
-
-    if (parts.length > 0) {
-        return parts.join(' • ');
-    }
-
-    return 'Recorded device event for the pilot sign.';
-}
-
 export default function NotificationDetailScreen() {
     const route = useRoute<RouteProp<RootStackParamList, 'NotificationDetail'>>();
-    const { event } = route.params;
+    const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+    const { notification, device } = route.params;
 
     return (
         <ScrollView style={s.container} contentContainerStyle={s.content}>
             <View style={s.header}>
-                <Text style={s.title}>{formatEventTitle(event)}</Text>
-                <Text style={s.date}>{formatDate(event.created_at)}</Text>
+                <Text style={s.title}>{notification.title}</Text>
+                <Text style={s.date}>{formatDate(notification.created_at)}</Text>
             </View>
 
             <View style={s.bodyCard}>
-                <Text style={s.body}>{formatEventBody(event)}</Text>
+                <Text style={s.body}>{notification.body}</Text>
             </View>
 
             <View style={s.meta}>
                 <View style={s.metaRow}>
-                    <Text style={s.metaLabel}>Event type</Text>
-                    <Text style={s.metaValue}>{event.event_type}</Text>
+                    <Text style={s.metaLabel}>Status</Text>
+                    <Text style={s.metaValue}>{notification.read ? 'Read' : 'Unread'}</Text>
                 </View>
-                {'new_status' in event.payload || 'previous_status' in event.payload ? (
-                    <View style={[s.metaRow, s.metaRowSpaced]}>
-                        <Text style={s.metaLabel}>Transition</Text>
-                        <Text style={s.metaValue}>
-                            {typeof event.payload.previous_status === 'string' ? event.payload.previous_status : 'unknown'}
-                            {' -> '}
-                            {typeof event.payload.new_status === 'string' ? event.payload.new_status : 'unknown'}
-                        </Text>
-                    </View>
-                ) : null}
+                <View style={[s.metaRow, s.metaRowSpaced]}>
+                    <Text style={s.metaLabel}>Notification ID</Text>
+                    <Text style={s.metaValue}>{notification.id}</Text>
+                </View>
             </View>
+
+            {device ? (
+                <Pressable
+                    accessibilityLabel={`Open sign details for ${device.name || 'sign'}`}
+                    accessibilityRole="button"
+                    onPress={() => navigation.navigate('SignDetails', { device })}
+                    style={({ pressed }) => [s.primaryAction, pressed && s.pressed]}
+                >
+                    <Text style={s.primaryActionText}>Open sign details</Text>
+                </Pressable>
+            ) : null}
         </ScrollView>
     );
 }
@@ -155,5 +120,20 @@ const s = StyleSheet.create({
         ...typography.bodySmall,
         color: colors.textPrimary,
         fontFamily: 'Montserrat_600SemiBold',
+    },
+    primaryAction: {
+        alignItems: 'center',
+        backgroundColor: colors.ctaPrimary,
+        borderRadius: layout.borderRadiusPill,
+        marginBottom: spacing.xl,
+        paddingHorizontal: spacing.lg,
+        paddingVertical: 14,
+    },
+    primaryActionText: {
+        ...typography.button,
+        color: colors.ctaPrimaryText,
+    },
+    pressed: {
+        opacity: 0.82,
     },
 });

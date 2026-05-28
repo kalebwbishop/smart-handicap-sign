@@ -6,7 +6,8 @@ import * as ExpoLinking from 'expo-linking';
 import axios from 'axios';
 import { User } from '../types/types';
 import { tokenStorage } from '../lib/auth';
-import { authAPI } from '../api/api';
+import { clearStoredExpoPushToken, getStoredExpoPushToken } from '../lib/pushNotifications';
+import { authAPI, pushTokenAPI } from '../api/api';
 import { resolveApiV1BaseUrl } from '../api/baseUrl';
 import { getAuthRedirectUri } from '../utils/authRedirect';
 console.log('[STORE] All authStore imports resolved');
@@ -117,6 +118,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 set({ user, token, refreshToken: refreshToken ?? null, isAuthenticated: true, isLoading: false });
             } else {
                 await tokenStorage.clear();
+                await clearStoredExpoPushToken();
                 set({ user: null, token: null, refreshToken: null, isAuthenticated: false, isLoading: false });
             }
         } catch (error) {
@@ -140,10 +142,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         try {
             const response = await authAPI.initiateLogout();
             logoutUrl = response.logoutUrl;
+
+            const storedPushToken = await getStoredExpoPushToken();
+            if (storedPushToken) {
+                try {
+                    await pushTokenAPI.unregister(storedPushToken);
+                } catch (error) {
+                    console.error('[Auth] Error unregistering Expo push token during logout:', error);
+                }
+            }
         } catch (error) {
             console.error('[Auth] Error calling logout API:', error);
         } finally {
             await tokenStorage.clear();
+            await clearStoredExpoPushToken();
             set({ user: null, token: null, refreshToken: null, isAuthenticated: false });
         }
 
@@ -260,6 +272,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     handleSessionExpired: () => {
         tokenStorage.clear();
+        void clearStoredExpoPushToken();
         set({
             user: null,
             token: null,

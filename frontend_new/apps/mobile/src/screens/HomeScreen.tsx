@@ -12,10 +12,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { devicesAPI } from '@/api/api';
+import { devicesAPI, notificationAPI } from '@/api/api';
 import { useAuthStore } from '@/store/authStore';
 import { Device } from '@/types/device';
 import { RootStackParamList } from '@/types/navigation';
+import { NotificationPreferences, SignNotification } from '@/types/types';
 import { colors } from '@/theme/colors';
 import { layout, shadows, spacing } from '@/theme/spacing';
 import { typography } from '@/theme/typography';
@@ -45,7 +46,7 @@ function formatLastSeen(iso: string | null): string {
         return 'Last seen unknown';
     }
 
-    return `Last seen ${date.toLocaleString()} (${formatRelativeTime(iso)})`;
+    return `Last seen ${formatRelativeTime(iso)}`;
 }
 
 export default function HomeScreen() {
@@ -64,6 +65,11 @@ export default function HomeScreen() {
     const [deviceLoading, setDeviceLoading] = useState(true);
     const [deviceError, setDeviceError] = useState<string | null>(null);
     const [deviceActionLoading, setDeviceActionLoading] = useState(false);
+    const [notifications, setNotifications] = useState<SignNotification[]>([]);
+    const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences | null>(null);
+    const [notificationError, setNotificationError] = useState<string | null>(null);
+    const [notificationActionLoading, setNotificationActionLoading] = useState(false);
+    const [activeNotificationId, setActiveNotificationId] = useState<string | null>(null);
 
     const fetchInFlightRef = useRef(false);
     const hasLoadedOnceRef = useRef(false);
@@ -86,19 +92,27 @@ export default function HomeScreen() {
 
         try {
             await ensureFreshSession();
-            const devices = await devicesAPI.list(undefined, { timeout: HOME_SCREEN_REQUEST_TIMEOUT_MS });
+            const [devices, latestNotifications, preferences] = await Promise.all([
+                devicesAPI.list(undefined, { timeout: HOME_SCREEN_REQUEST_TIMEOUT_MS }),
+                notificationAPI.getNotifications(undefined, { timeout: HOME_SCREEN_REQUEST_TIMEOUT_MS }),
+                notificationAPI.getPreferences(),
+            ]);
             if (devices.length === 0) {
                 setDevice(null);
                 setDeviceError('No pilot sign is linked to this account yet.');
-                return;
+            } else {
+                const pilotDevice = devices[0];
+                setDevice(pilotDevice);
+                setDeviceError(null);
             }
 
-            const pilotDevice = devices[0];
-            setDevice(pilotDevice);
-            setDeviceError(null);
+            setNotifications(latestNotifications);
+            setNotificationPreferences(preferences);
+            setNotificationError(null);
         } catch (error) {
             console.error('[HomeScreen] Failed to load pilot sign:', error);
             setDeviceError('Unable to load the pilot sign right now.');
+            setNotificationError('Unable to load notifications right now.');
         } finally {
             setDeviceLoading(false);
             fetchInFlightRef.current = false;
@@ -109,18 +123,43 @@ export default function HomeScreen() {
         }
     }, [ensureFreshSession]);
 
+    const resetAutoRefreshTimer = useCallback(() => {
+        const now = Date.now();
+        setRefreshClock(now);
+        setNextRefreshAt(now + POLL_INTERVAL_MS);
+    }, []);
+
+    const triggerRefresh = useCallback(
+        async ({ auto = false, showSpinner = false }: { auto?: boolean; showSpinner?: boolean } = {}) => {
+            resetAutoRefreshTimer();
+
+            if (showSpinner) {
+                setRefreshing(true);
+            }
+
+            try {
+                await fetchData({ auto });
+            } finally {
+                if (showSpinner) {
+                    setRefreshing(false);
+                }
+            }
+        },
+        [fetchData, resetAutoRefreshTimer],
+    );
+
     useEffect(() => {
         fetchData();
     }, [fetchData]);
 
     useEffect(() => {
-        const interval = setInterval(() => {
-            setNextRefreshAt(Date.now() + POLL_INTERVAL_MS);
-            void fetchData({ auto: true });
-        }, POLL_INTERVAL_MS);
+        const delay = Math.max(0, nextRefreshAt - Date.now());
+        const timeout = setTimeout(() => {
+            void triggerRefresh({ auto: true });
+        }, delay);
 
-        return () => clearInterval(interval);
-    }, [fetchData]);
+        return () => clearTimeout(timeout);
+    }, [nextRefreshAt, triggerRefresh]);
 
     useEffect(() => {
         const interval = setInterval(() => {
@@ -131,10 +170,16 @@ export default function HomeScreen() {
     }, []);
 
     const onRefresh = useCallback(async () => {
-        setRefreshing(true);
-        await fetchData();
-        setRefreshing(false);
-    }, [fetchData]);
+        await triggerRefresh({ showSpinner: true });
+    }, [triggerRefresh]);
+
+    const handleRefreshIndicatorPress = useCallback(() => {
+        if (fetchInFlightRef.current) {
+            return;
+        }
+
+        void triggerRefresh({ auto: true });
+    }, [triggerRefresh]);
 
     const handleAcknowledgeRequest = useCallback(async () => {
         if (!device) return;
@@ -182,6 +227,69 @@ export default function HomeScreen() {
         navigation.navigate('SignDetails', { device });
     }, [device, navigation]);
 
+    const handleOpenNotification = useCallback(async (notification: SignNotification) => {
+        setActiveNotificationId(notification.id);
+        try {
+            await ensureFreshSession();
+            const updatedNotification = notification.read
+                ? notification
+                : await notificationAPI.markAsRead(notification.id);
+
+            setNotifications((currentNotifications) =>
+                currentNotifications.map((currentNotification) =>
+                    currentNotification.id === updatedNotification.id ? updatedNotification : currentNotification,
+                ),
+            );
+
+            navigation.navigate('NotificationDetail', {
+                notification: updatedNotification,
+                device,
+            });
+        } catch (error) {
+            console.error('[HomeScreen] Failed to open notification:', error);
+            navigation.navigate('NotificationDetail', {
+                notification,
+                device,
+            });
+        } finally {
+            setActiveNotificationId(null);
+        }
+    }, [device, ensureFreshSession, navigation]);
+
+    const handleToggleNotifications = useCallback(async () => {
+        if (!notificationPreferences) {
+            return;
+        }
+
+        setNotificationActionLoading(true);
+        try {
+            await ensureFreshSession();
+            const updatedPreferences = await notificationAPI.updatePreferences({
+                assistance_requests_enabled: !notificationPreferences.assistance_requests_enabled,
+            });
+            setNotificationPreferences(updatedPreferences);
+        } catch (error) {
+            console.error('[HomeScreen] Failed to update notification preferences:', error);
+        } finally {
+            setNotificationActionLoading(false);
+        }
+    }, [ensureFreshSession, notificationPreferences]);
+
+    const handleMarkAllNotificationsRead = useCallback(async () => {
+        setNotificationActionLoading(true);
+        try {
+            await ensureFreshSession();
+            await notificationAPI.markAllAsRead();
+            setNotifications((currentNotifications) =>
+                currentNotifications.map((notification) => ({ ...notification, read: true })),
+            );
+        } catch (error) {
+            console.error('[HomeScreen] Failed to mark notifications as read:', error);
+        } finally {
+            setNotificationActionLoading(false);
+        }
+    }, [ensureFreshSession]);
+
     const status = useMemo(() => (device ? getPilotStatus(device) : null), [device]);
     const effectiveOperationalStatus = useMemo(() => {
         if (!device || isDeviceStale(device)) {
@@ -197,6 +305,11 @@ export default function HomeScreen() {
     const refreshIndicatorText = isAutoRefreshing
         ? 'Refreshing now…'
         : `Next refresh in ${secondsUntilRefresh}s`;
+    const unreadNotificationCount = useMemo(
+        () => notifications.filter((notification) => !notification.read).length,
+        [notifications],
+    );
+    const notificationsEnabled = notificationPreferences?.assistance_requests_enabled ?? true;
 
     return (
         <View style={styles.root}>
@@ -265,23 +378,26 @@ export default function HomeScreen() {
             >
                 <View style={styles.content}>
                     <View style={styles.card}>
-                        <View style={styles.sectionHeader}>
-                            <Text style={styles.sectionEyebrow}>Pilot sign</Text>
-                        </View>
-
-                        <View
+                        <Pressable
                             accessibilityLabel={
                                 isAutoRefreshing
                                     ? 'Pilot sign refresh in progress'
-                                    : `Pilot sign refreshes automatically in ${secondsUntilRefresh} seconds`
+                                    : `Refresh pilot sign now. Auto refresh resumes in ${secondsUntilRefresh} seconds`
                             }
+                            accessibilityRole="button"
                             accessibilityValue={{
                                 min: 0,
                                 max: 100,
                                 now: Math.round(refreshProgress * 100),
                                 text: refreshIndicatorText,
                             }}
-                            style={styles.refreshIndicator}
+                            disabled={isAutoRefreshing || refreshing}
+                            onPress={handleRefreshIndicatorPress}
+                            style={({ pressed }) => [
+                                styles.refreshIndicator,
+                                (isAutoRefreshing || refreshing) && styles.disabledAction,
+                                pressed && styles.pressed,
+                            ]}
                         >
                             <View style={styles.refreshIndicatorHeader}>
                                 <Text style={styles.refreshIndicatorLabel}>Auto refresh</Text>
@@ -295,29 +411,28 @@ export default function HomeScreen() {
                                     ]}
                                 />
                             </View>
-                        </View>
+                        </Pressable>
 
                         {deviceLoading ? (
                             <View style={styles.emptyState}>
                                 <ActivityIndicator color={colors.primary} size="large" />
-                                <Text style={styles.emptyTitle}>Loading pilot sign…</Text>
+                                <Text style={styles.emptyTitle}>Loading sign information…</Text>
                             </View>
                         ) : deviceError || !device ? (
                             <View style={styles.emptyState}>
                                 <Text style={styles.emptyIcon}>⚠️</Text>
-                                <Text style={styles.emptyTitle}>Pilot sign unavailable</Text>
-                                <Text style={styles.emptyBody}>{deviceError || 'No pilot sign found.'}</Text>
+                                <Text style={styles.emptyTitle}>Sign information unavailable</Text>
+                                <Text style={styles.emptyBody}>{deviceError || 'No sign information found.'}</Text>
                             </View>
                         ) : (
                             <>
                                 <Pressable
-                                    accessibilityLabel={`Open details for ${device.name || 'pilot sign'}`}
+                                    accessibilityLabel={`Open details for ${device.name || 'sign'}`}
                                     accessibilityRole="button"
                                     onPress={handleOpenSignDetails}
                                     style={({ pressed }) => [pressed && styles.pressed]}
                                 >
-                                    <Text style={styles.signName}>{device.name || 'Pilot sign'}</Text>
-                                    <Text style={styles.signMeta}>Serial {device.serial_number}</Text>
+                                    <Text style={styles.signName}>{device.name || 'Sign'}</Text>
                                     <Text style={styles.signMeta}>{formatLastSeen(device.last_seen_at)}</Text>
 
                                     <View style={[styles.statusBanner, { backgroundColor: status?.tone ?? colors.offWhite }]}>
@@ -367,6 +482,125 @@ export default function HomeScreen() {
                                     </Pressable>
                                 ) : null}
                             </>
+                        )}
+                    </View>
+
+                    <View style={styles.card}>
+                        <View style={styles.sectionHeader}>
+                            <View>
+                                <Text style={styles.sectionEyebrow}>Inbox</Text>
+                                <Text style={styles.sectionTitle}>Assistance alerts</Text>
+                            </View>
+                            {unreadNotificationCount > 0 ? (
+                                <View style={styles.unreadBadge}>
+                                    <Text style={styles.unreadBadgeText}>{unreadNotificationCount} new</Text>
+                                </View>
+                            ) : null}
+                        </View>
+
+                        <View style={styles.notificationControls}>
+                            <Pressable
+                                accessibilityLabel={
+                                    notificationsEnabled
+                                        ? 'Pause future assistance notifications'
+                                        : 'Turn assistance notifications back on'
+                                }
+                                accessibilityRole="button"
+                                disabled={notificationActionLoading}
+                                onPress={handleToggleNotifications}
+                                style={({ pressed }) => [
+                                    styles.secondaryAction,
+                                    notificationActionLoading && styles.disabledAction,
+                                    pressed && styles.pressed,
+                                ]}
+                            >
+                                <Text style={styles.secondaryActionText}>
+                                    {notificationsEnabled ? 'Pause alerts' : 'Turn alerts back on'}
+                                </Text>
+                            </Pressable>
+
+                            {unreadNotificationCount > 0 ? (
+                                <Pressable
+                                    accessibilityLabel="Mark all notifications as read"
+                                    accessibilityRole="button"
+                                    disabled={notificationActionLoading}
+                                    onPress={handleMarkAllNotificationsRead}
+                                    style={({ pressed }) => [
+                                        styles.inlineAction,
+                                        notificationActionLoading && styles.disabledAction,
+                                        pressed && styles.pressed,
+                                    ]}
+                                >
+                                    <Text style={styles.inlineActionText}>Mark all read</Text>
+                                </Pressable>
+                            ) : null}
+                        </View>
+
+                        {!notificationsEnabled ? (
+                            <View style={styles.noticeCard}>
+                                <Text style={styles.noticeTitle}>Alerts are paused</Text>
+                                <Text style={styles.noticeBody}>
+                                    New assistance requests will still appear on the home screen, but the inbox will stop
+                                    adding new alerts until you turn notifications back on.
+                                </Text>
+                            </View>
+                        ) : null}
+
+                        {notificationError ? (
+                            <View style={styles.emptyState}>
+                                <Text style={styles.emptyIcon}>⚠️</Text>
+                                <Text style={styles.emptyTitle}>Inbox unavailable</Text>
+                                <Text style={styles.emptyBody}>{notificationError}</Text>
+                            </View>
+                        ) : notifications.length === 0 ? (
+                            <View style={styles.emptyState}>
+                                <Text style={styles.emptyIcon}>🔔</Text>
+                                <Text style={styles.emptyTitle}>No assistance alerts yet</Text>
+                                <Text style={styles.emptyBody}>
+                                    When the sign requests help, the alert will appear here for operators to review.
+                                </Text>
+                            </View>
+                        ) : (
+                            <View style={styles.notificationList}>
+                                {notifications.map((notification) => {
+                                    const isOpeningNotification = activeNotificationId === notification.id;
+
+                                    return (
+                                        <Pressable
+                                            key={notification.id}
+                                            accessibilityLabel={`Open notification: ${notification.title}`}
+                                            accessibilityRole="button"
+                                            disabled={isOpeningNotification}
+                                            onPress={() => void handleOpenNotification(notification)}
+                                            style={({ pressed }) => [
+                                                styles.notificationRow,
+                                                !notification.read && styles.notificationRowUnread,
+                                                pressed && styles.pressed,
+                                            ]}
+                                        >
+                                            <View style={styles.notificationRowHeader}>
+                                                <Text style={styles.notificationTitle}>{notification.title}</Text>
+                                                <Text style={styles.notificationTimestamp}>
+                                                    {formatRelativeTime(notification.created_at)}
+                                                </Text>
+                                            </View>
+                                            <Text style={styles.notificationBody}>{notification.body}</Text>
+                                            <View style={styles.notificationFooter}>
+                                                {!notification.read ? (
+                                                    <View style={styles.notificationStatusPill}>
+                                                        <Text style={styles.notificationStatusPillText}>Unread</Text>
+                                                    </View>
+                                                ) : (
+                                                    <Text style={styles.notificationReadText}>Read</Text>
+                                                )}
+                                                {isOpeningNotification ? (
+                                                    <ActivityIndicator color={colors.primary} size="small" />
+                                                ) : null}
+                                            </View>
+                                        </Pressable>
+                                    );
+                                })}
+                            </View>
                         )}
                     </View>
 
@@ -527,6 +761,21 @@ const styles = StyleSheet.create({
         color: colors.textSecondary,
         textTransform: 'uppercase',
     },
+    sectionTitle: {
+        ...typography.h4,
+        color: colors.textPrimary,
+        marginTop: spacing.xs,
+    },
+    unreadBadge: {
+        backgroundColor: `${colors.primary}14`,
+        borderRadius: layout.borderRadiusPill,
+        paddingHorizontal: spacing.md,
+        paddingVertical: spacing.xs,
+    },
+    unreadBadgeText: {
+        ...typography.captionBold,
+        color: colors.primary,
+    },
     refreshIndicator: {
         backgroundColor: colors.offWhite,
         borderRadius: layout.borderRadiusMd,
@@ -625,6 +874,97 @@ const styles = StyleSheet.create({
     inlineAction: {
         alignSelf: 'flex-start',
         marginTop: spacing.sm,
+    },
+    notificationControls: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: spacing.md,
+        marginBottom: spacing.lg,
+    },
+    secondaryAction: {
+        alignItems: 'center',
+        alignSelf: 'flex-start',
+        backgroundColor: colors.offWhite,
+        borderRadius: layout.borderRadiusPill,
+        paddingHorizontal: spacing.lg,
+        paddingVertical: 12,
+    },
+    secondaryActionText: {
+        ...typography.bodySmall,
+        color: colors.textPrimary,
+        fontWeight: '600',
+    },
+    noticeCard: {
+        backgroundColor: colors.offWhite,
+        borderRadius: layout.borderRadiusMd,
+        marginBottom: spacing.lg,
+        padding: spacing.md,
+    },
+    noticeTitle: {
+        ...typography.body,
+        color: colors.textPrimary,
+        fontFamily: 'Montserrat_600SemiBold',
+    },
+    noticeBody: {
+        ...typography.bodySmall,
+        color: colors.textSecondary,
+        lineHeight: 20,
+        marginTop: spacing.xs,
+    },
+    notificationList: {
+        gap: spacing.md,
+    },
+    notificationRow: {
+        backgroundColor: colors.offWhite,
+        borderRadius: layout.borderRadiusMd,
+        padding: spacing.md,
+    },
+    notificationRowUnread: {
+        borderColor: `${colors.primary}26`,
+        borderWidth: 1,
+    },
+    notificationRowHeader: {
+        alignItems: 'flex-start',
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+    },
+    notificationTitle: {
+        ...typography.body,
+        color: colors.textPrimary,
+        flex: 1,
+        fontFamily: 'Montserrat_600SemiBold',
+        paddingRight: spacing.md,
+    },
+    notificationTimestamp: {
+        ...typography.captionBold,
+        color: colors.textMuted,
+    },
+    notificationBody: {
+        ...typography.bodySmall,
+        color: colors.textSecondary,
+        lineHeight: 20,
+        marginTop: spacing.sm,
+    },
+    notificationFooter: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginTop: spacing.md,
+    },
+    notificationStatusPill: {
+        backgroundColor: `${colors.primary}14`,
+        borderRadius: layout.borderRadiusPill,
+        paddingHorizontal: spacing.md,
+        paddingVertical: spacing.xs,
+    },
+    notificationStatusPillText: {
+        ...typography.captionBold,
+        color: colors.primary,
+    },
+    notificationReadText: {
+        ...typography.captionBold,
+        color: colors.textMuted,
     },
     inlineActionText: {
         ...typography.bodySmall,

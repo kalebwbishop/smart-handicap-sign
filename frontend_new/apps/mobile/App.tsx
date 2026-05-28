@@ -1,15 +1,29 @@
 console.log('[APP] App.tsx module evaluating...');
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect, useMemo } from 'react';
-import { NavigationContainer, LinkingOptions, getStateFromPath as defaultGetStateFromPath } from '@react-navigation/native';
+import {
+    NavigationContainer,
+    LinkingOptions,
+    createNavigationContainerRef,
+    getStateFromPath as defaultGetStateFromPath,
+} from '@react-navigation/native';
 import RootNavigator from './src/navigation/RootNavigator';
 import { RootStackParamList } from './src/types/navigation';
 import { View, StyleSheet, Platform } from 'react-native';
 import * as Linking from 'expo-linking';
-import { authAPI } from './src/api/api';
+import * as Notifications from 'expo-notifications';
+import { authAPI, pushTokenAPI } from './src/api/api';
 import { useAuthStore } from './src/store/authStore';
 import { AuthResponse } from './src/types/types';
+import {
+    clearStoredExpoPushToken,
+    getStoredExpoPushToken,
+    registerForExpoPushToken,
+    storeExpoPushToken,
+} from './src/lib/pushNotifications';
 console.log('[APP] All App.tsx imports resolved');
+
+const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
 const linking: LinkingOptions<RootStackParamList> = {
     prefixes: [
@@ -56,7 +70,7 @@ export default function App() {
 
     const code = useQueryParam("code");
     const [processedCode, setProcessedCode] = React.useState<string | null>(null);
-    const { setUser } = useAuthStore();
+    const { setUser, isAuthenticated } = useAuthStore();
 
     useEffect(() => {
         if (!code || code === processedCode) return;
@@ -77,12 +91,74 @@ export default function App() {
                     data: error?.response?.data,
                 });
             });
-    }, [code, processedCode])
+    }, [code, processedCode, setUser]);
+
+    useEffect(() => {
+        if (Platform.OS === 'web') {
+            return;
+        }
+
+        const subscription = Notifications.addNotificationResponseReceivedListener(() => {
+            if (navigationRef.isReady()) {
+                navigationRef.navigate('Home');
+            }
+        });
+
+        void Notifications.getLastNotificationResponseAsync().then((response) => {
+            if (response && navigationRef.isReady()) {
+                navigationRef.navigate('Home');
+            }
+        });
+
+        return () => subscription.remove();
+    }, []);
+
+    useEffect(() => {
+        if (!isAuthenticated || Platform.OS === 'web') {
+            return;
+        }
+
+        let active = true;
+
+        const syncExpoPushToken = async () => {
+            try {
+                const freshToken = await registerForExpoPushToken();
+                if (!freshToken || !active) {
+                    return;
+                }
+
+                const storedToken = await getStoredExpoPushToken();
+                if (storedToken === freshToken) {
+                    return;
+                }
+
+                if (storedToken) {
+                    try {
+                        await pushTokenAPI.unregister(storedToken);
+                    } catch (error) {
+                        console.error('[Push] Failed to unregister previous Expo push token:', error);
+                    }
+                }
+
+                await pushTokenAPI.register(freshToken);
+                await storeExpoPushToken(freshToken);
+            } catch (error) {
+                console.error('[Push] Failed to sync Expo push token:', error);
+                await clearStoredExpoPushToken();
+            }
+        };
+
+        void syncExpoPushToken();
+
+        return () => {
+            active = false;
+        };
+    }, [isAuthenticated]);
 
     return (
         <View style={styles.container}>
             <View style={[styles.appContainer, Platform.OS === 'web' && styles.webAppContainer]}>
-                <NavigationContainer linking={linking}>
+                <NavigationContainer linking={linking} ref={navigationRef}>
                     <RootNavigator />
                 </NavigationContainer>
                 <StatusBar style="auto" />

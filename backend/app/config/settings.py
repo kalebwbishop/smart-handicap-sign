@@ -17,6 +17,7 @@ class Settings(BaseSettings):
 
     # Frontend
     frontend_url: str = "http://localhost:8081"
+    expo_push_access_token: str = ""
 
     # WorkOS
     workos_api_key: str = ""

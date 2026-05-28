@@ -14,6 +14,7 @@ class DeviceTransitionResult:
     device: Optional[dict] = None
     error_code: Optional[str] = None
     current_status: Optional[str] = None
+    notifications: Optional[list[dict]] = None
 
 
 _DEVICE_COLUMNS = """
@@ -117,6 +118,7 @@ async def transition_device_status(
     event_type: str,
     actor_user_id: Optional[str] = None,
     payload: Optional[dict[str, Any]] = None,
+    create_notifications: bool = False,
 ) -> DeviceTransitionResult:
     pool = await get_pool()
 
@@ -160,17 +162,36 @@ async def transition_device_status(
             if payload:
                 event_payload.update(payload)
 
-            await conn.execute(
+            event_row = await conn.fetchrow(
                 """
                 INSERT INTO device_events (device_id, event_type, payload)
                 VALUES ($1::uuid, $2, $3::jsonb)
+                RETURNING id, device_id, event_type, payload, created_at
                 """,
                 str(updated["id"]),
                 event_type,
                 json.dumps(event_payload),
             )
 
-    return DeviceTransitionResult(success=True, device=_row_to_dict(updated))
+            created_notifications = None
+            if create_notifications:
+                from app.services.notification_service import (
+                    create_assistance_request_notifications_with_conn,
+                )
+
+                created_notifications = await create_assistance_request_notifications_with_conn(
+                    conn,
+                    device_id=str(updated["id"]),
+                    device_event_id=str(event_row["id"]),
+                    serial_number=serial_number,
+                    device_name=updated.get("name"),
+                )
+
+    return DeviceTransitionResult(
+        success=True,
+        device=_row_to_dict(updated),
+        notifications=created_notifications,
+    )
 
 
 async def create_device_event(

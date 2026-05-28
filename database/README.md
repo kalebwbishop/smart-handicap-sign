@@ -36,6 +36,9 @@ The pilot database keeps only the tables needed for a single operator + single s
 - `profiles`
 - `devices`
 - `device_events`
+- `notifications`
+- `notification_preferences`
+- `push_tokens`
 
 ## Device states
 
@@ -47,7 +50,17 @@ The pilot database keeps only the tables needed for a single operator + single s
 - `offline`
 - `error`
 
-Training states, organization tables, installation/claim workflow tables, push tokens, notifications, and billing/subscription fields are intentionally removed from the canonical schema.
+Training states, organization tables, installation/claim workflow tables, and billing/subscription fields are intentionally removed from the canonical schema. The pilot notification schema only supports assistance-request alerts plus operator opt-out and Expo push token storage.
+
+## Assistance-request notifications
+
+The pilot schema now includes the minimum persistence needed for operator notifications:
+
+- `notifications` stores one assistance-request alert per `(user_id, device_event_id)` so later service code can suppress duplicates per operator.
+- `notification_preferences` stores operator opt-out state. Missing rows should be treated as the pilot default: notifications enabled and push enabled.
+- `push_tokens` stores Expo push tokens for authenticated operators.
+
+`offline` remains a frontend-only stale indicator for now. The canonical schema does not create backend-authored offline incidents or offline notifications in this phase.
 
 ## Pilot sign bootstrap
 

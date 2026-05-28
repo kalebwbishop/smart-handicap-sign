@@ -17,8 +17,8 @@ INSERT INTO devices (
     'S01',
     'rev3',
     '1.2.0',
-    '0c2bffb5891b8c89d3cd94d92a9dd8772a1f92d6d1b7b84a9e53ef835cb32a51',
-    'pilot-device-salt',
+    'abc3c5186f765789dce954ea1d164cceae936094c81af90595e6dc3e6b1364f6',
+    '24b3bf3cd7df078969e36d7c37d3ddee',
     'available',
     'Pilot Handicap Sign'
 )

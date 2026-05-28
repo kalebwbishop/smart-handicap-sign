@@ -32,6 +32,8 @@ from app.config.settings import get_settings
 from app.middleware.error_handler import AppError, app_error_handler, generic_error_handler
 from app.routes.devices import router as devices_router
 from app.routes.inference import router as inference_router
+from app.routes.notifications import router as notifications_router
+from app.routes.push_tokens import router as push_tokens_router
 from app.utils.logger import logger
 
 
@@ -125,6 +127,8 @@ auth_router = build_auth_router()
 app.include_router(auth_router, prefix=API_PREFIX)
 app.include_router(inference_router, prefix=API_PREFIX)
 app.include_router(devices_router, prefix=API_PREFIX)
+app.include_router(notifications_router, prefix=API_PREFIX)
+app.include_router(push_tokens_router, prefix=API_PREFIX)
 
 
 @app.exception_handler(404)

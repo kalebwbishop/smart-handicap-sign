@@ -4,9 +4,12 @@ import type {
   DeviceEvent,
   DeviceLifecycleStatus,
   LoginInitResponse,
+  NotificationPreferences,
   Organization,
   OrgMember,
   OrgRole,
+  PushTokenRegistration,
+  PushTokenRemoval,
   RevokeRequest,
   SignNotification,
   Site,
@@ -91,13 +94,24 @@ export function createApiServices(apiClient: ApiClient) {
     markAllAsRead: async (): Promise<{ marked_read: number }> => {
       return apiClient.post<{ marked_read: number }>("/notifications/read-all");
     },
+    getPreferences: async (): Promise<NotificationPreferences> => {
+      return apiClient.get<NotificationPreferences>("/notifications/preferences");
+    },
+    updatePreferences: async (
+      updates: Partial<NotificationPreferences>,
+    ): Promise<NotificationPreferences> => {
+      return apiClient.patch<NotificationPreferences>("/notifications/preferences", updates);
+    },
   };
 
   const pushTokenAPI = {
-    register: (expo_push_token: string, device_id?: string) =>
-      apiClient.post("/push-tokens", { expo_push_token, device_id }),
-    unregister: (expo_push_token: string) =>
-      apiClient.delete("/push-tokens", { data: { expo_push_token } }),
+    register: (
+      expo_push_token: string,
+      device_id?: string,
+    ): Promise<PushTokenRegistration> =>
+      apiClient.post<PushTokenRegistration>("/push-tokens", { expo_push_token, device_id }),
+    unregister: (expo_push_token: string): Promise<PushTokenRemoval> =>
+      apiClient.delete<PushTokenRemoval>("/push-tokens", { data: { expo_push_token } }),
   };
 
   const devicesAPI = {

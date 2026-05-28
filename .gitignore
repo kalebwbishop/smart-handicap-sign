@@ -86,3 +86,5 @@ firmware/sdkconfig.old
 
 __pycache__/
 *.pyc
+
+credentials.json

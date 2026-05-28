@@ -5,5 +5,7 @@ export const {
   authAPI,
   devicesAPI,
   deviceClaimsAPI,
+  notificationAPI,
+  pushTokenAPI,
   sitesAPI,
 } = createApiServices(apiClient);

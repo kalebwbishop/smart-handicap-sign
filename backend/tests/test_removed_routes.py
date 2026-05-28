@@ -9,11 +9,9 @@ import pytest
     "method,path",
     [
         ("get", "/api/v1/organizations"),
-        ("get", "/api/v1/notifications"),
         ("post", "/api/v1/device-claims/validate"),
         ("get", "/api/v1/sites"),
         ("get", "/api/v1/parking-spaces"),
-        ("get", "/api/v1/push-tokens"),
     ],
 )
 def test_non_pilot_routes_are_gone(client_anon, method, path):
