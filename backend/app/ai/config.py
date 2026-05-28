@@ -5,7 +5,21 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-CONFIG_PATH = Path(__file__).resolve().parents[3] / "config.json"
+
+def find_config_path(start_path: Path | None = None) -> Path:
+    resolved_start = (start_path or Path(__file__)).resolve()
+    search_roots = [resolved_start.parent] if resolved_start.is_file() else [resolved_start]
+    search_roots.extend(resolved_start.parents)
+
+    for root in search_roots:
+        candidate = root / "config.json"
+        if candidate.is_file():
+            return candidate
+
+    raise FileNotFoundError(f"Could not find config.json relative to {resolved_start}")
+
+
+CONFIG_PATH = find_config_path()
 
 
 @lru_cache

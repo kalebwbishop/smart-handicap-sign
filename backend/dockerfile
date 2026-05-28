@@ -6,11 +6,13 @@ WORKDIR /app
 COPY deploy-box-python /shared/deploy-box-python
 
 # Copy backend requirements and install dependencies
-COPY smart-handicap-sign/backend/requirements.txt .
+COPY smart-handicap-sign/backend/requirements.txt /app/backend/requirements.txt
 RUN pip install --no-cache-dir --trusted-host download.pytorch.org --trusted-host download-r2.pytorch.org torch --index-url https://download.pytorch.org/whl/cpu \
-    && pip install --no-cache-dir --trusted-host pypi.org --trusted-host files.pythonhosted.org -r requirements.txt
+    && pip install --no-cache-dir --trusted-host pypi.org --trusted-host files.pythonhosted.org -r /app/backend/requirements.txt
 
-# Copy the backend source
-COPY smart-handicap-sign/backend/ .
+# Copy the shared AI config and preserve repo-relative backend paths
+COPY smart-handicap-sign/config.json /app/config.json
+COPY smart-handicap-sign/backend/ /app/backend/
 
+WORKDIR /app/backend
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
