@@ -14,6 +14,8 @@ export type DeviceOperationalStatus =
   | "offline"
   | "error";
 
+export type DeviceConnectivityStatus = "online" | "offline";
+
 export type ClaimStatus = "unused" | "used" | "revoked" | "expired";
 
 export type AccessibleParkingType = "standard" | "van_accessible" | "temporary" | "reserved";
@@ -26,6 +28,7 @@ export interface Device {
   firmware_version: string | null;
   manufacture_batch: string | null;
   lifecycle_status: DeviceLifecycleStatus;
+  connectivity_status: DeviceConnectivityStatus;
   operational_status: DeviceOperationalStatus | null;
   claim_status: ClaimStatus | null;
   claimed_at: string | null;

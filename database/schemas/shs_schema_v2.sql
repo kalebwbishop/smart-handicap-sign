@@ -20,8 +20,14 @@ DROP TABLE IF EXISTS users CASCADE;
 DROP TYPE IF EXISTS accessible_parking_type CASCADE;
 DROP TYPE IF EXISTS claim_status_type CASCADE;
 DROP TYPE IF EXISTS device_lifecycle_status CASCADE;
+DROP TYPE IF EXISTS device_connectivity_status CASCADE;
 DROP TYPE IF EXISTS device_operational_status CASCADE;
 DROP TYPE IF EXISTS org_role CASCADE;
+
+CREATE TYPE device_connectivity_status AS ENUM (
+    'online',
+    'offline'
+);
 
 CREATE TYPE device_operational_status AS ENUM (
     'available',
@@ -82,6 +88,7 @@ CREATE TABLE devices (
     firmware_version   VARCHAR(20),
     auth_token_hash    VARCHAR(128),
     auth_token_salt    VARCHAR(64),
+    connectivity_status device_connectivity_status NOT NULL DEFAULT 'online',
     operational_status device_operational_status NOT NULL DEFAULT 'available',
     last_seen_at       TIMESTAMPTZ,
     name               TEXT,
@@ -90,6 +97,7 @@ CREATE TABLE devices (
 );
 
 CREATE INDEX idx_devices_serial ON devices(serial_number);
+CREATE INDEX idx_devices_connectivity ON devices(connectivity_status);
 CREATE INDEX idx_devices_operational ON devices(operational_status);
 
 CREATE TRIGGER update_devices_updated_at

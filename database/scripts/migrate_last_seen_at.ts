@@ -41,13 +41,26 @@ async function migrateLastSeenAt() {
         console.log('Connected to database');
 
         await client.query(`
+            DO $$
+            BEGIN
+                CREATE TYPE device_connectivity_status AS ENUM ('online', 'offline');
+            EXCEPTION
+                WHEN duplicate_object THEN NULL;
+            END
+            $$;
+
             ALTER TABLE devices
             ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;
+
+            ALTER TABLE devices
+            ADD COLUMN IF NOT EXISTS connectivity_status device_connectivity_status NOT NULL DEFAULT 'online';
+
+            CREATE INDEX IF NOT EXISTS idx_devices_connectivity ON devices(connectivity_status);
         `);
 
-        console.log('last_seen_at migration applied successfully');
+        console.log('last_seen_at/connectivity_status migration applied successfully');
     } catch (error) {
-        console.error('last_seen_at migration failed:', error);
+        console.error('last_seen_at/connectivity_status migration failed:', error);
         process.exit(1);
     } finally {
         await client.end();

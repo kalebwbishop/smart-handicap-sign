@@ -17,7 +17,7 @@ def _chunk(items: list[dict], size: int) -> Iterable[list[dict]]:
         yield items[index:index + size]
 
 
-async def send_assistance_request_push_notifications(notifications: list[dict]) -> int:
+async def send_push_notifications(notifications: list[dict]) -> int:
     if not notifications:
         return 0
 
@@ -83,3 +83,7 @@ async def send_assistance_request_push_notifications(notifications: list[dict]) 
             delivered_count += len(batch)
 
     return delivered_count
+
+
+async def send_assistance_request_push_notifications(notifications: list[dict]) -> int:
+    return await send_push_notifications(notifications)

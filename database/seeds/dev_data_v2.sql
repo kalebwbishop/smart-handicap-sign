@@ -9,7 +9,9 @@ INSERT INTO devices (
     firmware_version,
     auth_token_hash,
     auth_token_salt,
+    connectivity_status,
     operational_status,
+    last_seen_at,
     name
 ) VALUES (
     'f0000000-0000-0000-0000-000000000001',
@@ -19,7 +21,9 @@ INSERT INTO devices (
     '1.2.0',
     'abc3c5186f765789dce954ea1d164cceae936094c81af90595e6dc3e6b1364f6',
     '24b3bf3cd7df078969e36d7c37d3ddee',
+    'online',
     'available',
+    CURRENT_TIMESTAMP,
     'Pilot Handicap Sign'
 )
 ON CONFLICT (serial_number) DO NOTHING;

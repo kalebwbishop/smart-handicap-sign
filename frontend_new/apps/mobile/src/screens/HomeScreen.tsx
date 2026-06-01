@@ -23,7 +23,7 @@ import { NotificationPreferences, SignNotification } from '@/types/types';
 import { colors } from '@/theme/colors';
 import { layout, shadows, spacing } from '@/theme/spacing';
 import { typography } from '@/theme/typography';
-import { getPilotStatus, isDeviceStale } from './pilotStatus';
+import { getPilotStatus, isDeviceOffline } from './pilotStatus';
 import { shouldRefreshOnAppActive, shouldRefreshOnHomeFocus } from './homeRefresh';
 
 const POLL_INTERVAL_MS = 30_000;
@@ -337,7 +337,7 @@ export default function HomeScreen() {
 
     const status = useMemo(() => (device ? getPilotStatus(device) : null), [device]);
     const effectiveOperationalStatus = useMemo(() => {
-        if (!device || isDeviceStale(device)) {
+        if (!device || isDeviceOffline(device)) {
             return 'offline';
         }
         return device.operational_status;

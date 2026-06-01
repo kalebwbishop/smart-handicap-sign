@@ -17,6 +17,7 @@ class DeviceOut(BaseModel):
     hardware_revision: Optional[str] = None
     firmware_version: Optional[str] = None
     lifecycle_status: Optional[str] = "active"
+    connectivity_status: Optional[str] = "online"
     operational_status: Optional[str] = None
     claim_status: Optional[str] = None
     organization_id: Optional[str] = None
@@ -32,6 +33,7 @@ class DeviceStatusOut(BaseModel):
     serial_number: str
     status: str
     operational_status: str
+    connectivity_status: str = "online"
 
 
 class DeviceEventOut(BaseModel):
@@ -65,13 +67,15 @@ async def list_devices(
 
 @router.get("/{serial_number}/status", response_model=DeviceStatusOut)
 async def get_device_status(serial_number: str):
-    device = await _get_device_or_404(serial_number)
-    await device_service.update_device_last_seen(serial_number)
+    device = await device_service.update_device_last_seen(serial_number)
+    if device is None:
+        raise HTTPException(status_code=404, detail="Device not found")
     status = device.get("operational_status") or "available"
     return {
         "serial_number": serial_number,
         "status": status,
         "operational_status": status,
+        "connectivity_status": device.get("connectivity_status") or "online",
     }
 
 

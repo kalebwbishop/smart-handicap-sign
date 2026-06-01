@@ -23,6 +23,7 @@ _DEVICE_COLUMNS = """
     model_code,
     hardware_revision,
     firmware_version,
+    connectivity_status,
     operational_status,
     last_seen_at,
     name,
@@ -35,6 +36,7 @@ def _row_to_dict(row) -> dict:
     device = dict(row)
     if device.get("id"):
         device["id"] = str(device["id"])
+    device.setdefault("connectivity_status", "online")
     device.setdefault("lifecycle_status", "active")
     device.setdefault("claim_status", None)
     device.setdefault("organization_id", None)
@@ -100,6 +102,7 @@ async def update_device_last_seen(
         f"""
         UPDATE devices
         SET last_seen_at = $2,
+            connectivity_status = 'online',
             updated_at = NOW()
         WHERE serial_number = $1
         RETURNING {_DEVICE_COLUMNS}
@@ -110,15 +113,17 @@ async def update_device_last_seen(
     return _row_to_dict(row) if row else None
 
 
-async def transition_device_status(
+async def _transition_device_status_column(
     *,
     serial_number: str,
+    status_column: str,
     expected_status: str,
     new_status: str,
     event_type: str,
     actor_user_id: Optional[str] = None,
     payload: Optional[dict[str, Any]] = None,
     create_notifications: bool = False,
+    stale_before: Optional[datetime] = None,
 ) -> DeviceTransitionResult:
     pool = await get_pool()
 
@@ -132,7 +137,7 @@ async def transition_device_status(
                 return DeviceTransitionResult(success=False, error_code="device_not_found")
 
             current_device = _row_to_dict(current)
-            current_status = current_device["operational_status"]
+            current_status = current_device.get(status_column)
             if current_status != expected_status:
                 return DeviceTransitionResult(
                     success=False,
@@ -141,10 +146,20 @@ async def transition_device_status(
                     current_status=current_status,
                 )
 
+            if status_column == "connectivity_status" and stale_before is not None:
+                freshness_reference = current_device.get("last_seen_at") or current_device.get("created_at")
+                if freshness_reference is not None and freshness_reference > stale_before:
+                    return DeviceTransitionResult(
+                        success=False,
+                        error_code="not_stale",
+                        device=current_device,
+                        current_status=current_status,
+                    )
+
             updated = await conn.fetchrow(
                 f"""
                 UPDATE devices
-                SET operational_status = $2,
+                SET {status_column} = $2,
                     updated_at = NOW()
                 WHERE serial_number = $1
                 RETURNING {_DEVICE_COLUMNS}
@@ -156,11 +171,14 @@ async def transition_device_status(
             event_payload = {
                 "previous_status": expected_status,
                 "new_status": new_status,
+                "status_field": status_column,
             }
             if actor_user_id:
                 event_payload["actor_user_id"] = actor_user_id
             if payload:
                 event_payload.update(payload)
+            if stale_before is not None and status_column == "connectivity_status":
+                event_payload["stale_before"] = stale_before.isoformat()
 
             event_row = await conn.fetchrow(
                 """
@@ -177,20 +195,76 @@ async def transition_device_status(
             if create_notifications:
                 from app.services.notification_service import (
                     create_assistance_request_notifications_with_conn,
+                    create_device_offline_notifications_with_conn,
                 )
 
-                created_notifications = await create_assistance_request_notifications_with_conn(
-                    conn,
-                    device_id=str(updated["id"]),
-                    device_event_id=str(event_row["id"]),
-                    serial_number=serial_number,
-                    device_name=updated.get("name"),
-                )
+                if status_column == "operational_status":
+                    created_notifications = await create_assistance_request_notifications_with_conn(
+                        conn,
+                        device_id=str(updated["id"]),
+                        device_event_id=str(event_row["id"]),
+                        serial_number=serial_number,
+                        device_name=updated.get("name"),
+                    )
+                elif status_column == "connectivity_status":
+                    created_notifications = await create_device_offline_notifications_with_conn(
+                        conn,
+                        device_id=str(updated["id"]),
+                        device_event_id=str(event_row["id"]),
+                        serial_number=serial_number,
+                        device_name=updated.get("name"),
+                    )
 
     return DeviceTransitionResult(
         success=True,
         device=_row_to_dict(updated),
         notifications=created_notifications,
+    )
+
+
+async def transition_device_status(
+    *,
+    serial_number: str,
+    expected_status: str,
+    new_status: str,
+    event_type: str,
+    actor_user_id: Optional[str] = None,
+    payload: Optional[dict[str, Any]] = None,
+    create_notifications: bool = False,
+) -> DeviceTransitionResult:
+    return await _transition_device_status_column(
+        serial_number=serial_number,
+        status_column="operational_status",
+        expected_status=expected_status,
+        new_status=new_status,
+        event_type=event_type,
+        actor_user_id=actor_user_id,
+        payload=payload,
+        create_notifications=create_notifications,
+    )
+
+
+async def transition_device_connectivity_status(
+    *,
+    serial_number: str,
+    expected_status: str,
+    new_status: str,
+    event_type: str,
+    actor_user_id: Optional[str] = None,
+    payload: Optional[dict[str, Any]] = None,
+    create_notifications: bool = False,
+    stale_before: Optional[datetime] = None,
+) -> DeviceTransitionResult:
+    return await _transition_device_status_column(
+        serial_number=serial_number,
+        status_column="connectivity_status",
+        expected_status=expected_status,
+        new_status=new_status,
+        event_type=event_type,
+        actor_user_id=actor_user_id,
+        payload=payload,
+        create_notifications=create_notifications,
+        stale_before=stale_before,
     )
 
 

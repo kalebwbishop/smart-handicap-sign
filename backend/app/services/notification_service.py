@@ -37,6 +37,14 @@ def _assistance_request_copy(*, serial_number: str, device_name: Optional[str]) 
     )
 
 
+def _device_offline_copy(*, serial_number: str, device_name: Optional[str]) -> tuple[str, str]:
+    label = device_name.strip() if device_name and device_name.strip() else serial_number
+    return (
+        "Device offline",
+        f"{label} has not checked in recently and was marked offline.",
+    )
+
+
 def _preference_row_to_dict(row) -> dict:
     preference = dict(row)
     preference["user_id"] = str(preference["user_id"])
@@ -50,18 +58,15 @@ def _push_token_row_to_dict(row) -> dict:
     return push_token
 
 
-async def create_assistance_request_notifications_with_conn(
+async def _create_operator_notifications_with_conn(
     conn,
     *,
     device_id: str,
     device_event_id: str,
-    serial_number: str,
-    device_name: Optional[str] = None,
+    kind: str,
+    title: str,
+    body: str,
 ) -> list[dict]:
-    title, body = _assistance_request_copy(
-        serial_number=serial_number,
-        device_name=device_name,
-    )
     rows = await conn.fetch(
         f"""
         INSERT INTO notifications (
@@ -76,9 +81,9 @@ async def create_assistance_request_notifications_with_conn(
             u.id,
             $1::uuid,
             $2::uuid,
-            'assistance_requested',
             $3,
-            $4
+            $4,
+            $5
         FROM users u
         LEFT JOIN notification_preferences np ON np.user_id = u.id
         WHERE COALESCE(np.assistance_requests_enabled, TRUE)
@@ -87,10 +92,55 @@ async def create_assistance_request_notifications_with_conn(
         """,
         device_id,
         device_event_id,
+        kind,
         title,
         body,
     )
     return [_notification_row_to_dict(row) for row in rows]
+
+
+async def create_assistance_request_notifications_with_conn(
+    conn,
+    *,
+    device_id: str,
+    device_event_id: str,
+    serial_number: str,
+    device_name: Optional[str] = None,
+) -> list[dict]:
+    title, body = _assistance_request_copy(
+        serial_number=serial_number,
+        device_name=device_name,
+    )
+    return await _create_operator_notifications_with_conn(
+        conn,
+        device_id=device_id,
+        device_event_id=device_event_id,
+        kind="assistance_requested",
+        title=title,
+        body=body,
+    )
+
+
+async def create_device_offline_notifications_with_conn(
+    conn,
+    *,
+    device_id: str,
+    device_event_id: str,
+    serial_number: str,
+    device_name: Optional[str] = None,
+) -> list[dict]:
+    title, body = _device_offline_copy(
+        serial_number=serial_number,
+        device_name=device_name,
+    )
+    return await _create_operator_notifications_with_conn(
+        conn,
+        device_id=device_id,
+        device_event_id=device_event_id,
+        kind="device_offline",
+        title=title,
+        body=body,
+    )
 
 
 async def list_notifications(

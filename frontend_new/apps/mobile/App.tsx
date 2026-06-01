@@ -9,12 +9,12 @@ import {
 } from '@react-navigation/native';
 import RootNavigator from './src/navigation/RootNavigator';
 import { RootStackParamList } from './src/types/navigation';
-import { View, StyleSheet, Platform } from 'react-native';
+import { View, StyleSheet, Platform, Pressable, Text, AppState, AppStateStatus } from 'react-native';
 import * as Linking from 'expo-linking';
 import * as Notifications from 'expo-notifications';
-import { authAPI, pushTokenAPI } from './src/api/api';
+import { authAPI, notificationAPI, pushTokenAPI } from './src/api/api';
 import { useAuthStore } from './src/store/authStore';
-import { AuthResponse } from './src/types/types';
+import { AuthResponse, SignNotification } from './src/types/types';
 import {
     clearStoredExpoPushToken,
     getStoredExpoPushToken,
@@ -25,9 +25,16 @@ import {
     consumePendingNotificationOpen,
     handleNotificationOpen,
 } from './src/lib/notificationOpenNavigation';
+import { buildForegroundNotification } from './src/lib/foregroundNotification';
+import { getLatestUnseenUnreadNotification } from './src/lib/foregroundNotificationFeed';
+import { colors } from './src/theme/colors';
+import { spacing, layout, shadows } from './src/theme/spacing';
+import { typography } from './src/theme/typography';
 console.log('[APP] All App.tsx imports resolved');
 
 const navigationRef = createNavigationContainerRef<RootStackParamList>();
+const FOREGROUND_NOTIFICATION_DISMISS_MS = 6000;
+const FOREGROUND_NOTIFICATION_SYNC_INTERVAL_MS = 15000;
 
 const linking: LinkingOptions<RootStackParamList> = {
     prefixes: [
@@ -74,8 +81,14 @@ export default function App() {
 
     const code = useQueryParam("code");
     const [processedCode, setProcessedCode] = React.useState<string | null>(null);
+    const [foregroundNotification, setForegroundNotification] = React.useState<SignNotification | null>(null);
     const pendingNotificationOpenRef = React.useRef(false);
-    const { setUser, isAuthenticated } = useAuthStore();
+    const dismissForegroundNotificationTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const appStateRef = React.useRef<AppStateStatus>(AppState.currentState);
+    const knownNotificationIdsRef = React.useRef<Set<string>>(new Set());
+    const hasHydratedNotificationsRef = React.useRef(false);
+    const isSyncingForegroundNotificationsRef = React.useRef(false);
+    const { setUser, isAuthenticated, ensureFreshSession } = useAuthStore();
 
     const navigateHomeAfterNotificationOpen = React.useCallback(() => {
         const nextState = handleNotificationOpen({
@@ -89,6 +102,39 @@ export default function App() {
             navigationRef.navigate('Home');
         }
     }, []);
+
+    const dismissForegroundNotification = React.useCallback(() => {
+        if (dismissForegroundNotificationTimeoutRef.current) {
+            clearTimeout(dismissForegroundNotificationTimeoutRef.current);
+            dismissForegroundNotificationTimeoutRef.current = null;
+        }
+
+        setForegroundNotification(null);
+    }, []);
+
+    const openForegroundNotification = React.useCallback(async () => {
+        if (!foregroundNotification) {
+            return;
+        }
+
+        const fallbackNotification = foregroundNotification;
+        dismissForegroundNotification();
+
+        if (!navigationRef.isReady()) {
+            navigateHomeAfterNotificationOpen();
+            return;
+        }
+
+        try {
+            const notification = fallbackNotification.read
+                ? fallbackNotification
+                : await notificationAPI.markAsRead(fallbackNotification.id);
+            navigationRef.navigate('NotificationDetail', { notification });
+        } catch (error) {
+            console.error('[Push] Failed to open foreground notification:', error);
+            navigationRef.navigate('NotificationDetail', { notification: fallbackNotification });
+        }
+    }, [dismissForegroundNotification, foregroundNotification, navigateHomeAfterNotificationOpen]);
 
     useEffect(() => {
         if (!code || code === processedCode) return;
@@ -116,8 +162,11 @@ export default function App() {
             return;
         }
 
-        const subscription = Notifications.addNotificationResponseReceivedListener(() => {
+        const responseSubscription = Notifications.addNotificationResponseReceivedListener(() => {
             navigateHomeAfterNotificationOpen();
+        });
+        const receivedSubscription = Notifications.addNotificationReceivedListener((notification) => {
+            setForegroundNotification(buildForegroundNotification(notification));
         });
 
         void Notifications.getLastNotificationResponseAsync().then((response) => {
@@ -126,8 +175,99 @@ export default function App() {
             }
         });
 
-        return () => subscription.remove();
+        return () => {
+            responseSubscription.remove();
+            receivedSubscription.remove();
+        };
     }, [navigateHomeAfterNotificationOpen]);
+
+    useEffect(() => {
+        if (!foregroundNotification) {
+            if (dismissForegroundNotificationTimeoutRef.current) {
+                clearTimeout(dismissForegroundNotificationTimeoutRef.current);
+                dismissForegroundNotificationTimeoutRef.current = null;
+            }
+            return;
+        }
+
+        dismissForegroundNotificationTimeoutRef.current = setTimeout(() => {
+            setForegroundNotification(null);
+            dismissForegroundNotificationTimeoutRef.current = null;
+        }, FOREGROUND_NOTIFICATION_DISMISS_MS);
+
+        return () => {
+            if (dismissForegroundNotificationTimeoutRef.current) {
+                clearTimeout(dismissForegroundNotificationTimeoutRef.current);
+                dismissForegroundNotificationTimeoutRef.current = null;
+            }
+        };
+    }, [foregroundNotification]);
+
+    useEffect(() => {
+        if (!isAuthenticated || Platform.OS === 'web') {
+            knownNotificationIdsRef.current = new Set();
+            hasHydratedNotificationsRef.current = false;
+            return;
+        }
+
+        let active = true;
+
+        const syncForegroundNotifications = async () => {
+            if (!active || isSyncingForegroundNotificationsRef.current || appStateRef.current !== 'active') {
+                return;
+            }
+
+            isSyncingForegroundNotificationsRef.current = true;
+
+            try {
+                await ensureFreshSession();
+                const latestNotifications = await notificationAPI.getNotifications();
+                if (!active) {
+                    return;
+                }
+
+                const nextNotification = getLatestUnseenUnreadNotification(
+                    latestNotifications,
+                    knownNotificationIdsRef.current,
+                    hasHydratedNotificationsRef.current,
+                );
+
+                knownNotificationIdsRef.current = new Set(
+                    latestNotifications.map((notification) => notification.id),
+                );
+                hasHydratedNotificationsRef.current = true;
+
+                if (nextNotification) {
+                    setForegroundNotification(nextNotification);
+                }
+            } catch (error) {
+                console.error('[Push] Failed to sync foreground notifications:', error);
+            } finally {
+                isSyncingForegroundNotificationsRef.current = false;
+            }
+        };
+
+        void syncForegroundNotifications();
+
+        const interval = setInterval(() => {
+            void syncForegroundNotifications();
+        }, FOREGROUND_NOTIFICATION_SYNC_INTERVAL_MS);
+
+        const subscription = AppState.addEventListener('change', (nextAppState) => {
+            appStateRef.current = nextAppState;
+
+            if (nextAppState === 'active') {
+                void syncForegroundNotifications();
+            }
+        });
+
+        return () => {
+            active = false;
+            clearInterval(interval);
+            subscription.remove();
+            isSyncingForegroundNotificationsRef.current = false;
+        };
+    }, [ensureFreshSession, isAuthenticated]);
 
     useEffect(() => {
         if (!isAuthenticated || Platform.OS === 'web') {
@@ -191,6 +331,29 @@ export default function App() {
                 >
                     <RootNavigator />
                 </NavigationContainer>
+                {foregroundNotification ? (
+                    <View pointerEvents="box-none" style={styles.foregroundNotificationContainer}>
+                        <Pressable
+                            accessibilityLabel={`Open notification: ${foregroundNotification.title}`}
+                            accessibilityRole="button"
+                            onPress={() => {
+                                void openForegroundNotification();
+                            }}
+                            style={({ pressed }) => [
+                                styles.foregroundNotificationCard,
+                                pressed && styles.foregroundNotificationCardPressed,
+                            ]}
+                        >
+                            <Text style={styles.foregroundNotificationEyebrow}>New notification</Text>
+                            <Text numberOfLines={1} style={styles.foregroundNotificationTitle}>
+                                {foregroundNotification.title}
+                            </Text>
+                            <Text numberOfLines={2} style={styles.foregroundNotificationBody}>
+                                {foregroundNotification.body}
+                            </Text>
+                        </Pressable>
+                    </View>
+                ) : null}
                 <StatusBar style="auto" />
             </View>
         </View>
@@ -211,5 +374,38 @@ const styles = StyleSheet.create({
     },
     webAppContainer: {
         height: '100%',
+    },
+    foregroundNotificationContainer: {
+        left: layout.contentPadding,
+        position: 'absolute',
+        right: layout.contentPadding,
+        top: Platform.select({ ios: 56, android: 24, default: 24 }),
+    },
+    foregroundNotificationCard: {
+        backgroundColor: colors.white,
+        borderColor: colors.divider,
+        borderRadius: 16,
+        borderWidth: StyleSheet.hairlineWidth,
+        paddingHorizontal: spacing.md,
+        paddingVertical: spacing.sm,
+        ...shadows.elevated,
+    },
+    foregroundNotificationCardPressed: {
+        opacity: 0.92,
+    },
+    foregroundNotificationEyebrow: {
+        ...typography.caption,
+        color: colors.ctaPrimary,
+        marginBottom: spacing.xs,
+    },
+    foregroundNotificationTitle: {
+        ...typography.body,
+        color: colors.textPrimary,
+        fontFamily: 'Montserrat_600SemiBold',
+        marginBottom: spacing.xs,
+    },
+    foregroundNotificationBody: {
+        ...typography.bodySmall,
+        color: colors.textSecondary,
     },
 });

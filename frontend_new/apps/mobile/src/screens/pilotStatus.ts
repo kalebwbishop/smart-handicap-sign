@@ -55,8 +55,16 @@ export function isDeviceStale(device: Device, now = new Date()): boolean {
     return now.getTime() - lastSeenMs > getConfiguredStaleThresholdMinutes() * 60 * 1000;
 }
 
+export function isDeviceOffline(device: Device, now = new Date()): boolean {
+    if (device.connectivity_status === 'offline') {
+        return true;
+    }
+
+    return isDeviceStale(device, now);
+}
+
 export function getPilotStatus(device: Device, now = new Date()) {
-    if (isDeviceStale(device, now)) {
+    if (isDeviceOffline(device, now)) {
         return OPERATIONAL_STATUS.offline;
     }
 

@@ -16,6 +16,7 @@ def _device(status: str = "available") -> dict:
         "hardware_revision": "rev3",
         "firmware_version": "1.2.0",
         "lifecycle_status": "active",
+        "connectivity_status": "online",
         "operational_status": status,
         "name": "Pilot Handicap Sign",
         "last_seen_at": now,
@@ -43,24 +44,25 @@ class TestListDevices:
 
         assert response.status_code == 200
         assert response.json()[0]["serial_number"] == "SHS-2605-S01-A7K-00001-J"
+        assert response.json()[0]["connectivity_status"] == "online"
         assert response.json()[0]["last_seen_at"] is not None
 
 
 class TestDeviceStatus:
     @patch("app.routes.devices.device_service.update_device_last_seen", new_callable=AsyncMock)
-    @patch("app.routes.devices.device_service.get_device_by_serial", new_callable=AsyncMock)
-    def test_status_is_public(self, mock_get, mock_last_seen, client_anon):
-        mock_get.return_value = _device("available")
+    def test_status_is_public(self, mock_last_seen, client_anon):
+        mock_last_seen.return_value = _device("available")
 
         response = client_anon.get("/api/v1/devices/SHS-2605-S01-A7K-00001-J/status")
 
         assert response.status_code == 200
         assert response.json()["status"] == "available"
+        assert response.json()["connectivity_status"] == "online"
         mock_last_seen.assert_awaited_once_with("SHS-2605-S01-A7K-00001-J")
 
-    @patch("app.routes.devices.device_service.get_device_by_serial", new_callable=AsyncMock)
-    def test_status_404_when_device_missing(self, mock_get, client_anon):
-        mock_get.return_value = None
+    @patch("app.routes.devices.device_service.update_device_last_seen", new_callable=AsyncMock)
+    def test_status_404_when_device_missing(self, mock_last_seen, client_anon):
+        mock_last_seen.return_value = None
 
         response = client_anon.get("/api/v1/devices/missing/status")
 

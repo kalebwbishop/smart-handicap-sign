@@ -10,6 +10,7 @@ function createDevice(overrides: Partial<Device> = {}): Device {
         firmware_version: '1.0.0',
         manufacture_batch: null,
         lifecycle_status: 'active',
+        connectivity_status: 'online',
         operational_status: 'available',
         claim_status: null,
         claimed_at: null,
@@ -61,6 +62,16 @@ describe('pilotStatus', () => {
         const device = createDevice({
             operational_status: 'assistance_requested',
             last_seen_at: '2026-05-27T15:00:00Z',
+        });
+
+        expect(getPilotStatus(device, new Date('2026-05-27T15:16:00Z')).label).toBe('Offline');
+    });
+
+    it('overrides the displayed status to offline when the backend marks the device offline', () => {
+        const device = createDevice({
+            connectivity_status: 'offline',
+            operational_status: 'assistance_requested',
+            last_seen_at: '2026-05-27T15:15:30Z',
         });
 
         expect(getPilotStatus(device, new Date('2026-05-27T15:16:00Z')).label).toBe('Offline');

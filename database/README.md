@@ -26,7 +26,7 @@ The scripts load `../backend/.env` and expect `POSTGRES_CONNECTION_STRING` (or `
 
 `npm run migrate` drops and recreates the database as the pilot schema. It is destructive by design and should only be used where data reset is acceptable.
 
-`npm run migrate:last-seen` is an additive migration that only ensures `devices.last_seen_at` exists on an already-provisioned pilot database.
+`npm run migrate:last-seen` is an additive migration that ensures `devices.last_seen_at` and `devices.connectivity_status` exist on an already-provisioned pilot database.
 
 ## Pilot schema overview
 
@@ -41,6 +41,11 @@ The pilot database keeps only the tables needed for a single operator + single s
 - `push_tokens`
 
 ## Device states
+
+`device_connectivity_status` tracks backend-authored connection freshness:
+
+- `online`
+- `offline`
 
 `device_operational_status` supports only the pilot loop and basic health states:
 
@@ -60,7 +65,7 @@ The pilot schema now includes the minimum persistence needed for operator notifi
 - `notification_preferences` stores operator opt-out state. Missing rows should be treated as the pilot default: notifications enabled and push enabled.
 - `push_tokens` stores Expo push tokens for authenticated operators.
 
-`offline` remains a frontend-only stale indicator for now. The canonical schema does not create backend-authored offline incidents or offline notifications in this phase.
+`connectivity_status` is the backend-authored offline indicator. When the sweep marks a device offline, the backend also records a device event and operator notification.
 
 ## Pilot sign bootstrap
 

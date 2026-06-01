@@ -1,7 +1,8 @@
 import os
+import asyncio
 import ssl
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 if os.environ.get("ENVIRONMENT") != "cloud":
@@ -34,6 +35,7 @@ from app.routes.devices import router as devices_router
 from app.routes.inference import router as inference_router
 from app.routes.notifications import router as notifications_router
 from app.routes.push_tokens import router as push_tokens_router
+from app.services.connectivity_service import run_connectivity_sweep_loop
 from app.utils.logger import logger
 
 
@@ -43,7 +45,18 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Server starting on port %s", settings.port)
     logger.info("📝 Environment: %s", settings.environment)
     await get_pool()
+    sweep_stop_event = None
+    sweep_task = None
+    if os.environ.get("PYTEST_CURRENT_TEST") is None:
+        sweep_stop_event = asyncio.Event()
+        sweep_task = asyncio.create_task(run_connectivity_sweep_loop(sweep_stop_event))
+        logger.info("Started connectivity sweep loop")
     yield
+    if sweep_task is not None and sweep_stop_event is not None:
+        sweep_stop_event.set()
+        sweep_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await sweep_task
     await close_pool()
     logger.info("Server shut down")
 
