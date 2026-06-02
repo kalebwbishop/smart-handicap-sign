@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Optional
 
 from app.config.database import get_pool
+from app.services.live_updates import publish_mobile_home_update_with_conn
 
 
 _NOTIFICATION_COLUMNS = """
@@ -71,26 +72,31 @@ async def _create_operator_notifications_with_conn(
 ) -> list[dict]:
     rows = await conn.fetch(
         f"""
-        INSERT INTO notifications (
-            user_id,
-            device_id,
-            device_event_id,
-            kind,
-            title,
-            body
+        WITH inserted AS (
+            INSERT INTO notifications (
+                user_id,
+                device_id,
+                device_event_id,
+                kind,
+                title,
+                body
+            )
+            SELECT
+                u.id,
+                $1::uuid,
+                $2::uuid,
+                $3,
+                $4,
+                $5
+            FROM users u
+            LEFT JOIN notification_preferences np ON np.user_id = u.id
+            WHERE COALESCE(np.assistance_requests_enabled, TRUE)
+            ON CONFLICT (user_id, device_event_id) DO NOTHING
+            RETURNING *
         )
-        SELECT
-            u.id,
-            $1::uuid,
-            $2::uuid,
-            $3,
-            $4,
-            $5
-        FROM users u
-        LEFT JOIN notification_preferences np ON np.user_id = u.id
-        WHERE COALESCE(np.assistance_requests_enabled, TRUE)
-        ON CONFLICT (user_id, device_event_id) DO NOTHING
-        RETURNING {_NOTIFICATION_COLUMNS}
+        SELECT {_NOTIFICATION_COLUMNS}
+        FROM inserted n
+        LEFT JOIN device_events de ON de.id = n.device_event_id
         """,
         device_id,
         device_event_id,
@@ -98,7 +104,19 @@ async def _create_operator_notifications_with_conn(
         title,
         body,
     )
-    return [_notification_row_to_dict(row) for row in rows]
+    notifications = [_notification_row_to_dict(row) for row in rows]
+    for notification in notifications:
+        await publish_mobile_home_update_with_conn(
+            conn,
+            scope="notifications",
+            payload={
+                "action": "created",
+                "kind": notification["kind"],
+                "notification_id": notification["id"],
+                "user_id": notification["user_id"],
+            },
+        )
+    return notifications
 
 
 async def create_assistance_request_notifications_with_conn(
@@ -195,43 +213,70 @@ async def get_unread_count(*, user_id: str) -> int:
 
 async def mark_notification_read(*, notification_id: str, user_id: str) -> Optional[dict]:
     pool = await get_pool()
-    row = await pool.fetchrow(
-        f"""
-        WITH updated AS (
-            UPDATE notifications
-            SET read = TRUE,
-                updated_at = NOW()
-            WHERE id = $1::uuid
-              AND user_id = $2::uuid
-            RETURNING *
-        )
-        SELECT {_NOTIFICATION_COLUMNS}
-        FROM updated n
-        LEFT JOIN device_events de ON de.id = n.device_event_id
-        """,
-        notification_id,
-        user_id,
-    )
-    return _notification_row_to_dict(row) if row else None
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            row = await conn.fetchrow(
+                f"""
+                WITH updated AS (
+                    UPDATE notifications
+                    SET read = TRUE,
+                        updated_at = NOW()
+                    WHERE id = $1::uuid
+                      AND user_id = $2::uuid
+                    RETURNING *
+                )
+                SELECT {_NOTIFICATION_COLUMNS}
+                FROM updated n
+                LEFT JOIN device_events de ON de.id = n.device_event_id
+                """,
+                notification_id,
+                user_id,
+            )
+            if row is None:
+                return None
+
+            notification = _notification_row_to_dict(row)
+            await publish_mobile_home_update_with_conn(
+                conn,
+                scope="notifications",
+                payload={
+                    "action": "read",
+                    "notification_id": notification["id"],
+                    "user_id": notification["user_id"],
+                },
+            )
+            return notification
 
 
 async def mark_all_notifications_read(*, user_id: str) -> int:
     pool = await get_pool()
-    count = await pool.fetchval(
-        """
-        WITH updated AS (
-            UPDATE notifications
-            SET read = TRUE,
-                updated_at = NOW()
-            WHERE user_id = $1::uuid
-              AND read = FALSE
-            RETURNING 1
-        )
-        SELECT COUNT(*) FROM updated
-        """,
-        user_id,
-    )
-    return int(count or 0)
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            count = await conn.fetchval(
+                """
+                WITH updated AS (
+                    UPDATE notifications
+                    SET read = TRUE,
+                        updated_at = NOW()
+                    WHERE user_id = $1::uuid
+                      AND read = FALSE
+                    RETURNING 1
+                )
+                SELECT COUNT(*) FROM updated
+                """,
+                user_id,
+            )
+            marked_read = int(count or 0)
+            if marked_read > 0:
+                await publish_mobile_home_update_with_conn(
+                    conn,
+                    scope="notifications",
+                    payload={
+                        "action": "read_all",
+                        "user_id": user_id,
+                    },
+                )
+            return marked_read
 
 
 async def get_notification_preferences(*, user_id: str) -> dict:

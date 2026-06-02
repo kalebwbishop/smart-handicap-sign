@@ -8,7 +8,7 @@ from app.services import device_service
 from app.services.expo_push import send_push_notifications
 from app.utils.logger import logger
 
-CONNECTIVITY_STALE_THRESHOLD_MINUTES = 15
+CONNECTIVITY_STALE_THRESHOLD_MINUTES = 5
 CONNECTIVITY_SWEEP_INTERVAL_SECONDS = 60
 
 

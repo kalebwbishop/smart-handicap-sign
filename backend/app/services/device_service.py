@@ -6,6 +6,7 @@ import json
 from typing import Any, Optional
 
 from app.config.database import get_pool
+from app.services.live_updates import publish_mobile_home_update_with_conn
 from app.utils.logger import logger
 
 
@@ -240,6 +241,17 @@ async def _transition_device_status_column(
                         device_name=updated.get("name"),
                     )
 
+            await publish_mobile_home_update_with_conn(
+                conn,
+                scope="device_status",
+                payload={
+                    "event_type": event_type,
+                    "new_status": new_status,
+                    "serial_number": serial_number,
+                    "status_field": status_column,
+                },
+            )
+
     return DeviceTransitionResult(
         success=True,
         device=_row_to_dict(updated),
@@ -443,6 +455,16 @@ async def mark_assistance_request_false_positive(
                     str(current_device["id"]),
                 )
                 updated_device = _row_to_dict(updated)
+
+            await publish_mobile_home_update_with_conn(
+                conn,
+                scope="notifications",
+                payload={
+                    "action": "false_positive",
+                    "device_event_id": device_event_id,
+                    "serial_number": serial_number,
+                },
+            )
 
     if current_status == "assistance_requested":
         try:

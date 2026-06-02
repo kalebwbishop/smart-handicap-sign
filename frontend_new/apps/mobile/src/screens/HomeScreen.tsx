@@ -32,6 +32,15 @@ import {
     getConnectivityStatus,
 } from './pilotStatus';
 import { shouldRefreshOnAppActive, shouldRefreshOnHomeFocus } from './homeRefresh';
+import {
+    startAssistanceAlertSound,
+    stopAssistanceAlertSound,
+} from '@/lib/assistanceAlertSound';
+import {
+    HomeLiveUpdatesConnection,
+    openHomeLiveUpdatesConnection,
+    shouldRefreshHomeOnLiveUpdate,
+} from '@/lib/homeLiveUpdates';
 import Feather from '@expo/vector-icons/Feather';
 
 const POLL_INTERVAL_MS = 30_000;
@@ -65,7 +74,7 @@ export default function HomeScreen() {
     const insets = useSafeAreaInsets();
     const isFocused = useIsFocused();
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-    const { user, logout, ensureFreshSession } = useAuthStore();
+    const { user, token, logout, ensureFreshSession } = useAuthStore();
 
     const [menuVisible, setMenuVisible] = useState(false);
     const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -84,11 +93,13 @@ export default function HomeScreen() {
     const [notificationError, setNotificationError] = useState<string | null>(null);
     const [notificationActionLoading, setNotificationActionLoading] = useState(false);
     const [activeNotificationId, setActiveNotificationId] = useState<string | null>(null);
+    const [isLiveUpdatesConnected, setIsLiveUpdatesConnected] = useState(false);
 
     const fetchInFlightRef = useRef(false);
     const hasLoadedOnceRef = useRef(false);
     const hasFocusedHomeRef = useRef(false);
     const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+    const liveUpdatesConnectionRef = useRef<HomeLiveUpdatesConnection | null>(null);
 
     const userName = user?.name?.split(' ')[0] || user?.email || 'Operator';
     const userInitial = userName.charAt(0).toUpperCase();
@@ -168,6 +179,74 @@ export default function HomeScreen() {
         fetchData();
     }, [fetchData]);
 
+    useEffect(() => {
+        if (Platform.OS === 'web' || !isFocused || !hasLoadedOnceRef.current || !token) {
+            liveUpdatesConnectionRef.current?.close();
+            liveUpdatesConnectionRef.current = null;
+            setIsLiveUpdatesConnected(false);
+            return;
+        }
+
+        let cancelled = false;
+
+        const connect = async () => {
+            try {
+                await ensureFreshSession();
+                const accessToken = useAuthStore.getState().token;
+                if (cancelled || !accessToken) {
+                    return;
+                }
+
+                liveUpdatesConnectionRef.current?.close();
+                liveUpdatesConnectionRef.current = openHomeLiveUpdatesConnection(accessToken, {
+                    onOpen: () => {
+                        if (cancelled) {
+                            return;
+                        }
+
+                        setIsLiveUpdatesConnected(true);
+                        void triggerRefresh({ auto: true });
+                    },
+                    onMessage: (update) => {
+                        if (cancelled || !shouldRefreshHomeOnLiveUpdate(update)) {
+                            return;
+                        }
+
+                        void triggerRefresh({ auto: true });
+                    },
+                    onError: (error) => {
+                        if (cancelled) {
+                            return;
+                        }
+
+                        console.warn('[HomeScreen] Live updates stream error:', error);
+                        setIsLiveUpdatesConnected(false);
+                    },
+                });
+
+                if (!liveUpdatesConnectionRef.current) {
+                    setIsLiveUpdatesConnected(false);
+                }
+            } catch (error) {
+                if (cancelled) {
+                    return;
+                }
+
+                console.error('[HomeScreen] Failed to open live updates stream:', error);
+                setIsLiveUpdatesConnected(false);
+            }
+        };
+
+        void connect();
+
+        return () => {
+            cancelled = true;
+            liveUpdatesConnectionRef.current?.close();
+            liveUpdatesConnectionRef.current = null;
+            setIsLiveUpdatesConnected(false);
+        };
+    }, [ensureFreshSession, isFocused, token, triggerRefresh]);
+
     useFocusEffect(
         useCallback(() => {
             const shouldRefresh = shouldRefreshOnHomeFocus({
@@ -184,21 +263,29 @@ export default function HomeScreen() {
     );
 
     useEffect(() => {
+        if (isLiveUpdatesConnected) {
+            return undefined;
+        }
+
         const delay = Math.max(0, nextRefreshAt - Date.now());
         const timeout = setTimeout(() => {
             void triggerRefresh({ auto: true });
         }, delay);
 
         return () => clearTimeout(timeout);
-    }, [nextRefreshAt, triggerRefresh]);
+    }, [isLiveUpdatesConnected, nextRefreshAt, triggerRefresh]);
 
     useEffect(() => {
+        if (isLiveUpdatesConnected) {
+            return undefined;
+        }
+
         const interval = setInterval(() => {
             setRefreshClock(Date.now());
         }, REFRESH_INDICATOR_TICK_MS);
 
         return () => clearInterval(interval);
-    }, []);
+    }, [isLiveUpdatesConnected]);
 
     useEffect(() => {
         if (Platform.OS === 'web') {
@@ -385,12 +472,16 @@ export default function HomeScreen() {
         () => (device ? hasFalsePositiveRequest(device, latestAssistanceRequestNotification) : false),
         [device, latestAssistanceRequestNotification],
     );
-    const millisecondsUntilRefresh = Math.max(0, nextRefreshAt - refreshClock);
+    const millisecondsUntilRefresh = isLiveUpdatesConnected ? 0 : Math.max(0, nextRefreshAt - refreshClock);
     const secondsUntilRefresh = Math.ceil(millisecondsUntilRefresh / 1000);
-    const refreshProgress = isAutoRefreshing
+    const refreshProgress = isLiveUpdatesConnected
         ? 1
-        : Math.min(1, Math.max(0, 1 - millisecondsUntilRefresh / POLL_INTERVAL_MS));
-    const refreshIndicatorText = isAutoRefreshing
+        : isAutoRefreshing
+            ? 1
+            : Math.min(1, Math.max(0, 1 - millisecondsUntilRefresh / POLL_INTERVAL_MS));
+    const refreshIndicatorText = isLiveUpdatesConnected
+        ? 'Live updates connected'
+        : isAutoRefreshing
         ? 'Refreshing now…'
         : `Next refresh in ${secondsUntilRefresh}s`;
     const unreadNotificationCount = useMemo(
@@ -398,6 +489,27 @@ export default function HomeScreen() {
         [notifications],
     );
     const notificationsEnabled = notificationPreferences?.assistance_requests_enabled ?? true;
+
+    useEffect(() => {
+        if (canAcknowledge) {
+            void startAssistanceAlertSound().catch((error) => {
+                console.error('[HomeScreen] Failed to start assistance alert sound:', error);
+            });
+            return;
+        }
+
+        void stopAssistanceAlertSound().catch((error) => {
+            console.error('[HomeScreen] Failed to stop assistance alert sound:', error);
+        });
+    }, [canAcknowledge]);
+
+    useEffect(() => {
+        return () => {
+            void stopAssistanceAlertSound().catch((error) => {
+                console.error('[HomeScreen] Failed to stop assistance alert sound during cleanup:', error);
+            });
+        };
+    }, []);
 
     return (
         <View style={styles.root}>
