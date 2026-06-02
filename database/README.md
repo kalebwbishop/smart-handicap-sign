@@ -40,6 +40,8 @@ The pilot database keeps only the tables needed for a single operator + single s
 - `notification_preferences`
 - `push_tokens`
 
+`device_events` now stores the raw assistance-request samples inside `payload` and a `correct_response` label that operators can flip to false when the request was a false positive.
+
 ## Device states
 
 `device_connectivity_status` tracks backend-authored connection freshness:

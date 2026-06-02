@@ -25,12 +25,13 @@ def _device(status: str = "available") -> dict:
     }
 
 
-def _event() -> dict:
+def _event(correct_response: bool | None = True) -> dict:
     return {
         "id": "evt-1",
         "device_id": "device-1",
         "event_type": "assistance_requested",
         "payload": {"confidence": 0.97},
+        "correct_response": correct_response,
         "created_at": datetime.now(timezone.utc),
     }
 
@@ -67,6 +68,49 @@ class TestDeviceStatus:
         response = client_anon.get("/api/v1/devices/missing/status")
 
         assert response.status_code == 404
+
+
+class TestDeviceTwinRoutes:
+    @patch("app.routes.devices.device_service.get_device_by_serial", new_callable=AsyncMock)
+    @patch("app.routes.devices.device_twin_service.get_device_twin_state", new_callable=AsyncMock)
+    def test_get_device_twin_returns_desired_and_reported(self, mock_get_twin, mock_get_device, client_alice):
+        mock_get_device.return_value = _device()
+        mock_get_twin.return_value = {
+            "serial_number": "SHS-2605-S01-A7K-00001-J",
+            "desired_properties": {"operational_status": "assistance_requested"},
+            "reported_properties": {"operational_status": "available"},
+            "etag": "\"abc\"",
+        }
+
+        response = client_alice.get("/api/v1/devices/SHS-2605-S01-A7K-00001-J/twin")
+
+        assert response.status_code == 200
+        assert response.json()["desired_properties"]["operational_status"] == "assistance_requested"
+        assert response.json()["reported_properties"]["operational_status"] == "available"
+        mock_get_twin.assert_awaited_once_with("SHS-2605-S01-A7K-00001-J")
+
+    @patch("app.routes.devices.device_service.get_device_by_serial", new_callable=AsyncMock)
+    @patch("app.routes.devices.device_twin_service.update_device_desired_properties", new_callable=AsyncMock)
+    def test_update_device_twin_desired_properties(self, mock_update_twin, mock_get_device, client_alice):
+        mock_get_device.return_value = _device()
+        mock_update_twin.return_value = {
+            "serial_number": "SHS-2605-S01-A7K-00001-J",
+            "desired_properties": {"operational_status": "assistance_in_progress"},
+            "reported_properties": {"operational_status": "available"},
+            "etag": "\"abc\"",
+        }
+
+        response = client_alice.patch(
+            "/api/v1/devices/SHS-2605-S01-A7K-00001-J/twin/desired",
+            json={"desired_properties": {"operational_status": "assistance_in_progress"}},
+        )
+
+        assert response.status_code == 200
+        assert response.json()["desired_properties"]["operational_status"] == "assistance_in_progress"
+        mock_update_twin.assert_awaited_once_with(
+            "SHS-2605-S01-A7K-00001-J",
+            {"operational_status": "assistance_in_progress"},
+        )
 
 
 class TestAcknowledgeResolve:
@@ -118,7 +162,59 @@ class TestDeviceEvents:
 
         assert response.status_code == 200
         assert response.json()[0]["event_type"] == "assistance_requested"
+        assert response.json()[0]["correct_response"] is True
 
     def test_normalize_event_payload_parses_stringified_json(self):
         payload = _normalize_event_payload('{"message":"Pilot sign created"}')
         assert payload == {"message": "Pilot sign created"}
+
+
+class TestFalsePositiveRoute:
+    @patch("app.routes.devices.device_service.get_device_by_serial", new_callable=AsyncMock)
+    @patch("app.routes.devices.device_service.mark_assistance_request_false_positive", new_callable=AsyncMock)
+    def test_mark_false_positive_returns_device_and_event(self, mock_mark, mock_get, client_alice):
+        mock_get.return_value = _device("assistance_requested")
+        mock_mark.return_value = type(
+            "Result",
+            (),
+            {
+                "success": True,
+                "device": _device("available"),
+                "device_event": _event(correct_response=False),
+            },
+        )()
+
+        response = client_alice.post(
+            "/api/v1/devices/SHS-2605-S01-A7K-00001-J/events/evt-1/false-positive"
+        )
+
+        assert response.status_code == 200
+        assert response.json()["device"]["operational_status"] == "available"
+        assert response.json()["device_event"]["correct_response"] is False
+        mock_mark.assert_awaited_once_with(
+            serial_number="SHS-2605-S01-A7K-00001-J",
+            device_event_id="evt-1",
+        )
+
+    @patch("app.routes.devices.device_service.get_device_by_serial", new_callable=AsyncMock)
+    @patch("app.routes.devices.device_service.mark_assistance_request_false_positive", new_callable=AsyncMock)
+    def test_mark_false_positive_rejects_wrong_state(self, mock_mark, mock_get, client_alice):
+        mock_get.return_value = _device("assistance_in_progress")
+        mock_mark.return_value = type(
+            "Result",
+            (),
+            {
+                "success": False,
+                "current_status": "assistance_in_progress",
+            },
+        )()
+
+        response = client_alice.post(
+            "/api/v1/devices/SHS-2605-S01-A7K-00001-J/events/evt-1/false-positive"
+        )
+
+        assert response.status_code == 409
+        mock_mark.assert_awaited_once_with(
+            serial_number="SHS-2605-S01-A7K-00001-J",
+            device_event_id="evt-1",
+        )

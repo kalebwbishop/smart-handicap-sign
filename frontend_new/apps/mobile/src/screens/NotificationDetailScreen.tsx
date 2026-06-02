@@ -1,12 +1,15 @@
-import React from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { ActivityIndicator, View, Text, ScrollView, StyleSheet, Pressable } from 'react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { devicesAPI } from '@/api/api';
+import { useAuthStore } from '@/store/authStore';
 import { RootStackParamList } from '@/types/navigation';
 import { colors } from '@/theme/colors';
 import { typography } from '@/theme/typography';
 import { spacing, layout } from '@/theme/spacing';
+import { canMarkFalsePositiveRequest } from './pilotStatus';
 
 function formatDate(iso: string): string {
     const d = new Date(iso);
@@ -25,6 +28,31 @@ export default function NotificationDetailScreen() {
     const route = useRoute<RouteProp<RootStackParamList, 'NotificationDetail'>>();
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const { notification, device } = route.params;
+    const { ensureFreshSession } = useAuthStore();
+    const [falsePositiveMarked, setFalsePositiveMarked] = useState(notification.device_event_correct_response === false);
+    const [falsePositiveActionLoading, setFalsePositiveActionLoading] = useState(false);
+
+    const canMarkFalsePositive = useMemo(
+        () => (device ? canMarkFalsePositiveRequest(device, notification) && !falsePositiveMarked : false),
+        [device, falsePositiveMarked, notification],
+    );
+
+    const handleMarkFalsePositive = async () => {
+        if (!device || !notification.device_event_id) {
+            return;
+        }
+
+        setFalsePositiveActionLoading(true);
+        try {
+            await ensureFreshSession();
+            await devicesAPI.markFalsePositive(device.serial_number, notification.device_event_id);
+            setFalsePositiveMarked(true);
+        } catch (error) {
+            console.error('[NotificationDetail] Failed to mark false positive:', error);
+        } finally {
+            setFalsePositiveActionLoading(false);
+        }
+    };
 
     return (
         <ScrollView style={s.container} contentContainerStyle={s.content}>
@@ -47,6 +75,22 @@ export default function NotificationDetailScreen() {
                     <Text style={s.metaValue}>{notification.id}</Text>
                 </View>
             </View>
+
+            {canMarkFalsePositive ? (
+                <Pressable
+                    accessibilityLabel="Mark request as false positive"
+                    accessibilityRole="button"
+                    disabled={falsePositiveActionLoading}
+                    onPress={handleMarkFalsePositive}
+                    style={({ pressed }) => [s.falsePositiveAction, falsePositiveActionLoading && s.disabledAction, pressed && s.pressed]}
+                >
+                    {falsePositiveActionLoading ? (
+                        <ActivityIndicator color={colors.negative} size="small" />
+                    ) : (
+                        <Text style={s.falsePositiveActionText}>False Positive</Text>
+                    )}
+                </Pressable>
+            ) : null}
 
             {device ? (
                 <Pressable
@@ -132,6 +176,23 @@ const s = StyleSheet.create({
     primaryActionText: {
         ...typography.button,
         color: colors.ctaPrimaryText,
+    },
+    falsePositiveAction: {
+        alignItems: 'center',
+        backgroundColor: '#FFF5F5',
+        borderColor: colors.negative,
+        borderRadius: layout.borderRadiusPill,
+        borderWidth: 1,
+        marginBottom: spacing.xl,
+        paddingHorizontal: spacing.lg,
+        paddingVertical: 14,
+    },
+    falsePositiveActionText: {
+        ...typography.button,
+        color: colors.negative,
+    },
+    disabledAction: {
+        opacity: 0.6,
     },
     pressed: {
         opacity: 0.82,

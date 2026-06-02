@@ -7,9 +7,15 @@ idf_component_register(
         "led_driver.c"
         "wifi_manager.c"
         "provisioning_server.c"
-        "https_client.c"
+        "iot_hub_client.c"
     INCLUDE_DIRS "."
-    PRIV_REQUIRES esp_adc esp_driver_gpio esp_event esp_http_client esp_http_server esp_netif esp_timer esp_wifi json mbedtls nvs_flash
+    PRIV_REQUIRES esp_adc esp_driver_gpio esp_event esp_http_client esp_http_server esp_netif esp_timer esp_wifi json mbedtls mqtt nvs_flash
 )
 
-target_compile_definitions(${COMPONENT_LIB} PRIVATE HAZARD_HERO_BACKEND_URL="${HAZARD_HERO_BACKEND_URL}")
+target_compile_definitions(${COMPONENT_LIB} PRIVATE
+    IOT_HUB_HOST="${IOT_HUB_HOST}"
+    IOT_HUB_DEVICE_ID="${IOT_HUB_DEVICE_ID}"
+    IOT_HUB_MQTT_PORT=${IOT_HUB_MQTT_PORT}
+    IOT_HUB_API_VERSION="${IOT_HUB_API_VERSION}"
+    IOT_HUB_SAS_TOKEN="${IOT_HUB_SAS_TOKEN}"
+)

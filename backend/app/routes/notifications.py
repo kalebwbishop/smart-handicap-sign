@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -14,11 +15,12 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 
 class NotificationOut(BaseModel):
     id: str
-    device_event_id: str | None = None
-    user_id: str | None = None
+    device_event_id: Optional[str] = None
+    user_id: Optional[str] = None
     title: str
     body: str
     read: bool
+    device_event_correct_response: Optional[bool]
     created_at: datetime
     updated_at: datetime
 
@@ -37,14 +39,14 @@ class NotificationPreferencesOut(BaseModel):
 
 
 class NotificationPreferencesUpdate(BaseModel):
-    assistance_requests_enabled: bool | None = None
-    push_enabled: bool | None = None
+    assistance_requests_enabled: Optional[bool] = None
+    push_enabled: Optional[bool] = None
 
 
 @router.get("", response_model=list[NotificationOut])
 async def list_notifications(
-    after: datetime | None = Query(default=None),
-    read: bool | None = Query(default=None),
+    after: Optional[datetime] = Query(default=None),
+    read: Optional[bool] = Query(default=None),
     current_user: CurrentUser = Depends(get_current_user),
 ):
     try:

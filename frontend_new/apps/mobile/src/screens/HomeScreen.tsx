@@ -23,8 +23,16 @@ import { NotificationPreferences, SignNotification } from '@/types/types';
 import { colors } from '@/theme/colors';
 import { layout, shadows, spacing } from '@/theme/spacing';
 import { typography } from '@/theme/typography';
-import { getPilotStatus, isDeviceOffline } from './pilotStatus';
+import {
+    canAcknowledgeRequest as hasAcknowledgeRequest,
+    canMarkFalsePositiveRequest as hasFalsePositiveRequest,
+    canResolveRequest as hasResolveRequest,
+    getLatestAssistanceRequestNotification,
+    getOperationalStatus,
+    getConnectivityStatus,
+} from './pilotStatus';
 import { shouldRefreshOnAppActive, shouldRefreshOnHomeFocus } from './homeRefresh';
+import Feather from '@expo/vector-icons/Feather';
 
 const POLL_INTERVAL_MS = 30_000;
 const HOME_SCREEN_REQUEST_TIMEOUT_MS = 10_000;
@@ -70,6 +78,7 @@ export default function HomeScreen() {
     const [deviceLoading, setDeviceLoading] = useState(true);
     const [deviceError, setDeviceError] = useState<string | null>(null);
     const [deviceActionLoading, setDeviceActionLoading] = useState(false);
+    const [falsePositiveActionLoading, setFalsePositiveActionLoading] = useState(false);
     const [notifications, setNotifications] = useState<SignNotification[]>([]);
     const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences | null>(null);
     const [notificationError, setNotificationError] = useState<string | null>(null);
@@ -256,6 +265,34 @@ export default function HomeScreen() {
         }
     }, [device, ensureFreshSession]);
 
+    const handleMarkFalsePositiveRequest = useCallback(async () => {
+        const latestAssistanceRequestNotification = getLatestAssistanceRequestNotification(notifications);
+        if (!device || !latestAssistanceRequestNotification?.device_event_id) {
+            return;
+        }
+
+        setFalsePositiveActionLoading(true);
+        try {
+            await ensureFreshSession();
+            const updated = await devicesAPI.markFalsePositive(
+                device.serial_number,
+                latestAssistanceRequestNotification.device_event_id,
+            );
+            setDevice(updated.device);
+            setNotifications((currentNotifications) =>
+                currentNotifications.map((notification) =>
+                    notification.device_event_id === updated.device_event.id
+                        ? { ...notification, device_event_correct_response: updated.device_event.correct_response }
+                        : notification,
+                ),
+            );
+        } catch (error) {
+            console.error('[HomeScreen] Failed to mark false positive:', error);
+        } finally {
+            setFalsePositiveActionLoading(false);
+        }
+    }, [device, ensureFreshSession, notifications]);
+
     const handleLogout = useCallback(async () => {
         setMenuVisible(false);
         setIsLoggingOut(true);
@@ -335,13 +372,19 @@ export default function HomeScreen() {
         }
     }, [ensureFreshSession]);
 
-    const status = useMemo(() => (device ? getPilotStatus(device) : null), [device]);
-    const effectiveOperationalStatus = useMemo(() => {
-        if (!device || isDeviceOffline(device)) {
-            return 'offline';
-        }
-        return device.operational_status;
-    }, [device]);
+    const status = useMemo(() => (device ? getOperationalStatus(device) : null), [device]);
+    const connectivityStatus = useMemo(() => (device ? getConnectivityStatus(device) : null), [device]);
+    const deviceOffline = connectivityStatus?.label.toLowerCase() === 'offline';
+    const canAcknowledge = useMemo(() => (device ? hasAcknowledgeRequest(device) : false), [device]);
+    const canResolve = useMemo(() => (device ? hasResolveRequest(device) : false), [device]);
+    const latestAssistanceRequestNotification = useMemo(
+        () => getLatestAssistanceRequestNotification(notifications),
+        [notifications],
+    );
+    const canMarkFalsePositive = useMemo(
+        () => (device ? hasFalsePositiveRequest(device, latestAssistanceRequestNotification) : false),
+        [device, latestAssistanceRequestNotification],
+    );
     const millisecondsUntilRefresh = Math.max(0, nextRefreshAt - refreshClock);
     const secondsUntilRefresh = Math.ceil(millisecondsUntilRefresh / 1000);
     const refreshProgress = isAutoRefreshing
@@ -477,7 +520,12 @@ export default function HomeScreen() {
                                     onPress={handleOpenSignDetails}
                                     style={({ pressed }) => [pressed && styles.pressed]}
                                 >
-                                    <Text style={styles.signName}>{device.name || 'Sign'}</Text>
+                                    <View style={styles.signHeaderRow}>
+                                        <Text style={styles.signName}>{device.name || 'Sign'}</Text>
+                                        <Feather accessibilityLabel="Wi-Fi connected" name={deviceOffline ? "wifi-off" : "wifi"} size={24} color="black" />
+                                    </View>
+                                        <Text style={styles.signName}>{device?.connectivity_status ?? 'Unknown'}</Text>
+
                                     <Text style={styles.signMeta}>{formatLastSeen(device.last_seen_at)}</Text>
 
                                     <View style={[styles.statusBanner, { backgroundColor: status?.tone ?? colors.offWhite }]}>
@@ -485,17 +533,25 @@ export default function HomeScreen() {
                                             {status?.label ?? 'Status unavailable'}
                                         </Text>
                                     </View>
+                                    {deviceOffline ? (
+                                        <View style={styles.offlineWarningRow}>
+                                            <Text style={styles.offlineWarningIcon}>⚠️</Text>
+                                            <Text style={[styles.offlineWarningText, { color: connectivityStatus?.color ?? colors.textPrimary }]}> 
+                                                This sign appears to be offline. The above status may not be up to date, and assistance requests may not be received until connectivity is restored.
+                                            </Text>
+                                        </View>
+                                    ) : null}
                                 </Pressable>
 
-                                {effectiveOperationalStatus === 'assistance_requested' ? (
+                                {canAcknowledge ? (
                                     <Pressable
                                         accessibilityLabel="Acknowledge assistance request"
                                         accessibilityRole="button"
-                                        disabled={deviceActionLoading}
+                                        disabled={deviceActionLoading || falsePositiveActionLoading}
                                         onPress={handleAcknowledgeRequest}
                                         style={({ pressed }) => [
                                             styles.primaryAction,
-                                            deviceActionLoading && styles.disabledAction,
+                                            (deviceActionLoading || falsePositiveActionLoading) && styles.disabledAction,
                                             pressed && styles.pressed,
                                         ]}
                                     >
@@ -507,15 +563,35 @@ export default function HomeScreen() {
                                     </Pressable>
                                 ) : null}
 
-                                {effectiveOperationalStatus === 'assistance_in_progress' ? (
+                                {canMarkFalsePositive ? (
+                                    <Pressable
+                                        accessibilityLabel="Mark assistance request as false positive"
+                                        accessibilityRole="button"
+                                        disabled={falsePositiveActionLoading || deviceActionLoading}
+                                        onPress={handleMarkFalsePositiveRequest}
+                                        style={({ pressed }) => [
+                                            styles.falsePositiveAction,
+                                            (falsePositiveActionLoading || deviceActionLoading) && styles.disabledAction,
+                                            pressed && styles.pressed,
+                                        ]}
+                                    >
+                                        {falsePositiveActionLoading ? (
+                                            <ActivityIndicator color={colors.negative} size="small" />
+                                        ) : (
+                                            <Text style={styles.falsePositiveActionText}>False Positive</Text>
+                                        )}
+                                    </Pressable>
+                                ) : null}
+
+                                {canResolve ? (
                                     <Pressable
                                         accessibilityLabel="Resolve assistance request"
                                         accessibilityRole="button"
-                                        disabled={deviceActionLoading}
+                                        disabled={deviceActionLoading || falsePositiveActionLoading}
                                         onPress={handleResolveRequest}
                                         style={({ pressed }) => [
                                             styles.successAction,
-                                            deviceActionLoading && styles.disabledAction,
+                                            (deviceActionLoading || falsePositiveActionLoading) && styles.disabledAction,
                                             pressed && styles.pressed,
                                         ]}
                                     >
@@ -857,6 +933,15 @@ const styles = StyleSheet.create({
     signName: {
         ...typography.h2,
         color: colors.textPrimary,
+        flex: 1,
+    },
+    signHeaderRow: {
+        alignItems: 'center',
+        flexDirection: 'row',
+        gap: spacing.sm,
+    },
+    wifiIcon: {
+        fontSize: 24,
     },
     signMeta: {
         ...typography.bodySmall,
@@ -872,6 +957,18 @@ const styles = StyleSheet.create({
     statusBannerText: {
         ...typography.h3,
         textAlign: 'center',
+    },
+    offlineIndicator: {
+        alignSelf: 'center',
+        backgroundColor: '#86868B12',
+        borderRadius: layout.borderRadiusPill,
+        marginTop: spacing.sm,
+        paddingHorizontal: spacing.md,
+        paddingVertical: spacing.xs,
+    },
+    offlineIndicatorText: {
+        ...typography.captionBold,
+        color: colors.textMuted,
     },
     primaryAction: {
         alignItems: 'center',
@@ -889,9 +986,23 @@ const styles = StyleSheet.create({
         paddingHorizontal: spacing.lg,
         paddingVertical: 14,
     },
+    falsePositiveAction: {
+        alignItems: 'center',
+        backgroundColor: '#FFF5F5',
+        borderColor: colors.negative,
+        borderRadius: layout.borderRadiusPill,
+        borderWidth: 1,
+        marginTop: spacing.md,
+        paddingHorizontal: spacing.lg,
+        paddingVertical: 14,
+    },
     primaryActionText: {
         ...typography.button,
         color: colors.white,
+    },
+    falsePositiveActionText: {
+        ...typography.button,
+        color: colors.negative,
     },
     disabledAction: {
         opacity: 0.6,
@@ -915,6 +1026,21 @@ const styles = StyleSheet.create({
         color: colors.textSecondary,
         marginTop: spacing.xs,
         textAlign: 'center',
+    },
+    offlineWarningRow: {
+        alignItems: 'flex-start',
+        flexDirection: 'row',
+        gap: spacing.sm,
+        marginTop: spacing.md,
+    },
+    offlineWarningIcon: {
+        fontSize: 20,
+        lineHeight: 24,
+    },
+    offlineWarningText: {
+        ...typography.bodySmall,
+        flex: 1,
+        lineHeight: 20,
     },
     inlineAction: {
         alignSelf: 'flex-start',

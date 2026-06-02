@@ -25,7 +25,7 @@ Additional statuses: `offline`, `error`, `training_ready`, `training_positive`, 
 ### System data flow
 
 ```
-ESP32 photoresistor → 512 samples at 25ms intervals
+ESP32 photoresistor → config.json-defined sample window at the configured interval
 → POST /api/v1/inference/classify → WaveDetector CNN → wave/non-wave
 → if wave: sign status → assistance_requested
 → mobile app polls sign status → staff acknowledges → resolves
@@ -91,7 +91,7 @@ docker compose up -d     # postgres, pgadmin, redis, backend, web
 - `/devices/*` — device registration, claims, lifecycle, status polling, and device event history
 - `/notifications/*` — Push notification management
 - `/organizations/*` — Organization CRUD, member management, role-based access (owner/admin/member)
-- `/inference/classify` — POST 512-int signal → wave/non-wave classification (optional auth)
+- `/inference/classify` — POST signal matching the configured sample count → wave/non-wave classification (optional auth)
 - `GET /health` — DB connectivity check (mounted at root, not under `/api/v1`)
 - `GET /api/v1/status` — API version and uptime check
 
@@ -111,7 +111,7 @@ docker compose up -d     # postgres, pgadmin, redis, backend, web
 ## AI Module (`ai/`)
 
 - **Model:** `WaveDetector` — 3-block 1D CNN (Conv1d → BatchNorm → ReLU → MaxPool) → AdaptiveAvgPool → Dropout → Linear → Sigmoid
-- **Input:** 512 integers (0–65535), normalized to [0,1], shaped as (batch, 1, 512). Note: ESP32 ADC produces 12-bit values (0–4095) but the model normalizes by dividing by 65535 — there is a known scaling mismatch.
+- **Input:** Configured sample-count integers (0–65535), normalized to [0,1], shaped as (batch, 1, SEQ_LEN). Note: ESP32 ADC produces 12-bit values (0–4095) but the model normalizes by dividing by 65535 — there is a known scaling mismatch.
 - **Output:** Binary probability (wave / non-wave)
 - **Training data:** Synthetic — sine/square waves (label=1), noise/silence (label=0)
 - **Checkpoints:** `ai/checkpoints/best.pt` — must also be copied to `backend/app/ai/checkpoints/best.pt`
@@ -123,7 +123,7 @@ docker compose up -d     # postgres, pgadmin, redis, backend, web
 - **WiFi provisioning:** AP mode with HTTP server on port 80 (`/status`, `/scan`, `/configure`). Credentials persisted in `/wifi_config.json` on flash.
 - **Status LED:** Non-blocking blink patterns via hardware Timer callbacks.
 - **Resilience:** WDT (30s timeout), retry logic with backoff, auto-reconnect, fallback to AP provisioning mode on WiFi failure.
-- **Main loop:** Poll sign status → sample 512 points → POST to `/api/v1/inference/classify`
+- **Main loop:** Poll sign status → sample the configured window → POST to `/api/v1/inference/classify`
 - **Hardcoded config:** `main.py` has a hardcoded dev tunnel URL and sign UUID — must be changed per deployment.
 - **AP SSID:** `SmartSign-{last4ofDeviceId}`
 - **No `boot.py`** — `main.py` is the sole MicroPython entry point.

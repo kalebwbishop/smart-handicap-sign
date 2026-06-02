@@ -7,6 +7,7 @@ import { colors } from '@/theme/colors';
 import { layout, shadows, spacing } from '@/theme/spacing';
 import { typography } from '@/theme/typography';
 import { RootStackParamList } from '@/types/navigation';
+import { getOperationalStatus, getConnectivityStatus } from './pilotStatus';
 
 function displayValue(value: string | null | undefined): string {
     return value?.trim() || 'Not reported';
@@ -16,6 +17,8 @@ export default function SignDetailsScreen() {
     const route = useRoute<RouteProp<RootStackParamList, 'SignDetails'>>();
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const { device } = route.params;
+    const status = getOperationalStatus(device);
+    const deviceOffline = getConnectivityStatus(device)?.label === 'Offline';
 
     return (
         <ScrollView contentContainerStyle={styles.content} style={styles.root}>
@@ -29,6 +32,8 @@ export default function SignDetailsScreen() {
                     <DetailRow label="Hardware revision" value={displayValue(device.hardware_revision)} />
                     <DetailRow label="Model code" value={displayValue(device.model_code)} />
                     <DetailRow label="Lifecycle status" value={device.lifecycle_status} />
+                    <DetailRow label="Current status" value={status.label} />
+                    {deviceOffline ? <DetailRow label="Connectivity" value="Offline" /> : null}
                 </View>
 
                 <Pressable

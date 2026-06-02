@@ -1,4 +1,5 @@
-import type { Device, DeviceLifecycleStatus } from '../types/device';
+import type { Device, DeviceLifecycleStatus, DeviceConnectivityStatus } from '../types/device';
+import type { SignNotification } from '@/types/types';
 import { colors } from '../theme/colors';
 
 type EnvReader = {
@@ -26,7 +27,19 @@ const OPERATIONAL_STATUS: Record<string, { label: string; color: string; tone: s
     assistance_in_progress: { label: 'Assistance In Progress', color: colors.warning, tone: '#FF950012' },
     offline: { label: 'Offline', color: colors.textMuted, tone: '#86868B12' },
     error: { label: 'Needs Attention', color: colors.warning, tone: '#FF950012' },
+    unknown: { label: 'Unknown status', color: colors.textMuted, tone: '#86868B12' },
 };
+
+const CONNECTIVITY_STATUS: Record<DeviceConnectivityStatus, { label: string; color: string }> = {
+    online: { label: 'Online', color: '#34C759' },
+    offline: { label: 'Offline', color: colors.textMuted },
+};
+
+type ActiveAssistanceStatus = Extract<Device['operational_status'], 'assistance_requested' | 'assistance_in_progress'>;
+
+function isActiveAssistanceStatus(status: Device['operational_status']): status is ActiveAssistanceStatus {
+    return status === 'assistance_requested' || status === 'assistance_in_progress';
+}
 
 function getConfiguredStaleThresholdMinutes(): number {
     const rawValue = (globalThis as typeof globalThis & EnvReader).process?.env?.[STALE_THRESHOLD_ENV_KEY]?.trim();
@@ -63,8 +76,41 @@ export function isDeviceOffline(device: Device, now = new Date()): boolean {
     return isDeviceStale(device, now);
 }
 
+export function canAcknowledgeRequest(device: Device): boolean {
+    return device.operational_status === 'assistance_requested';
+}
+
+export function canResolveRequest(device: Device): boolean {
+    return device.operational_status === 'assistance_in_progress';
+}
+
+export function getLatestAssistanceRequestNotification(
+    notifications: SignNotification[],
+): SignNotification | null {
+    return notifications.find((notification) => notification.device_event_correct_response != null) ?? null;
+}
+
+export function canMarkFalsePositiveRequest(
+    device: Device,
+    notification: SignNotification | null,
+): boolean {
+    return (
+        device.operational_status === 'assistance_requested' &&
+        notification?.device_event_id != null &&
+        notification.device_event_correct_response === true
+    );
+}
+
+export function shouldShowOfflineIndicator(device: Device, now = new Date()): boolean {
+    return isDeviceOffline(device, now) && isActiveAssistanceStatus(device.operational_status);
+}
+
 export function getPilotStatus(device: Device, now = new Date()) {
     if (isDeviceOffline(device, now)) {
+        if (isActiveAssistanceStatus(device.operational_status)) {
+            return OPERATIONAL_STATUS[device.operational_status];
+        }
+
         return OPERATIONAL_STATUS.offline;
     }
 
@@ -72,8 +118,23 @@ export function getPilotStatus(device: Device, now = new Date()) {
         return OPERATIONAL_STATUS[device.operational_status] ?? OPERATIONAL_STATUS.available;
     }
 
+    const lifecycleStatus = LIFECYCLE_STATUS[device.lifecycle_status];
     return {
-        ...LIFECYCLE_STATUS[device.lifecycle_status],
-        tone: `${LIFECYCLE_STATUS[device.lifecycle_status].color}12`,
+        ...lifecycleStatus,
+        tone: `${lifecycleStatus.color}12`,
     };
+}
+
+export function getOperationalStatus(device: Device) {
+    if (!device.operational_status) {
+        return OPERATIONAL_STATUS.unknown;
+    }
+    return OPERATIONAL_STATUS[device.operational_status] || OPERATIONAL_STATUS.unknown;
+}
+
+export function getConnectivityStatus(device: Device) {
+    if (!device.connectivity_status) {
+        return CONNECTIVITY_STATUS.offline;
+    }
+    return device.connectivity_status === 'online' ? CONNECTIVITY_STATUS.online : CONNECTIVITY_STATUS.offline;
 }

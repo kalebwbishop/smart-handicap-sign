@@ -17,7 +17,7 @@
 **Frontend**: React Native + Expo SDK 54, TypeScript, React Navigation native-stack, Zustand, TanStack Query, Axios, theme tokens  
 **Database**: PostgreSQL 15 schemas and TypeScript migration/seed scripts in `database/`  
 **Firmware**: ESP-IDF C under `firmware/`; legacy MicroPython under `hardware/` only when explicitly targeted  
-**AI**: PyTorch 1D CNN, 512-sample input contract, checkpoints in `ai/checkpoints/` and backend embedded copy  
+**AI**: PyTorch 1D CNN, config.json-defined sample-count input contract, checkpoints in `ai/checkpoints/` and backend embedded copy  
 **Infrastructure**: Docker Compose, Terraform, Azure deployment artifacts  
 **Testing**: pytest for backend/AI, Jest configured for frontend, Playwright for frontend e2e, ESP-IDF build for firmware  
 **External/Local Dependencies**: WorkOS, PostgreSQL, local `deploy-box-python`, local `deploy-box-react-native`, Docker, ESP-IDF toolchain when firmware touched  

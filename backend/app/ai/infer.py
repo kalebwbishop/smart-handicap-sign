@@ -6,7 +6,7 @@ Usage
 As a library (inside the backend service):
     from app.ai.infer import WaveClassifier
     clf = WaveClassifier()
-    result = clf.classify([1234, 3210, ...])   # list of 512 ints (0-4095)
+    result = clf.classify([1234, 3210, ...])   # list matching the configured sample count (0-4095)
     print(result)  # {"label": "wave", "confidence": 0.97}
 """
 
@@ -47,12 +47,12 @@ class WaveClassifier:
         self, signal: list[int] | np.ndarray, threshold: float = INFERENCE_CONFIG["threshold"]
     ) -> dict[str, str | float]:
         """
-        Classify a single 512-int signal.
+        Classify a signal matching the configured sample count.
 
         Parameters
         ----------
         signal : list[int] | ndarray
-            Exactly 512 integers in the range 0-4095 (ESP32 12-bit ADC).
+            Exactly the configured sample count integers in the range 0-4095 (ESP32 12-bit ADC).
         threshold : float
             Decision boundary (default 0.5).
 
@@ -66,7 +66,7 @@ class WaveClassifier:
         if arr.min() < 0 or arr.max() > MAX_VAL:
             raise ValueError(f"Values must be in 0-{MAX_VAL}")
 
-        x = torch.tensor(arr / MAX_VAL, dtype=torch.float32).unsqueeze(0).unsqueeze(0)  # (1, 1, 512)
+        x = torch.tensor(arr / MAX_VAL, dtype=torch.float32).unsqueeze(0).unsqueeze(0)  # (1, 1, SEQ_LEN)
         x = x.to(self.device)
 
         prob = self.model(x).item()

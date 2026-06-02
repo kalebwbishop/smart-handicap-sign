@@ -63,8 +63,8 @@ It is a provision point, not a functional battery subsystem.
 |---|---|---|
 | Target module | ESP32-WROOM-32 (4 MB flash, no PSRAM) | `firmware/sdkconfig.defaults:2` (comment), `firmware/README.md:9` |
 | CPU clock | **240 MHz, fixed** | `firmware/sdkconfig.defaults:10` |
-| ADC batch size | **512 samples** | `firmware/main/adc_sampler.h:10` |
-| Sample interval | **25 ms** -> **12.8 s per batch** | `firmware/main/adc_sampler.h:11`, comment line 22 |
+| ADC batch size | **configured sample window** | `firmware/main/adc_sampler.h:10` |
+| Sample interval | **configured interval** | `firmware/main/adc_sampler.h:11`, comment line 22 |
 | Status poll interval | **3 s** (non-`available` states) | `firmware/main/main.c:25` |
 | Post-classify inter-loop delay | **1 s** | `firmware/main/main.c:24` |
 | Watchdog timeout | **30 s** | `firmware/sdkconfig.defaults:28` |
@@ -78,13 +78,13 @@ Main loop cycle when the device is in `available` state:[^main-loop]
 poll GET /devices/{serial}/status
   -> if not available -> wait 3 s, loop
   -> if available:
-       collect 512 ADC samples x 25 ms   (~12.8 s; CPU mostly idle, Wi-Fi held live)
+       collect the configured ADC sample batch   (CPU mostly idle, Wi-Fi held live)
        POST /inference/classify
        wait 1 s
        loop
 ```
 
-During the 12.8 s ADC window, the Wi-Fi association is maintained but no data is transmitted.
+During the ADC window, the Wi-Fi association is maintained but no data is transmitted.
 The CPU spends the vast majority of this window blocked inside `vTaskDelay(pdMS_TO_TICKS(25))`
 between samples - idle time that power management could exploit if enabled.[^adc-loop]
 
@@ -183,9 +183,8 @@ after `wifi_sta_connect()` returns.[^esp-pm-docs]
 ### 3.2 Exploit idle time in the ADC collection window
 
 `adc_sampler_collect_batch()` calls `vTaskDelay(pdMS_TO_TICKS(SAMPLE_INTERVAL_MS))` between
-every pair of samples across the full 512-sample batch.[^adc-loop] At 25 ms per interval and
-512 samples, the CPU is inside a FreeRTOS idle delay for roughly **12.3 of the 12.8 s
-window**. With `CONFIG_PM_ENABLE` and tickless idle enabled, FreeRTOS will automatically
+every pair of samples across the configured sample batch.[^adc-loop] During the batch window,
+the CPU is inside a FreeRTOS idle delay for most of the interval. With `CONFIG_PM_ENABLE` and tickless idle enabled, FreeRTOS will automatically
 place the chip into light-sleep during each 25 ms gap, potentially reducing the effective
 current draw from approximately 80-120 mA to under 1 mA for those intervals. This alone could
 cut the energy per inference cycle by a large fraction without any restructuring of
@@ -432,7 +431,7 @@ Listed in approximate dependency order.
 | Claim | Confidence | Basis |
 |---|---|---|
 | CPU fixed at 240 MHz, no power management | **Verified** | `firmware/sdkconfig.defaults:10` confirms `CONFIG_ESP_DEFAULT_CPU_FREQ_240=y`; `CONFIG_PM_ENABLE` is absent |
-| ADC batch = 512 samples x 25 ms = 12.8 s | **Verified** | `firmware/main/adc_sampler.h:10-11` and comment on line 22 |
+| ADC batch = configured sample window | **Verified** | `firmware/main/adc_sampler.h:10-11` and comment on line 22 |
 | Wi-Fi always-on, no sleep policy | **Verified** | No `esp_wifi_set_ps()` call in `firmware/main/wifi_manager.c`; `CONFIG_PM_ENABLE` absent |
 | Provisioning mode runs `halt_forever()` with WDT disabled | **Verified** | `firmware/main/main.c:36-40` (`halt_forever`), lines 43-53 (`disable_task_wdt`), lines 63-81 (`enter_provisioning_mode`) |
 | J2 VBAT has no charger / power-path circuit | **Verified** | `hardware/hazard-hero-pcb-README.md:119` explicit statement |
@@ -454,7 +453,7 @@ flow description.
 connection point for future backup or ride-through support. The current layout does not yet
 include a full charger or power-path management circuit around it."*
 
-[^fw-readme]: `firmware/README.md:3-14` - confirms ESP32-WROOM-32 target, 512-sample batch,
+[^fw-readme]: `firmware/README.md:3-14` - confirms ESP32-WROOM-32 target, configured sample batch,
 12.8 s window, GPIO 34 ADC input, GPIO 2 LED, and that this firmware replaces the legacy
 MicroPython runtime in `hardware/`.
 

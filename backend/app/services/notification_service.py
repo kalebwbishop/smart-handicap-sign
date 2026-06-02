@@ -7,16 +7,17 @@ from app.config.database import get_pool
 
 
 _NOTIFICATION_COLUMNS = """
-    id,
-    user_id,
-    device_id,
-    device_event_id,
-    kind,
-    title,
-    body,
-    read,
-    created_at,
-    updated_at
+    n.id,
+    n.user_id,
+    n.device_id,
+    n.device_event_id,
+    n.kind,
+    n.title,
+    n.body,
+    n.read,
+    n.created_at,
+    n.updated_at,
+    de.correct_response AS device_event_correct_response
 """
 
 
@@ -25,7 +26,8 @@ def _notification_row_to_dict(row) -> dict:
     notification["id"] = str(notification["id"])
     notification["user_id"] = str(notification["user_id"])
     notification["device_id"] = str(notification["device_id"])
-    notification["device_event_id"] = str(notification["device_event_id"])
+    if notification.get("device_event_id") is not None:
+        notification["device_event_id"] = str(notification["device_event_id"])
     return notification
 
 
@@ -152,23 +154,24 @@ async def list_notifications(
 ) -> list[dict]:
     pool = await get_pool()
 
-    where_clauses = ["user_id = $1::uuid"]
+    where_clauses = ["n.user_id = $1::uuid"]
     params: list[object] = [user_id]
 
     if after is not None:
-        where_clauses.append(f"created_at > ${len(params) + 1}")
+        where_clauses.append(f"n.created_at > ${len(params) + 1}")
         params.append(after)
     if read is not None:
-        where_clauses.append(f"read = ${len(params) + 1}")
+        where_clauses.append(f"n.read = ${len(params) + 1}")
         params.append(read)
 
     params.append(limit)
     rows = await pool.fetch(
         f"""
         SELECT {_NOTIFICATION_COLUMNS}
-        FROM notifications
+        FROM notifications n
+        LEFT JOIN device_events de ON de.id = n.device_event_id
         WHERE {" AND ".join(where_clauses)}
-        ORDER BY created_at DESC
+        ORDER BY n.created_at DESC
         LIMIT ${len(params)}
         """,
         *params,
@@ -194,12 +197,17 @@ async def mark_notification_read(*, notification_id: str, user_id: str) -> Optio
     pool = await get_pool()
     row = await pool.fetchrow(
         f"""
-        UPDATE notifications
-        SET read = TRUE,
-            updated_at = NOW()
-        WHERE id = $1::uuid
-          AND user_id = $2::uuid
-        RETURNING {_NOTIFICATION_COLUMNS}
+        WITH updated AS (
+            UPDATE notifications
+            SET read = TRUE,
+                updated_at = NOW()
+            WHERE id = $1::uuid
+              AND user_id = $2::uuid
+            RETURNING *
+        )
+        SELECT {_NOTIFICATION_COLUMNS}
+        FROM updated n
+        LEFT JOIN device_events de ON de.id = n.device_event_id
         """,
         notification_id,
         user_id,

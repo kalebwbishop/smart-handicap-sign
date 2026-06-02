@@ -1,7 +1,7 @@
 """
 Lightweight 1-D CNN for binary wave detection.
 
-Input  : (batch, 1, 512)   — single-channel signal normalised to [0, 1]
+Input  : (batch, 1, SEQ_LEN)   — single-channel signal normalised to [0, 1]
 Output : (batch, 1)        — probability that the signal contains a periodic wave
 """
 
@@ -10,10 +10,11 @@ from __future__ import annotations
 import torch
 import torch.nn as nn
 
-from app.ai.config import MODEL_CONFIG
+from app.ai.config import MODEL_CONFIG, SIGNAL_CONFIG
 
 DEFAULT_DROPOUT = MODEL_CONFIG["dropout"]
 _CONV_BLOCKS = MODEL_CONFIG["conv_blocks"]
+SEQ_LEN = SIGNAL_CONFIG["sample_count"]
 
 
 class WaveDetector(nn.Module):
@@ -62,7 +63,7 @@ class WaveDetector(nn.Module):
         """
         Parameters
         ----------
-        x : Tensor of shape (batch, 1, 512)
+        x : Tensor of shape (batch, 1, SEQ_LEN)
 
         Returns
         -------

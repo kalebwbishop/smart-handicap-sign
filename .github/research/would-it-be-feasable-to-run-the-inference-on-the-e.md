@@ -10,7 +10,7 @@ Running Hazard Hero inference directly on the ESP32 is **technically feasible**,
 
 ## Project-Specific Findings
 
-The repository appears to have a mismatch between the originally described 512-sample, 25 ms input window and the active firmware/training configuration. The research subagent found active code and config using **200 samples at 20 ms**, while some docs/model comments still reference 512 samples.[^1] This matters because the embedded model export, tensor arena sizing, and representative quantization data all need to match the real firmware signal window.
+The repository appears to have a mismatch between the originally described input window and the active firmware/training configuration. The research subagent found active code and config using the configured sample window, while some docs/model comments still reference a different sample count.[^1] This matters because the embedded model export, tensor arena sizing, and representative quantization data all need to match the real firmware signal window.
 
 The model architecture is favorable for embedded inference: three Conv1D-style blocks, BatchNorm, ReLU/MaxPool, AdaptiveAvgPool, then Linear/Sigmoid.[^2] BatchNorm can be folded into convolution weights during export, Dropout is removed at inference time, and AdaptiveAvgPool can map to a global average pool operation. The model is estimated around **35.8K parameters**, roughly **140 KB as float32 weights** or **35 KB as int8 weights**.[^3]
 
@@ -27,7 +27,7 @@ Estimated memory profile:
 | float32 | ~140 KB | ~50 KB | Too risky with WiFi active |
 | int8 | ~35 KB | ~13 KB | Feasible but must be measured |
 
-The model compute requirement is modest for a 240 MHz ESP32: around a few million MACs per inference for a 200-sample input. Since sampling itself takes about 4 seconds at 200 samples × 20 ms, a tens-of-milliseconds inference pass would not dominate end-to-end latency.
+The model compute requirement is modest for a 240 MHz ESP32: around a few million MACs per inference for the configured input window. Since sampling itself takes about the same order of time as the configured window, a tens-of-milliseconds inference pass would not dominate end-to-end latency.
 
 ## Deployment Options
 
@@ -82,7 +82,7 @@ For **post-pilot V2**, prototype on-device inference with TensorFlow Lite Micro 
 
 ## Suggested V2 Implementation Plan
 
-1. Reconcile the signal contract: confirm whether production input is 200 or 512 samples and update stale docs/model comments.
+1. Reconcile the signal contract: confirm the production input sample count and update stale docs/model comments.
 2. Confirm normalization uses ESP32’s 12-bit ADC range (`4095`) consistently in training, backend inference, and firmware.
 3. Export the trained model to ONNX and convert to int8 TFLite using representative ADC windows.
 4. Add an ESP-IDF `wave_classifier` module wrapping TensorFlow Lite Micro.
@@ -96,7 +96,7 @@ For **post-pilot V2**, prototype on-device inference with TensorFlow Lite Micro 
 |---|---|---|
 | Runtime RAM exhaustion with WiFi active | High | int8 only, static tensor arena, heap instrumentation |
 | Quantization accuracy loss | Medium | representative data, parity tests, possible QAT |
-| Model/input mismatch | High | reconcile 200 vs 512 samples before export |
+| Model/input mismatch | High | reconcile the sample-count mismatch before export |
 | Firmware update burden | Medium | keep backend classifier as fallback |
 | Observability loss | Medium | upload positive events and optional sampled debug windows |
 | ESP32 classic performance limitations | Low/Medium | prefer ESP32-S3 for future hardware |

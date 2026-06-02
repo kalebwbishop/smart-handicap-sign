@@ -15,6 +15,7 @@ static const char *WIFI_PASS_KEY = "wifi_pass";
 static const char *WIFI_VALIDATED_KEY = "wifi_valid";
 static const char *SERIAL_KEY = "serial";
 static const char *AUTH_TOKEN_KEY = "auth_token";
+static const char *IOT_HUB_STATE_KEY = "iot_hub_state";
 
 static esp_err_t validate_input_string(const char *value, size_t min_len, size_t max_len, const char *field_name)
 {
@@ -338,4 +339,36 @@ esp_err_t nvs_auth_token_load(char *token, size_t len)
 bool nvs_auth_token_exists(void)
 {
     return key_exists(DEVICE_NAMESPACE, AUTH_TOKEN_KEY);
+}
+
+esp_err_t nvs_iot_hub_state_save(const char *state_json)
+{
+    esp_err_t err = validate_input_string(state_json, 1, NVS_IOT_HUB_STATE_MAX_LEN, "IoT Hub state");
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = save_string_value(DEVICE_NAMESPACE, IOT_HUB_STATE_KEY, state_json);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    ESP_LOGI(TAG, "Saved IoT Hub state to NVS");
+    return ESP_OK;
+}
+
+esp_err_t nvs_iot_hub_state_load(char *state_json, size_t len)
+{
+    esp_err_t err = load_string_value(DEVICE_NAMESPACE, IOT_HUB_STATE_KEY, state_json, len);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    ESP_LOGI(TAG, "Loaded IoT Hub state from NVS");
+    return ESP_OK;
+}
+
+bool nvs_iot_hub_state_exists(void)
+{
+    return key_exists(DEVICE_NAMESPACE, IOT_HUB_STATE_KEY);
 }

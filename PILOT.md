@@ -183,7 +183,7 @@ These items may remain in the repo, but they should be treated as **out of scope
 
 - [ ] `GET /health` returns healthy in the pilot environment
 - [ ] `GET /api/v1/devices/{serial_number}/status` returns the current device state for the pilot sign
-- [ ] `POST /api/v1/inference/classify` accepts valid 512-sample payloads from the pilot device
+- [ ] `POST /api/v1/inference/classify` accepts payloads matching the configured sample count from the pilot device
 - [ ] A positive classification changes the sign to `assistance_requested`
 - [ ] A positive classification creates a device event
 - [ ] A positive classification creates one assistance-request notification per opted-in operator

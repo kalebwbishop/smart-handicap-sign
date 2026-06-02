@@ -127,7 +127,7 @@ Use `[NEEDS CLARIFICATION: ...]` when a requirement is materially unclear.
 
 ### AI/Inference Requirements *(include if model or inference changes)*
 
-- **Input Contract**: [512 samples, value range, normalization expectations]
+- **Input Contract**: [sample count from config.json, value range, normalization expectations]
 - **Output Contract**: [label/confidence/debug graph/status side effect]
 - **Checkpoint Impact**: [Whether `ai/checkpoints/best.pt` and `backend/app/ai/checkpoints/best.pt` must stay in sync]
 - **Training/Validation**: [Synthetic data, test coverage, accuracy/performance expectations]

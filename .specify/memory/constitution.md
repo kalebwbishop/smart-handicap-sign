@@ -311,7 +311,7 @@ AI model, preprocessing, wave-detection, threshold, inference payload, or embedd
 - compatibility with `backend/app/ai/`
 - regression results against known examples
 
-The current model input/output contract of **512 samples** MUST NOT change without a coordinated AI, backend, firmware, and frontend impact plan.
+The current model input/output contract defined in `config.json` MUST NOT change without a coordinated AI, backend, firmware, and frontend impact plan.
 
 Model artifact changes MUST be reviewable, reproducible where practical, and accompanied by tests or evaluation evidence.
 
@@ -529,7 +529,7 @@ cd ai
 pytest
 ```
 
-The 512-sample model contract must be preserved unless a coordinated contract-change plan is approved.
+The model contract defined in `config.json` must be preserved unless a coordinated contract-change plan is approved.
 
 ### Firmware Touched
 

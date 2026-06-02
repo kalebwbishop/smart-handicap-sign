@@ -27,7 +27,7 @@ _axes = None
 _line = None
 
 
-@dataclass(slots=True)
+@dataclass
 class DebugPlotPayload:
     signal: list[int]
     serial_number: str | None = None

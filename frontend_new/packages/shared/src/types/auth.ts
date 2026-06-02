@@ -62,6 +62,7 @@ export interface SignNotification {
   id: string;
   device_event_id: string | null;
   user_id: string | null;
+  device_event_correct_response: boolean | null;
   title: string;
   body: string;
   read: boolean;

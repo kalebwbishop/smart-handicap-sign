@@ -4,6 +4,9 @@ from types import ModuleType, SimpleNamespace
 from unittest.mock import patch
 
 from app.ai import debug_plot
+from app.ai.config import SIGNAL_CONFIG
+
+SAMPLE_COUNT = SIGNAL_CONFIG["sample_count"]
 
 
 class _FakeLine:
@@ -103,7 +106,7 @@ def test_render_signal_debug_plot_enqueues_payload_for_background_dispatch():
 
     with patch("app.ai.debug_plot._enqueue_plot_request", side_effect=payloads.append):
         debug_plot.render_signal_debug_plot(
-            [123] * 512,
+            [123] * SAMPLE_COUNT,
             serial_number="serial-1",
             label="wave",
             confidence=0.8123,
@@ -111,7 +114,7 @@ def test_render_signal_debug_plot_enqueues_payload_for_background_dispatch():
 
     assert len(payloads) == 1
     payload = payloads[0]
-    assert payload.signal == [123] * 512
+    assert payload.signal == [123] * SAMPLE_COUNT
     assert payload.serial_number == "serial-1"
     assert payload.label == "wave"
     assert payload.confidence == 0.8123
@@ -121,7 +124,7 @@ def test_dispatch_plot_requests_forwards_payload_to_plot_process():
     dispatcher = _FakeDispatcher()
     request_queue = _FakeRequestQueue([
         debug_plot.DebugPlotPayload(
-            signal=[111] * 512,
+            signal=[111] * SAMPLE_COUNT,
             serial_number="serial-1",
             label="wave",
             confidence=0.7123,
@@ -134,7 +137,7 @@ def test_dispatch_plot_requests_forwards_payload_to_plot_process():
 
     assert len(dispatcher.payloads) == 1
     payload = dispatcher.payloads[0]
-    assert payload.signal == [111] * 512
+    assert payload.signal == [111] * SAMPLE_COUNT
     assert payload.serial_number == "serial-1"
     assert payload.label == "wave"
     assert payload.confidence == 0.7123
@@ -158,7 +161,7 @@ def test_render_signal_debug_plot_now_closes_window_after_display_timeout():
 
         debug_plot._render_signal_debug_plot_now(
             debug_plot.DebugPlotPayload(
-                signal=[100] * 512,
+                signal=[100] * SAMPLE_COUNT,
                 serial_number="serial-1",
                 label="non-wave",
                 confidence=0.3000,

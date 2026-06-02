@@ -12,7 +12,8 @@ export type DeviceOperationalStatus =
   | "assistance_requested"
   | "assistance_in_progress"
   | "offline"
-  | "error";
+  | "error"
+  | "unknown";
 
 export type DeviceConnectivityStatus = "online" | "offline";
 
@@ -182,7 +183,13 @@ export interface DeviceEvent {
   device_id: string;
   event_type: string;
   payload: Record<string, unknown>;
+  correct_response: boolean | null;
   created_at: string;
+}
+
+export interface FalsePositiveResponse {
+  device: Device;
+  device_event: DeviceEvent;
 }
 
 export interface AuditLog {

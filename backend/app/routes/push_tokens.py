@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
 from pydantic import BaseModel, Field
 
 from app.middleware.auth import CurrentUser, get_current_user
@@ -12,9 +13,9 @@ router = APIRouter(prefix="/push-tokens", tags=["push-tokens"])
 
 class PushTokenRegisterRequest(BaseModel):
     expo_push_token: str = Field(..., min_length=1)
-    device_id: str | None = None
-    platform: str | None = None
-    device_name: str | None = None
+    device_id: Optional[str] = None
+    platform: Optional[str] = None
+    device_name: Optional[str] = None
 
 
 class PushTokenDeleteRequest(BaseModel):

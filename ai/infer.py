@@ -6,7 +6,7 @@ Usage
 As a library:
     from infer import WaveClassifier
     clf = WaveClassifier("checkpoints/best.pt")
-    result = clf.classify([1234, 3210, ...])   # list of 512 ints (0-4095)
+    result = clf.classify([1234, 3210, ...])   # list matching the configured sample count (0-4095)
     print(result)  # {"label": "wave", "confidence": 0.97}
 
 From the command line (reads a JSON array from stdin):
@@ -50,12 +50,12 @@ class WaveClassifier:
         threshold: float = INFERENCE_CONFIG["threshold"],
     ) -> dict[str, str | float]:
         """
-        Classify a single 512-int signal.
+        Classify a signal matching the configured sample count.
 
         Parameters
         ----------
         signal : list[int] | ndarray
-            Exactly 512 integers in the range 0-4095.
+            Exactly the configured sample count integers in the range 0-4095.
         threshold : float
             Decision boundary (default 0.5).
 
@@ -69,7 +69,7 @@ class WaveClassifier:
         if arr.min() < 0 or arr.max() > MAX_VAL:
             raise ValueError(f"Values must be in 0-{MAX_VAL}")
 
-        x = torch.tensor(arr / MAX_VAL, dtype=torch.float32).unsqueeze(0).unsqueeze(0)  # (1, 1, 512)
+        x = torch.tensor(arr / MAX_VAL, dtype=torch.float32).unsqueeze(0).unsqueeze(0)  # (1, 1, SEQ_LEN)
         x = x.to(self.device)
 
         prob = self.model(x).item()
@@ -81,7 +81,7 @@ class WaveClassifier:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Classify a 512-int signal as wave / non-wave")
+    parser = argparse.ArgumentParser(description=f"Classify a {SEQ_LEN}-int signal as wave / non-wave")
     parser.add_argument(
         "--checkpoint", type=str, default=DEFAULT_CHECKPOINT, help="Path to model checkpoint",
     )
@@ -94,7 +94,7 @@ def main() -> None:
     try:
         signal = json.loads(raw)
     except json.JSONDecodeError:
-        print("Error: stdin must contain a JSON array of 512 integers.", file=sys.stderr)
+        print(f"Error: stdin must contain a JSON array of {SEQ_LEN} integers.", file=sys.stderr)
         sys.exit(1)
 
     clf = WaveClassifier(checkpoint_path=args.checkpoint)

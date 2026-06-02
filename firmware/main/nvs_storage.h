@@ -5,9 +5,10 @@
 #include "esp_err.h"
 
 #define NVS_SERIAL_NUMBER_MAX_LEN 32
-#define NVS_AUTH_TOKEN_MAX_LEN 128
+#define NVS_AUTH_TOKEN_MAX_LEN 512
 #define NVS_WIFI_SSID_MAX_LEN 32
 #define NVS_WIFI_PASSWORD_MAX_LEN 64
+#define NVS_IOT_HUB_STATE_MAX_LEN 256
 
 esp_err_t nvs_storage_init(void);
 
@@ -26,3 +27,7 @@ bool nvs_identity_exists(void);
 esp_err_t nvs_auth_token_save(const char *token);
 esp_err_t nvs_auth_token_load(char *token, size_t len);
 bool nvs_auth_token_exists(void);
+
+esp_err_t nvs_iot_hub_state_save(const char *state_json);
+esp_err_t nvs_iot_hub_state_load(char *state_json, size_t len);
+bool nvs_iot_hub_state_exists(void);

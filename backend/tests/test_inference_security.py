@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.middleware.device_auth import AuthenticatedDevice, get_authenticated_device
-from app.routes.inference import WAVE_THRESHOLD
+from app.services.telemetry_service import SAMPLE_COUNT, WAVE_THRESHOLD
 
 
 FAKE_DEVICE = AuthenticatedDevice(
@@ -39,8 +39,8 @@ class TestClassifyEndpoint:
         return client
 
     @patch("app.routes.inference.device_service.update_device_last_seen", new_callable=AsyncMock)
-    @patch("app.routes.inference.device_service.transition_device_status", new_callable=AsyncMock)
-    @patch("app.routes.inference._get_classifier")
+    @patch("app.services.telemetry_service.device_service.transition_device_status", new_callable=AsyncMock)
+    @patch("app.services.telemetry_service.get_classifier")
     def test_classify_uses_server_threshold(self, mock_clf, mock_transition, mock_last_seen, app):
         fake_clf = MagicMock()
         fake_clf.classify.return_value = {"label": "non-wave", "confidence": 0.3}
@@ -50,7 +50,7 @@ class TestClassifyEndpoint:
         with self._client(app) as client:
             response = client.post("/api/v1/inference/classify", json={
                 "serial_number": FAKE_DEVICE.serial_number,
-                "samples": [100] * 512,
+                "samples": [100] * SAMPLE_COUNT,
             })
 
         assert response.status_code == 200
@@ -58,11 +58,11 @@ class TestClassifyEndpoint:
         assert kwargs["threshold"] == WAVE_THRESHOLD
         mock_last_seen.assert_awaited_once_with(FAKE_DEVICE.serial_number)
 
-    @patch("app.routes.inference.render_signal_debug_plot")
-    @patch("app.routes.inference.get_settings")
-    @patch("app.routes.inference.device_service.transition_device_status", new_callable=AsyncMock)
+    @patch("app.services.telemetry_service.render_signal_debug_plot")
+    @patch("app.services.telemetry_service.get_settings")
+    @patch("app.services.telemetry_service.device_service.transition_device_status", new_callable=AsyncMock)
     @patch("app.routes.inference.device_service.update_device_last_seen", new_callable=AsyncMock)
-    @patch("app.routes.inference._get_classifier")
+    @patch("app.services.telemetry_service.get_classifier")
     def test_classify_plots_signal_when_debug_mode_enabled(
         self,
         mock_clf,
@@ -81,22 +81,22 @@ class TestClassifyEndpoint:
         with self._client(app) as client:
             response = client.post("/api/v1/inference/classify", json={
                 "serial_number": FAKE_DEVICE.serial_number,
-                "samples": [100] * 512,
+                "samples": [100] * SAMPLE_COUNT,
             })
 
         assert response.status_code == 200
         mock_plot.assert_called_once_with(
-            [100] * 512,
+            [100] * SAMPLE_COUNT,
             serial_number=FAKE_DEVICE.serial_number,
             label="non-wave",
             confidence=0.3,
         )
 
-    @patch("app.routes.inference.render_signal_debug_plot")
-    @patch("app.routes.inference.get_settings")
-    @patch("app.routes.inference.device_service.transition_device_status", new_callable=AsyncMock)
+    @patch("app.services.telemetry_service.render_signal_debug_plot")
+    @patch("app.services.telemetry_service.get_settings")
+    @patch("app.services.telemetry_service.device_service.transition_device_status", new_callable=AsyncMock)
     @patch("app.routes.inference.device_service.update_device_last_seen", new_callable=AsyncMock)
-    @patch("app.routes.inference._get_classifier")
+    @patch("app.services.telemetry_service.get_classifier")
     def test_classify_skips_signal_plot_when_debug_mode_disabled(
         self,
         mock_clf,
@@ -115,7 +115,7 @@ class TestClassifyEndpoint:
         with self._client(app) as client:
             response = client.post("/api/v1/inference/classify", json={
                 "serial_number": FAKE_DEVICE.serial_number,
-                "samples": [100] * 512,
+                "samples": [100] * SAMPLE_COUNT,
             })
 
         assert response.status_code == 200
@@ -124,11 +124,11 @@ class TestClassifyEndpoint:
     def test_classify_rejects_unauthenticated(self, client_anon):
         response = client_anon.post("/api/v1/inference/classify", json={
             "serial_number": "SHS-TEST",
-            "samples": [100] * 512,
+            "samples": [100] * SAMPLE_COUNT,
         })
         assert response.status_code == 401
 
-    @patch("app.routes.inference._get_classifier")
+    @patch("app.services.telemetry_service.get_classifier")
     def test_classify_rejects_wrong_serial(self, mock_clf, app):
         fake_clf = MagicMock()
         fake_clf.classify.return_value = {"label": "non-wave", "confidence": 0.3}
@@ -137,14 +137,14 @@ class TestClassifyEndpoint:
         with self._client(app) as client:
             response = client.post("/api/v1/inference/classify", json={
                 "serial_number": "SHS-OTHER-SERIAL",
-                "samples": [100] * 512,
+                "samples": [100] * SAMPLE_COUNT,
             })
 
         assert response.status_code == 403
 
-    @patch("app.routes.inference.send_assistance_request_push_notifications", new_callable=AsyncMock)
-    @patch("app.routes.inference.device_service.transition_device_status", new_callable=AsyncMock)
-    @patch("app.routes.inference._get_classifier")
+    @patch("app.services.telemetry_service.send_assistance_request_push_notifications", new_callable=AsyncMock)
+    @patch("app.services.telemetry_service.device_service.transition_device_status", new_callable=AsyncMock)
+    @patch("app.services.telemetry_service.get_classifier")
     def test_wave_updates_available_device(self, mock_clf, mock_transition, mock_push, app):
         fake_clf = MagicMock()
         fake_clf.classify.return_value = {"label": "wave", "confidence": 0.91}
@@ -157,7 +157,7 @@ class TestClassifyEndpoint:
         with self._client(app) as client:
             response = client.post("/api/v1/inference/classify", json={
                 "serial_number": FAKE_DEVICE.serial_number,
-                "samples": [100] * 512,
+                "samples": [100] * SAMPLE_COUNT,
             })
 
         assert response.status_code == 200
@@ -165,9 +165,9 @@ class TestClassifyEndpoint:
         assert mock_transition.await_args.kwargs["create_notifications"] is True
         mock_push.assert_awaited_once_with([{"id": "notif-1"}])
 
-    @patch("app.routes.inference.send_assistance_request_push_notifications", new_callable=AsyncMock)
-    @patch("app.routes.inference.device_service.transition_device_status", new_callable=AsyncMock)
-    @patch("app.routes.inference._get_classifier")
+    @patch("app.services.telemetry_service.send_assistance_request_push_notifications", new_callable=AsyncMock)
+    @patch("app.services.telemetry_service.device_service.transition_device_status", new_callable=AsyncMock)
+    @patch("app.services.telemetry_service.get_classifier")
     def test_wave_does_not_error_when_request_already_active(self, mock_clf, mock_transition, mock_push, app):
         fake_clf = MagicMock()
         fake_clf.classify.return_value = {"label": "wave", "confidence": 0.88}
@@ -177,7 +177,7 @@ class TestClassifyEndpoint:
         with self._client(app) as client:
             response = client.post("/api/v1/inference/classify", json={
                 "serial_number": FAKE_DEVICE.serial_number,
-                "samples": [100] * 512,
+                "samples": [100] * SAMPLE_COUNT,
             })
 
         assert response.status_code == 200

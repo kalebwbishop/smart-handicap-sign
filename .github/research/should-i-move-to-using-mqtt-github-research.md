@@ -97,7 +97,7 @@ A low-risk MQTT migration should start with status and LWT only: add broker infr
 
 ## Important Related Issue: Sample Count Mismatch
 
-Multiple research passes found a pre-existing sample-count contradiction: active firmware evidence points to `SAMPLES_PER_BATCH = 200` at 20 ms intervals, while docs/contracts often describe 512 samples.[^28] This should be reconciled before any transport migration, because MQTT would not solve a payload contract mismatch; it would just move the mismatch to a new protocol.
+Multiple research passes found a pre-existing sample-count contradiction: active firmware evidence points to the config-defined sample count, while docs/contracts often describe a different sample window.[^28] This should be reconciled before any transport migration, because MQTT would not solve a payload contract mismatch; it would just move the mismatch to a new protocol.
 
 ## Confidence Assessment
 

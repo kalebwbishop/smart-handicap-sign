@@ -13,6 +13,7 @@ def _notification(read: bool = False) -> dict:
         "title": "Assistance requested",
         "body": "Pilot Handicap Sign is requesting assistance.",
         "read": read,
+        "device_event_correct_response": True,
         "created_at": now,
         "updated_at": now,
     }
@@ -42,6 +43,7 @@ class TestNotificationRoutes:
 
         assert response.status_code == 200
         assert response.json()[0]["id"] == "notif-1"
+        assert response.json()[0]["device_event_correct_response"] is True
         mock_list.assert_awaited_once()
 
     @patch("app.routes.notifications.notification_service.get_unread_count", new_callable=AsyncMock)
@@ -61,6 +63,7 @@ class TestNotificationRoutes:
 
         assert response.status_code == 200
         assert response.json()["read"] is True
+        assert response.json()["device_event_correct_response"] is True
 
     @patch("app.routes.notifications.notification_service.mark_notification_read", new_callable=AsyncMock)
     def test_mark_notification_read_returns_404_for_missing_notification(self, mock_mark, client_alice):

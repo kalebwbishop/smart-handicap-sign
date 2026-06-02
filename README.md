@@ -3,10 +3,12 @@
 Hazard Hero is a **one-sign pilot** for accessible parking assistance. The pilot proves one simple loop:
 
 1. A visitor waves at the installed sign.
-2. The sign sends a 512-sample reading to the backend.
+2. The sign sends the configured sample window to the backend.
 3. The backend marks the sign as `assistance_requested`.
 4. A staff member sees the request in the app, acknowledges it, and resolves it.
 5. The sign returns to `available`.
+
+If a request turns out to be a false positive, the operator app can label it and the backend keeps the raw samples for later training.
 
 If that loop works reliably for one installed sign, the pilot is successful.
 
@@ -40,7 +42,7 @@ See `PILOT.md` for the detailed pilot definition and launch checklist.
 ```text
 ESP32 sign
   -> GET /api/v1/devices/{serial}/status
-  -> when status == available, collect 512 ADC samples
+  -> when status == available, collect the configured ADC sample window
   -> POST /api/v1/inference/classify
   -> backend changes sign to assistance_requested when a wave is detected
   -> staff app shows the request
@@ -138,6 +140,7 @@ Setup, manufacturing, and scale-out workflows should not be treated as launch bl
 - `POST /api/v1/inference/classify`
 - `POST /api/v1/devices/{serial_number}/acknowledge`
 - `POST /api/v1/devices/{serial_number}/resolve`
+- `POST /api/v1/devices/{serial_number}/events/{device_event_id}/false-positive`
 
 ## Validation
 

@@ -6,6 +6,7 @@ import json
 from typing import Any, Optional
 
 from app.config.database import get_pool
+from app.utils.logger import logger
 
 
 @dataclass
@@ -15,6 +16,15 @@ class DeviceTransitionResult:
     error_code: Optional[str] = None
     current_status: Optional[str] = None
     notifications: Optional[list[dict]] = None
+
+
+@dataclass
+class DeviceEventLabelResult:
+    success: bool
+    device: Optional[dict] = None
+    device_event: Optional[dict] = None
+    error_code: Optional[str] = None
+    current_status: Optional[str] = None
 
 
 _DEVICE_COLUMNS = """
@@ -29,6 +39,15 @@ _DEVICE_COLUMNS = """
     name,
     created_at,
     updated_at
+"""
+
+_DEVICE_EVENT_COLUMNS = """
+    id,
+    device_id,
+    event_type,
+    payload,
+    correct_response,
+    created_at
 """
 
 
@@ -64,6 +83,7 @@ def _event_row_to_dict(row) -> dict:
     event["id"] = str(event["id"])
     event["device_id"] = str(event["device_id"])
     event["payload"] = _normalize_event_payload(event.get("payload"))
+    event.setdefault("correct_response", None)
     return event
 
 
@@ -122,6 +142,7 @@ async def _transition_device_status_column(
     event_type: str,
     actor_user_id: Optional[str] = None,
     payload: Optional[dict[str, Any]] = None,
+    correct_response: Optional[bool] = None,
     create_notifications: bool = False,
     stale_before: Optional[datetime] = None,
 ) -> DeviceTransitionResult:
@@ -180,15 +201,19 @@ async def _transition_device_status_column(
             if stale_before is not None and status_column == "connectivity_status":
                 event_payload["stale_before"] = stale_before.isoformat()
 
+            if correct_response is None and event_type == "assistance_requested":
+                correct_response = True
+
             event_row = await conn.fetchrow(
-                """
-                INSERT INTO device_events (device_id, event_type, payload)
-                VALUES ($1::uuid, $2, $3::jsonb)
-                RETURNING id, device_id, event_type, payload, created_at
+                f"""
+                INSERT INTO device_events (device_id, event_type, payload, correct_response)
+                VALUES ($1::uuid, $2, $3::jsonb, $4)
+                RETURNING {_DEVICE_EVENT_COLUMNS}
                 """,
                 str(updated["id"]),
                 event_type,
                 json.dumps(event_payload),
+                correct_response,
             )
 
             created_notifications = None
@@ -230,9 +255,10 @@ async def transition_device_status(
     event_type: str,
     actor_user_id: Optional[str] = None,
     payload: Optional[dict[str, Any]] = None,
+    correct_response: Optional[bool] = None,
     create_notifications: bool = False,
 ) -> DeviceTransitionResult:
-    return await _transition_device_status_column(
+    result = await _transition_device_status_column(
         serial_number=serial_number,
         status_column="operational_status",
         expected_status=expected_status,
@@ -240,8 +266,27 @@ async def transition_device_status(
         event_type=event_type,
         actor_user_id=actor_user_id,
         payload=payload,
+        correct_response=correct_response,
         create_notifications=create_notifications,
     )
+    if result.success:
+        try:
+            from app.services.device_twin_service import update_device_desired_properties
+
+            await update_device_desired_properties(
+                serial_number,
+                {
+                    "operational_status": new_status,
+                },
+            )
+        except RuntimeError:
+            logger.info(
+                "IoT Hub service connection string is not configured; skipping twin sync for %s",
+                serial_number,
+            )
+        except Exception:
+            logger.exception("Failed to sync desired properties for %s", serial_number)
+    return result
 
 
 async def transition_device_connectivity_status(
@@ -273,19 +318,25 @@ async def create_device_event(
     serial_number: str,
     event_type: str,
     payload: Optional[dict[str, Any]] = None,
+    correct_response: Optional[bool] = None,
 ) -> Optional[dict]:
     pool = await get_pool()
+    if correct_response is None and event_type == "assistance_requested":
+        correct_response = True
+    if event_type != "assistance_requested":
+        correct_response = None
     row = await pool.fetchrow(
-        """
-        INSERT INTO device_events (device_id, event_type, payload)
-        SELECT id, $2, $3::jsonb
+        f"""
+        INSERT INTO device_events (device_id, event_type, payload, correct_response)
+        SELECT id, $2, $3::jsonb, $4
         FROM devices
         WHERE serial_number = $1
-        RETURNING id, device_id, event_type, payload, created_at
+        RETURNING {_DEVICE_EVENT_COLUMNS}
         """,
         serial_number,
         event_type,
         json.dumps(payload or {}),
+        correct_response,
     )
     if row is None:
         return None
@@ -296,7 +347,7 @@ async def get_device_events(*, serial_number: str, skip: int = 0, limit: int = 5
     pool = await get_pool()
     rows = await pool.fetch(
         """
-        SELECT de.id, de.device_id, de.event_type, de.payload, de.created_at
+        SELECT de.id, de.device_id, de.event_type, de.payload, de.correct_response, de.created_at
         FROM device_events de
         JOIN devices d ON d.id = de.device_id
         WHERE d.serial_number = $1
@@ -312,3 +363,107 @@ async def get_device_events(*, serial_number: str, skip: int = 0, limit: int = 5
     for row in rows:
         results.append(_event_row_to_dict(row))
     return results
+
+
+async def mark_assistance_request_false_positive(
+    *,
+    serial_number: str,
+    device_event_id: str,
+) -> DeviceEventLabelResult:
+    pool = await get_pool()
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            current = await conn.fetchrow(
+                f"SELECT {_DEVICE_COLUMNS} FROM devices WHERE serial_number = $1 FOR UPDATE",
+                serial_number,
+            )
+            if current is None:
+                return DeviceEventLabelResult(success=False, error_code="device_not_found")
+
+            current_device = _row_to_dict(current)
+            current_status = current_device.get("operational_status")
+            if current_status not in {"assistance_requested", "available"}:
+                return DeviceEventLabelResult(
+                    success=False,
+                    device=current_device,
+                    current_status=current_status,
+                    error_code="invalid_status_transition",
+                )
+
+            event = await conn.fetchrow(
+                f"""
+                SELECT {_DEVICE_EVENT_COLUMNS}
+                FROM device_events
+                WHERE id = $1::uuid
+                  AND device_id = $2::uuid
+                FOR UPDATE
+                """,
+                device_event_id,
+                str(current_device["id"]),
+            )
+            if event is None:
+                return DeviceEventLabelResult(
+                    success=False,
+                    device=current_device,
+                    current_status=current_status,
+                    error_code="device_event_not_found",
+                )
+
+            current_event = _event_row_to_dict(event)
+            if current_event.get("event_type") != "assistance_requested":
+                return DeviceEventLabelResult(
+                    success=False,
+                    device=current_device,
+                    device_event=current_event,
+                    current_status=current_status,
+                    error_code="invalid_event_type",
+                )
+
+            updated_event = await conn.fetchrow(
+                f"""
+                UPDATE device_events
+                SET correct_response = FALSE
+                WHERE id = $1::uuid
+                RETURNING {_DEVICE_EVENT_COLUMNS}
+                """,
+                device_event_id,
+            )
+
+            updated_device = current_device
+            if current_status == "assistance_requested":
+                updated = await conn.fetchrow(
+                    f"""
+                    UPDATE devices
+                    SET operational_status = 'available',
+                        updated_at = NOW()
+                    WHERE id = $1::uuid
+                    RETURNING {_DEVICE_COLUMNS}
+                    """,
+                    str(current_device["id"]),
+                )
+                updated_device = _row_to_dict(updated)
+
+    if current_status == "assistance_requested":
+        try:
+            from app.services.device_twin_service import update_device_desired_properties
+
+            await update_device_desired_properties(
+                serial_number,
+                {
+                    "operational_status": "available",
+                },
+            )
+        except RuntimeError:
+            logger.info(
+                "IoT Hub service connection string is not configured; skipping twin sync for %s",
+                serial_number,
+            )
+        except Exception:
+            logger.exception("Failed to sync desired properties for %s", serial_number)
+
+    return DeviceEventLabelResult(
+        success=True,
+        device=updated_device,
+        device_event=_event_row_to_dict(updated_event),
+    )

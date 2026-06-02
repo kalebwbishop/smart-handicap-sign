@@ -10,24 +10,33 @@
 
 #include "adc_sampler.h"
 #include "connection_policy.h"
-#include "https_client.h"
+#include "iot_hub_client.h"
 #include "led_driver.h"
 #include "nvs_storage.h"
 #include "provisioning_server.h"
 #include "wifi_manager.h"
 
-#ifndef HAZARD_HERO_BACKEND_URL
-#define HAZARD_HERO_BACKEND_URL "https://tqr9vxj0-8000.usw3.devtunnels.ms/api/v1"
+#ifndef IOT_HUB_HOST
+#define IOT_HUB_HOST "your-iot-hub.azure-devices.net"
+#endif
+#ifndef IOT_HUB_DEVICE_ID
+#define IOT_HUB_DEVICE_ID ""
+#endif
+#ifndef IOT_HUB_MQTT_PORT
+#define IOT_HUB_MQTT_PORT 8883
+#endif
+#ifndef IOT_HUB_API_VERSION
+#define IOT_HUB_API_VERSION "2021-04-12"
+#endif
+#ifndef IOT_HUB_SAS_TOKEN
+#define IOT_HUB_SAS_TOKEN ""
 #endif
 
+#define DEFAULT_TELEMETRY_INTERVAL_MS 1000
 #define NETWORK_STABILITY_DELAY_MS 2000
-#define SEND_INTERVAL_MS        1000
-#define STATUS_POLL_INTERVAL_MS 3000
-#define MAX_RECONNECT_FAILURES  3
-#define MAX_STATUS_RETRIES      3
-#define STATUS_RETRY_DELAY_MS   2000
+#define MAX_RECONNECT_FAILURES 3
 #define WIFI_CONNECT_TIMEOUT_MS 20000
-#define WDT_TIMEOUT_MS          30000
+#define WDT_TIMEOUT_MS 30000
 
 static const char *TAG = "main";
 static int s_sample_buffer[SAMPLES_PER_BATCH];
@@ -101,39 +110,16 @@ static esp_err_t init_task_wdt(void)
     return ESP_OK;
 }
 
-static esp_err_t poll_status_with_retries(status_result_t *result)
-{
-    if (result == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    for (int attempt = 1; attempt <= MAX_STATUS_RETRIES; ++attempt) {
-        esp_task_wdt_reset();
-
-        esp_err_t err = https_client_get_status(result);
-        if (err == ESP_OK && result->http_status == 200) {
-            return ESP_OK;
-        }
-
-        if (err == ESP_OK) {
-            ESP_LOGW(TAG, "Status poll attempt %d/%d returned HTTP %d", attempt, MAX_STATUS_RETRIES, result->http_status);
-            err = ESP_FAIL;
-        } else {
-            ESP_LOGW(TAG, "Status poll attempt %d/%d failed: %s", attempt, MAX_STATUS_RETRIES, esp_err_to_name(err));
-        }
-
-        if (attempt < MAX_STATUS_RETRIES) {
-            vTaskDelay(pdMS_TO_TICKS(STATUS_RETRY_DELAY_MS));
-        }
-    }
-
-    return ESP_FAIL;
-}
-
 static esp_err_t load_device_identity(char *serial_number, size_t serial_len)
 {
     if (serial_number == NULL || serial_len == 0U) {
         return ESP_ERR_INVALID_ARG;
+    }
+
+    if (IOT_HUB_DEVICE_ID[0] != '\0') {
+        strlcpy(serial_number, IOT_HUB_DEVICE_ID, serial_len);
+        ESP_LOGI(TAG, "Using compile-time device ID override");
+        return ESP_OK;
     }
 
     if (nvs_identity_exists()) {
@@ -153,6 +139,31 @@ static esp_err_t load_device_identity(char *serial_number, size_t serial_len)
 
     strlcpy(serial_number, generated_device_id, serial_len);
     ESP_LOGW(TAG, "Device serial number missing from NVS; regenerated identity from MAC address");
+    return ESP_OK;
+}
+
+static esp_err_t load_iot_hub_settings(const char *device_id, iot_hub_client_settings_t *settings)
+{
+    if (device_id == NULL || device_id[0] == '\0' || settings == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    memset(settings, 0, sizeof(*settings));
+    strlcpy(settings->host, IOT_HUB_HOST, sizeof(settings->host));
+    strlcpy(settings->device_id, device_id, sizeof(settings->device_id));
+    strlcpy(settings->api_version, IOT_HUB_API_VERSION, sizeof(settings->api_version));
+    settings->mqtt_port = IOT_HUB_MQTT_PORT;
+
+    if (IOT_HUB_SAS_TOKEN[0] != '\0') {
+        strlcpy(settings->sas_token, IOT_HUB_SAS_TOKEN, sizeof(settings->sas_token));
+        return ESP_OK;
+    }
+
+    if (nvs_auth_token_exists()) {
+        return nvs_auth_token_load(settings->sas_token, sizeof(settings->sas_token));
+    }
+
+    ESP_LOGW(TAG, "IoT Hub SAS token not configured in firmware or NVS");
     return ESP_OK;
 }
 
@@ -187,6 +198,7 @@ static esp_err_t reconnect_wifi(int *failure_count)
         if (validated_err != ESP_OK) {
             ESP_LOGW(TAG, "Connected to WiFi but failed to persist validated flag: %s", esp_err_to_name(validated_err));
         }
+        (void)iot_hub_client_start();
         ESP_LOGI(TAG, "WiFi reconnect succeeded");
         return ESP_OK;
     }
@@ -209,6 +221,8 @@ void app_main(void)
     char serial_number[NVS_SERIAL_NUMBER_MAX_LEN + 1] = {0};
     char wifi_ssid[NVS_WIFI_SSID_MAX_LEN + 1] = {0};
     char wifi_password[NVS_WIFI_PASSWORD_MAX_LEN + 1] = {0};
+    iot_hub_client_settings_t iot_hub_settings = {0};
+    iot_hub_state_t cloud_state = {0};
     int reconnect_failures = 0;
 
     ESP_LOGI(TAG, "Hazard Hero firmware starting");
@@ -266,12 +280,26 @@ void app_main(void)
         fatal_restart("Failed to initialize ADC sampler", err);
     }
 
-    err = https_client_init(HAZARD_HERO_BACKEND_URL);
+    err = load_iot_hub_settings(serial_number, &iot_hub_settings);
     if (err != ESP_OK) {
-        fatal_restart("Failed to initialize HTTPS client", err);
+        fatal_restart("Failed to build IoT Hub settings", err);
     }
 
-    led_driver_set_status(STATUS_AVAILABLE);
+    err = iot_hub_client_init(&iot_hub_settings, NULL);
+    if (err != ESP_OK) {
+        fatal_restart("Failed to initialize IoT Hub client", err);
+    }
+
+    err = iot_hub_client_start();
+    if (err != ESP_OK && err != ESP_ERR_NOT_FOUND) {
+        ESP_LOGW(TAG, "IoT Hub client did not start cleanly: %s", esp_err_to_name(err));
+    }
+
+    err = iot_hub_client_get_state(&cloud_state);
+    if (err != ESP_OK) {
+        fatal_restart("Failed to load cached IoT Hub state", err);
+    }
+    led_driver_set_status(cloud_state.status);
 
     err = init_task_wdt();
     if (err != ESP_OK) {
@@ -281,27 +309,32 @@ void app_main(void)
     ESP_LOGI(TAG, "Initialization complete; entering main loop");
 
     while (true) {
-        status_result_t status_result = {0};
-        classify_result_t classify_result = {0};
-
         esp_task_wdt_reset();
 
-        err = poll_status_with_retries(&status_result);
+        err = iot_hub_client_get_state(&cloud_state);
         if (err != ESP_OK) {
-            ESP_LOGW(TAG, "Status polling failed after %d attempts", MAX_STATUS_RETRIES);
+            ESP_LOGE(TAG, "Failed to read cached IoT Hub state: %s", esp_err_to_name(err));
+            led_driver_set_status(STATUS_ERROR);
+            vTaskDelay(pdMS_TO_TICKS(DEFAULT_TELEMETRY_INTERVAL_MS));
+            continue;
+        }
+
+        led_driver_set_status(cloud_state.status);
+
+        if (!wifi_sta_is_connected()) {
             err = reconnect_wifi(&reconnect_failures);
             if (err == ESP_OK) {
                 vTaskDelay(pdMS_TO_TICKS(NETWORK_STABILITY_DELAY_MS));
+            } else {
+                vTaskDelay(pdMS_TO_TICKS(DEFAULT_TELEMETRY_INTERVAL_MS));
             }
             continue;
         }
 
         reconnect_failures = 0;
-        ESP_LOGI(TAG, "Device status: %s", status_result.status_str);
-        led_driver_set_status(status_result.status);
 
-        if (status_result.status != STATUS_AVAILABLE) {
-            vTaskDelay(pdMS_TO_TICKS(STATUS_POLL_INTERVAL_MS));
+        if (cloud_state.status != STATUS_AVAILABLE || !cloud_state.telemetry_enabled) {
+            vTaskDelay(pdMS_TO_TICKS(cloud_state.telemetry_interval_ms));
             continue;
         }
 
@@ -310,25 +343,16 @@ void app_main(void)
         if (err != ESP_OK) {
             ESP_LOGE(TAG, "ADC sampling failed: %s", esp_err_to_name(err));
             led_driver_set_status(STATUS_ERROR);
-            vTaskDelay(pdMS_TO_TICKS(SEND_INTERVAL_MS));
+            vTaskDelay(pdMS_TO_TICKS(cloud_state.telemetry_interval_ms));
             continue;
         }
 
         esp_task_wdt_reset();
-        err = https_client_classify(s_sample_buffer, SAMPLES_PER_BATCH, &classify_result);
-        if (err != ESP_OK) {
-            ESP_LOGE(TAG, "Classification request failed: %s", esp_err_to_name(err));
-            led_driver_set_status(STATUS_ERROR);
-        } else if (classify_result.http_status != 200) {
-            ESP_LOGE(TAG, "Classification returned HTTP %d", classify_result.http_status);
-            led_driver_set_status(STATUS_ERROR);
-        } else {
-            ESP_LOGI(TAG,
-                     "Classification result: label=%s confidence=%.3f",
-                     classify_result.label,
-                     (double)classify_result.confidence);
+        err = iot_hub_client_publish_telemetry(s_sample_buffer, SAMPLES_PER_BATCH);
+        if (err != ESP_OK && err != ESP_ERR_NO_MEM) {
+            ESP_LOGW(TAG, "Telemetry publish deferred: %s", esp_err_to_name(err));
         }
 
-        vTaskDelay(pdMS_TO_TICKS(SEND_INTERVAL_MS));
+        vTaskDelay(pdMS_TO_TICKS(cloud_state.telemetry_interval_ms));
     }
 }

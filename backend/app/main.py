@@ -36,6 +36,7 @@ from app.routes.inference import router as inference_router
 from app.routes.notifications import router as notifications_router
 from app.routes.push_tokens import router as push_tokens_router
 from app.services.connectivity_service import run_connectivity_sweep_loop
+from app.services.iothub_consumer import run_iothub_telemetry_consumer
 from app.utils.logger import logger
 
 
@@ -47,16 +48,29 @@ async def lifespan(app: FastAPI):
     await get_pool()
     sweep_stop_event = None
     sweep_task = None
+    iothub_stop_event = None
+    iothub_task = None
     if os.environ.get("PYTEST_CURRENT_TEST") is None:
         sweep_stop_event = asyncio.Event()
         sweep_task = asyncio.create_task(run_connectivity_sweep_loop(sweep_stop_event))
         logger.info("Started connectivity sweep loop")
+        if settings.iothub_eventhub_connection_string.strip():
+            iothub_stop_event = asyncio.Event()
+            iothub_task = asyncio.create_task(run_iothub_telemetry_consumer(iothub_stop_event))
+            logger.info("Started IoT Hub telemetry consumer loop")
+        else:
+            logger.info("IoT Hub telemetry consumer not started; no Event Hub connection string configured")
     yield
     if sweep_task is not None and sweep_stop_event is not None:
         sweep_stop_event.set()
         sweep_task.cancel()
         with suppress(asyncio.CancelledError):
             await sweep_task
+    if iothub_task is not None and iothub_stop_event is not None:
+        iothub_stop_event.set()
+        iothub_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await iothub_task
     await close_pool()
     logger.info("Server shut down")
 

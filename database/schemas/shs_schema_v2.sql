@@ -110,7 +110,12 @@ CREATE TABLE device_events (
     device_id  UUID NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
     event_type VARCHAR(50) NOT NULL,
     payload    JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    correct_response BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT device_events_correct_response_scope_check CHECK (
+        (event_type = 'assistance_requested' AND correct_response IS NOT NULL)
+        OR (event_type <> 'assistance_requested' AND correct_response IS NULL)
+    )
 );
 
 CREATE INDEX idx_device_events_device ON device_events(device_id);

@@ -1,11 +1,12 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.middleware.auth import CurrentUser, get_current_user
 from app.services import device_service
+from app.services import device_twin_service
 from app.utils.logger import logger
 
 router = APIRouter(prefix="/devices", tags=["devices"])
@@ -41,7 +42,24 @@ class DeviceEventOut(BaseModel):
     device_id: str
     event_type: str
     payload: Optional[dict] = None
+    correct_response: Optional[bool]
     created_at: Optional[datetime] = None
+
+
+class DeviceFalsePositiveOut(BaseModel):
+    device: DeviceOut
+    device_event: DeviceEventOut
+
+
+class DeviceTwinOut(BaseModel):
+    serial_number: str
+    desired_properties: dict[str, Any] = Field(default_factory=dict)
+    reported_properties: dict[str, Any] = Field(default_factory=dict)
+    etag: Optional[str] = None
+
+
+class DeviceTwinDesiredUpdateIn(BaseModel):
+    desired_properties: dict[str, Any] = Field(min_length=1)
 
 
 async def _get_device_or_404(serial_number: str) -> dict:
@@ -65,7 +83,7 @@ async def list_devices(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
-@router.get("/{serial_number}/status", response_model=DeviceStatusOut)
+@router.get("/{serial_number}/status", response_model=DeviceStatusOut, deprecated=True)
 async def get_device_status(serial_number: str):
     device = await device_service.update_device_last_seen(serial_number)
     if device is None:
@@ -77,6 +95,46 @@ async def get_device_status(serial_number: str):
         "operational_status": status,
         "connectivity_status": device.get("connectivity_status") or "online",
     }
+
+
+@router.get("/{serial_number}/twin", response_model=DeviceTwinOut)
+async def get_device_twin(
+    serial_number: str,
+    _current_user: CurrentUser = Depends(get_current_user),
+):
+    await _get_device_or_404(serial_number)
+
+    try:
+        twin = await device_twin_service.get_device_twin_state(serial_number)
+        return DeviceTwinOut(**twin)
+    except RuntimeError as exc:
+        logger.error("IoT Hub twin lookup is not configured: %s", exc, exc_info=True)
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        logger.error("Failed to retrieve device twin: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail=str(exc))
+
+
+@router.patch("/{serial_number}/twin/desired", response_model=DeviceTwinOut)
+async def update_device_twin_desired_properties(
+    serial_number: str,
+    payload: DeviceTwinDesiredUpdateIn,
+    _current_user: CurrentUser = Depends(get_current_user),
+):
+    await _get_device_or_404(serial_number)
+
+    try:
+        twin = await device_twin_service.update_device_desired_properties(
+            serial_number,
+            payload.desired_properties,
+        )
+        return DeviceTwinOut(**twin)
+    except RuntimeError as exc:
+        logger.error("IoT Hub desired-property update is not configured: %s", exc, exc_info=True)
+        raise HTTPException(status_code=503, detail=str(exc))
+    except Exception as exc:
+        logger.error("Failed to update device twin desired properties: %s", exc, exc_info=True)
+        raise HTTPException(status_code=502, detail=str(exc))
 
 
 @router.post("/{serial_number}/acknowledge", response_model=DeviceOut)
@@ -133,6 +191,38 @@ async def resolve_device(
         )
 
     return DeviceOut(**result.device)
+
+
+@router.post("/{serial_number}/events/{device_event_id}/false-positive", response_model=DeviceFalsePositiveOut)
+async def mark_device_event_false_positive(
+    serial_number: str,
+    device_event_id: str,
+    _current_user: CurrentUser = Depends(get_current_user),
+):
+    await _get_device_or_404(serial_number)
+
+    try:
+        result = await device_service.mark_assistance_request_false_positive(
+            serial_number=serial_number,
+            device_event_id=device_event_id,
+        )
+    except Exception as exc:
+        logger.error("Failed to mark false positive: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    if not result.success:
+        error_code = getattr(result, "error_code", None)
+        if error_code in {"device_not_found", "device_event_not_found"}:
+            raise HTTPException(status_code=404, detail="Device event not found")
+        raise HTTPException(
+            status_code=409,
+            detail=f"Device must be in assistance_requested before marking false positive (current: {result.current_status})",
+        )
+
+    return DeviceFalsePositiveOut(
+        device=DeviceOut(**result.device),
+        device_event=DeviceEventOut(**result.device_event),
+    )
 
 
 @router.get("/{serial_number}", response_model=DeviceOut)

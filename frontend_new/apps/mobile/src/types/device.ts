@@ -1,6 +1,7 @@
 export type {
   DeviceLifecycleStatus,
   DeviceOperationalStatus,
+  DeviceConnectivityStatus,
   ClaimStatus,
   AccessibleParkingType,
   Device,

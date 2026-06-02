@@ -14,6 +14,7 @@ export function buildForegroundNotification(
                 : notification.request.identifier,
         device_event_id: null,
         user_id: null,
+        device_event_correct_response: true,
         title: notification.request.content.title?.trim() || 'New assistance request',
         body: notification.request.content.body?.trim() || 'Open the app to view the latest request.',
         read: false,

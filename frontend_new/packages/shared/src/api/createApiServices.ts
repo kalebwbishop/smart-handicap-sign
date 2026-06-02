@@ -2,6 +2,7 @@ import type {
   AuthResponse,
   Device,
   DeviceEvent,
+  FalsePositiveResponse,
   DeviceLifecycleStatus,
   LoginInitResponse,
   NotificationPreferences,
@@ -148,6 +149,11 @@ export function createApiServices(apiClient: ApiClient) {
     },
     getEvents: async (serialNumber: string, config?: unknown): Promise<DeviceEvent[]> => {
       return apiClient.get<DeviceEvent[]>(`/devices/${encodeURIComponent(serialNumber)}/events`, config);
+    },
+    markFalsePositive: async (serialNumber: string, deviceEventId: string): Promise<FalsePositiveResponse> => {
+      return apiClient.post<FalsePositiveResponse>(
+        `/devices/${encodeURIComponent(serialNumber)}/events/${encodeURIComponent(deviceEventId)}/false-positive`,
+      );
     },
   };
 

@@ -1,7 +1,7 @@
 """
 Synthetic dataset for wave detection.
 
-Generates 512-sample integer signals (0-4095) in four categories:
+Generates integer signals using the configured sample count from config.json:
   - sine wave      (label = 1)
   - square wave    (label = 1)
   - random noise   (label = 0)
@@ -104,7 +104,7 @@ class WaveDetectionDataset(Dataset):
     size : int
         Total number of samples.  Each category is equally represented.
     seq_len : int
-        Number of integers per sample (default 512).
+        Number of integers per sample (default: configured sample count).
     seed : int | None
         Reproducibility seed.
     """
@@ -149,7 +149,7 @@ class WaveDetectionDataset(Dataset):
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
         signal = self.signals[idx] / MAX_VAL  # normalise → [0, 1]
-        x = torch.tensor(signal, dtype=torch.float32).unsqueeze(0)  # (1, 512)
+        x = torch.tensor(signal, dtype=torch.float32).unsqueeze(0)  # (1, SEQ_LEN)
         y = torch.tensor(self.labels[idx], dtype=torch.float32)
         return x, y
 

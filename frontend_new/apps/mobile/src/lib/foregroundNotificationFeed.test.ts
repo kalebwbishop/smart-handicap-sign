@@ -6,6 +6,7 @@ function buildNotification(overrides: Partial<SignNotification>): SignNotificati
         id: 'notification-1',
         device_event_id: null,
         user_id: null,
+        device_event_correct_response: true,
         title: 'Need assistance',
         body: 'Sign A needs help',
         read: false,

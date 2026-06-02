@@ -15,6 +15,11 @@ class Settings(BaseSettings):
     # Database
     postgres_connection_string: str = "postgresql://devuser:devpassword@localhost:5432/social_stack_dev"
 
+    # Azure IoT Hub
+    iothub_eventhub_connection_string: str = ""
+    iothub_service_connection_string: str = ""
+    iothub_consumer_group: str = "$Default"
+
     # Frontend
     frontend_url: str = "http://localhost:8081"
     expo_push_access_token: str = ""

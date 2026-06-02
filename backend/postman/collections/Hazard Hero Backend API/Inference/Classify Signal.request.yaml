@@ -1,6 +1,6 @@
 $kind: http-request
 description: |-
-  Classify a 512-int signal as **wave** or **non-wave**.
+  Classify a signal matching the configured sample count as **wave** or **non-wave**.
 
   Requires device authentication via ``Authorization: Bearer <serial>:<token>``.
   The device can only submit telemetry for its own serial number.
