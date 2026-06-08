@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import json
 from typing import Any
 
@@ -115,11 +116,13 @@ def _build_consumer_client() -> EventHubConsumerClient:
     if not eventhub_name:
         raise RuntimeError("IOTHUB_EVENTHUB_NAME is not configured")
 
+    managed_identity_client_id = os.environ.get("AZURE_CLIENT_ID")
+
     return EventHubConsumerClient(
         fully_qualified_namespace=host_name,
         eventhub_name=eventhub_name,
         consumer_group=settings.iothub_consumer_group,
-        credential=DefaultAzureCredential(),
+        credential=DefaultAzureCredential(managed_identity_client_id=managed_identity_client_id),
         transport_type=TransportType.Amqp,
     )
 
