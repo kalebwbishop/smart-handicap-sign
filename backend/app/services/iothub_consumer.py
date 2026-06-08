@@ -6,7 +6,7 @@ from typing import Any
 
 from azure.eventhub.aio import EventHubConsumerClient
 from azure.eventhub import TransportType
-from azure.identity import DefaultAzureCredential
+from azure.identity.aio import DefaultAzureCredential
 from pydantic import ValidationError
 
 from app.config.settings import get_settings
