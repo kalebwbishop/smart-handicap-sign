@@ -61,7 +61,7 @@ resource "azurerm_container_app" "this" {
   }
 
   secret {
-    name     = "iothub_eventhub_connection_string"
+    name     = "iothub-eventhub-connection-string"
     identity = azurerm_user_assigned_identity.container_app.id
     value    = local.iothub_eventhub_connection_string
   }
@@ -120,7 +120,7 @@ resource "azurerm_container_app" "this" {
 
       env {
         name        = "IOTHUB_EVENTHUB_CONNECTION_STRING"
-        secret_name = "iothub_eventhub_connection_string"
+        secret_name = "iothub-eventhub-connection-string"
       }
 
       dynamic "env" {
