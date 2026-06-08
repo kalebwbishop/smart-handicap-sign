@@ -29,8 +29,6 @@ env:
   ACR_NAME: deployboxcrprod
   ACR_LOGIN_SERVER: deployboxcrprod.azurecr.io
   ACR_REPOSITORY: hazard-hero-backend
-  DEPLOY_BOX_PYTHON_REPOSITORY: Deploy-Box/deploy-box-python
-  DEPLOY_BOX_PYTHON_REF: main
   POSTGRES_CONNECTION_SECRET_NAME: postgres-connection-string
 
 jobs:
@@ -53,15 +51,6 @@ jobs:
           test -n "$ACR_NAME" || { echo "Missing ACR_NAME configuration"; exit 1; }
           test -n "$ACR_LOGIN_SERVER" || { echo "Missing ACR_LOGIN_SERVER configuration"; exit 1; }
           test -n "$ACR_REPOSITORY" || { echo "Missing ACR_REPOSITORY configuration"; exit 1; }
-          test -n "$DEPLOY_BOX_PYTHON_REPOSITORY" || { echo "Missing DEPLOY_BOX_PYTHON_REPOSITORY configuration"; exit 1; }
-          test -n "$DEPLOY_BOX_PYTHON_REF" || { echo "Missing DEPLOY_BOX_PYTHON_REF configuration"; exit 1; }
-
-      - name: Check out deploy-box-python
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.DEPLOY_BOX_PYTHON_REPOSITORY }}
-          ref: ${{ env.DEPLOY_BOX_PYTHON_REF }}
-          path: .external/deploy-box-python
 
       - name: Authenticate to Azure with OIDC
         uses: azure/login@v2

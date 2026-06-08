@@ -14,7 +14,6 @@
     ],
     "target": "ESNEXT",
     "module": "ESNEXT",
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
     }
