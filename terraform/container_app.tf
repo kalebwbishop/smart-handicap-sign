@@ -108,7 +108,7 @@ resource "azurerm_container_app" "this" {
       }
 
       env {
-        name = "AZURE_CLIENT_ID"
+        name  = "AZURE_CLIENT_ID"
         value = azurerm_user_assigned_identity.container_app.client_id
       }
 
