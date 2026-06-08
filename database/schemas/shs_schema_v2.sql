@@ -88,7 +88,7 @@ CREATE TABLE devices (
     firmware_version   VARCHAR(20),
     auth_token_hash    VARCHAR(128),
     auth_token_salt    VARCHAR(64),
-    connectivity_status device_connectivity_status NOT NULL DEFAULT 'online',
+    connectivity_status device_connectivity_status NOT NULL DEFAULT 'offline',
     operational_status device_operational_status NOT NULL DEFAULT 'available',
     last_seen_at       TIMESTAMPTZ,
     name               TEXT,

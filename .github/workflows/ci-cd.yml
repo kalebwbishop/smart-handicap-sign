@@ -29,8 +29,6 @@ env:
   ACR_NAME: deployboxcrprod
   ACR_LOGIN_SERVER: deployboxcrprod.azurecr.io
   ACR_REPOSITORY: hazard-hero-backend
-  DEPLOY_BOX_PYTHON_REPOSITORY: Deploy-Box/deploy-box-python
-  DEPLOY_BOX_PYTHON_REF: main
   POSTGRES_CONNECTION_SECRET_NAME: postgres-connection-string
 
 jobs:
@@ -39,11 +37,33 @@ jobs:
     runs-on: ubuntu-latest
     environment: main
     outputs:
-      image_ref: ${{ steps.image.outputs.sha_image }}
+      image_ref: ${{ steps.resolve_image.outputs.image_ref }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect backend changes
+        id: backend_changes
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ -n "$GITHUB_EVENT_BEFORE" ] && [ "$GITHUB_EVENT_BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            BASE_SHA="$GITHUB_EVENT_BEFORE"
+          else
+            BASE_SHA="$(git rev-parse HEAD^ 2>/dev/null || true)"
+          fi
+
+          if [ -z "$BASE_SHA" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if git diff --name-only "$BASE_SHA" "$GITHUB_SHA" -- backend/ | grep -q .; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Verify workflow configuration
         run: |
@@ -53,15 +73,6 @@ jobs:
           test -n "$ACR_NAME" || { echo "Missing ACR_NAME configuration"; exit 1; }
           test -n "$ACR_LOGIN_SERVER" || { echo "Missing ACR_LOGIN_SERVER configuration"; exit 1; }
           test -n "$ACR_REPOSITORY" || { echo "Missing ACR_REPOSITORY configuration"; exit 1; }
-          test -n "$DEPLOY_BOX_PYTHON_REPOSITORY" || { echo "Missing DEPLOY_BOX_PYTHON_REPOSITORY configuration"; exit 1; }
-          test -n "$DEPLOY_BOX_PYTHON_REF" || { echo "Missing DEPLOY_BOX_PYTHON_REF configuration"; exit 1; }
-
-      - name: Check out deploy-box-python
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.DEPLOY_BOX_PYTHON_REPOSITORY }}
-          ref: ${{ env.DEPLOY_BOX_PYTHON_REF }}
-          path: .external/deploy-box-python
 
       - name: Authenticate to Azure with OIDC
         uses: azure/login@v2
@@ -79,21 +90,44 @@ jobs:
           echo "sha_image=${ACR_LOGIN_SERVER}/${ACR_REPOSITORY}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
           echo "latest_image=${ACR_LOGIN_SERVER}/${ACR_REPOSITORY}:latest" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve image reference
+        id: resolve_image
+        run: |
+          if [ "${{ steps.backend_changes.outputs.changed }}" = "true" ]; then
+            echo "image_ref=${{ steps.image.outputs.sha_image }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "image_ref=${{ steps.image.outputs.latest_image }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Prepare Docker build context
         id: build_context
+        if: steps.backend_changes.outputs.changed == 'true'
         run: |
           BUILD_CONTEXT="$RUNNER_TEMP/hazard-hero-build-context"
           rm -rf "$BUILD_CONTEXT"
-          mkdir -p "$BUILD_CONTEXT/smart-handicap-sign/backend" "$BUILD_CONTEXT/deploy-box-python"
+          mkdir -p "$BUILD_CONTEXT/smart-handicap-sign/backend"
           cp config.json "$BUILD_CONTEXT/smart-handicap-sign/config.json"
           rsync -a --exclude='.env' --exclude='venv' --exclude='__pycache__' --exclude='.pytest_cache' --exclude='logs' backend/ "$BUILD_CONTEXT/smart-handicap-sign/backend/"
-          rsync -a --exclude='.git' .external/deploy-box-python/ "$BUILD_CONTEXT/deploy-box-python/"
           echo "path=$BUILD_CONTEXT" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
+        if: steps.backend_changes.outputs.changed == 'true'
         uses: docker/setup-buildx-action@v3
 
+      - name: Authenticate to Azure with OIDC
+        if: steps.backend_changes.outputs.changed == 'true'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ env.ARM_CLIENT_ID }}
+          tenant-id: ${{ env.ARM_TENANT_ID }}
+          subscription-id: ${{ env.ARM_SUBSCRIPTION_ID }}
+
+      - name: Log in to Azure Container Registry
+        if: steps.backend_changes.outputs.changed == 'true'
+        run: az acr login --name "$ACR_NAME"
+
       - name: Build and push backend image
+        if: steps.backend_changes.outputs.changed == 'true'
         uses: docker/build-push-action@v6
         with:
           context: ${{ steps.build_context.outputs.path }}
@@ -237,7 +271,23 @@ jobs:
         run: terraform validate -no-color
 
       - name: Plan Terraform changes
-        run: terraform plan -input=false -lock-timeout=5m -no-color -var-file=github.auto.tfvars -out=tfplan
+        id: plan
+        run: |
+          set +e
+          terraform plan -input=false -lock-timeout=5m -no-color -detailed-exitcode -var-file=github.auto.tfvars -out=tfplan
+          plan_exit_code=$?
+          set -e
+
+          if [ "$plan_exit_code" -eq 1 ]; then
+            exit 1
+          fi
+
+          if [ "$plan_exit_code" -eq 2 ]; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Apply Terraform changes
+        if: steps.plan.outputs.has_changes == 'true'
         run: terraform apply -input=false -no-color -auto-approve tfplan

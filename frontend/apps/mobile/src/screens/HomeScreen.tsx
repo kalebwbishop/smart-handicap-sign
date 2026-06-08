@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+    useCallback,
+    useEffect,
+    useMemo,
+    useRef,
+    useState,
+} from "react";
 import {
     ActivityIndicator,
     AppState,
@@ -11,18 +17,22 @@ import {
     StyleSheet,
     Text,
     View,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useFocusEffect, useIsFocused, useNavigation } from '@react-navigation/native';
-import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { devicesAPI, notificationAPI } from '@/api/api';
-import { useAuthStore } from '@/store/authStore';
-import { Device } from '@/types/device';
-import { RootStackParamList } from '@/types/navigation';
-import { NotificationPreferences, SignNotification } from '@/types/types';
-import { colors } from '@/theme/colors';
-import { layout, shadows, spacing } from '@/theme/spacing';
-import { typography } from '@/theme/typography';
+} from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+    useFocusEffect,
+    useIsFocused,
+    useNavigation,
+} from "@react-navigation/native";
+import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
+import { devicesAPI, notificationAPI } from "@/api/api";
+import { useAuthStore } from "@/store/authStore";
+import { Device } from "@/types/device";
+import { RootStackParamList } from "@/types/navigation";
+import { NotificationPreferences, SignNotification } from "@/types/types";
+import { colors } from "@/theme/colors";
+import { layout, shadows, spacing } from "@/theme/spacing";
+import { typography } from "@/theme/typography";
 import {
     canAcknowledgeRequest as hasAcknowledgeRequest,
     canMarkFalsePositiveRequest as hasFalsePositiveRequest,
@@ -30,18 +40,21 @@ import {
     getLatestAssistanceRequestNotification,
     getOperationalStatus,
     getConnectivityStatus,
-} from './pilotStatus';
-import { shouldRefreshOnAppActive, shouldRefreshOnHomeFocus } from './homeRefresh';
+} from "./pilotStatus";
+import {
+    shouldRefreshOnAppActive,
+    shouldRefreshOnHomeFocus,
+} from "./homeRefresh";
 import {
     startAssistanceAlertSound,
     stopAssistanceAlertSound,
-} from '@/lib/assistanceAlertSound';
+} from "@/lib/assistanceAlertSound";
 import {
     HomeLiveUpdatesConnection,
     openHomeLiveUpdatesConnection,
     shouldRefreshHomeOnLiveUpdate,
-} from '@/lib/homeLiveUpdates';
-import Feather from '@expo/vector-icons/Feather';
+} from "@/lib/homeLiveUpdates";
+import Feather from "@expo/vector-icons/Feather";
 
 const POLL_INTERVAL_MS = 30_000;
 const HOME_SCREEN_REQUEST_TIMEOUT_MS = 10_000;
@@ -50,7 +63,7 @@ const REFRESH_INDICATOR_TICK_MS = 250;
 function formatRelativeTime(iso: string): string {
     const diff = Date.now() - new Date(iso).getTime();
     const minutes = Math.floor(diff / 60_000);
-    if (minutes < 1) return 'Just now';
+    if (minutes < 1) return "Just now";
     if (minutes < 60) return `${minutes}m ago`;
     const hours = Math.floor(minutes / 60);
     if (hours < 24) return `${hours}h ago`;
@@ -59,12 +72,12 @@ function formatRelativeTime(iso: string): string {
 
 function formatLastSeen(iso: string | null): string {
     if (!iso) {
-        return 'Last seen never';
+        return "Last seen never";
     }
 
     const date = new Date(iso);
     if (Number.isNaN(date.getTime())) {
-        return 'Last seen unknown';
+        return "Last seen unknown";
     }
 
     return `Last seen ${formatRelativeTime(iso)}`;
@@ -73,82 +86,103 @@ function formatLastSeen(iso: string | null): string {
 export default function HomeScreen() {
     const insets = useSafeAreaInsets();
     const isFocused = useIsFocused();
-    const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+    const navigation =
+        useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const { user, token, logout, ensureFreshSession } = useAuthStore();
-
     const [menuVisible, setMenuVisible] = useState(false);
     const [isLoggingOut, setIsLoggingOut] = useState(false);
     const [refreshing, setRefreshing] = useState(false);
     const [isAutoRefreshing, setIsAutoRefreshing] = useState(false);
-    const [nextRefreshAt, setNextRefreshAt] = useState(() => Date.now() + POLL_INTERVAL_MS);
+    const [nextRefreshAt, setNextRefreshAt] = useState(
+        () => Date.now() + POLL_INTERVAL_MS,
+    );
     const [refreshClock, setRefreshClock] = useState(() => Date.now());
 
     const [device, setDevice] = useState<Device | null>(null);
     const [deviceLoading, setDeviceLoading] = useState(true);
     const [deviceError, setDeviceError] = useState<string | null>(null);
     const [deviceActionLoading, setDeviceActionLoading] = useState(false);
-    const [falsePositiveActionLoading, setFalsePositiveActionLoading] = useState(false);
+    const [falsePositiveActionLoading, setFalsePositiveActionLoading] =
+        useState(false);
     const [notifications, setNotifications] = useState<SignNotification[]>([]);
-    const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences | null>(null);
-    const [notificationError, setNotificationError] = useState<string | null>(null);
-    const [notificationActionLoading, setNotificationActionLoading] = useState(false);
-    const [activeNotificationId, setActiveNotificationId] = useState<string | null>(null);
+    const [notificationPreferences, setNotificationPreferences] =
+        useState<NotificationPreferences | null>(null);
+    const [notificationError, setNotificationError] = useState<string | null>(
+        null,
+    );
+    const [notificationActionLoading, setNotificationActionLoading] =
+        useState(false);
+    const [activeNotificationId, setActiveNotificationId] = useState<
+        string | null
+    >(null);
     const [isLiveUpdatesConnected, setIsLiveUpdatesConnected] = useState(false);
 
     const fetchInFlightRef = useRef(false);
     const hasLoadedOnceRef = useRef(false);
     const hasFocusedHomeRef = useRef(false);
     const appStateRef = useRef<AppStateStatus>(AppState.currentState);
-    const liveUpdatesConnectionRef = useRef<HomeLiveUpdatesConnection | null>(null);
+    const liveUpdatesConnectionRef = useRef<HomeLiveUpdatesConnection | null>(
+        null,
+    );
 
-    const userName = user?.name?.split(' ')[0] || user?.email || 'Operator';
+    const userName = user?.name?.split(" ")[0] || user?.email || "Operator";
     const userInitial = userName.charAt(0).toUpperCase();
 
-    const fetchData = useCallback(async ({ auto = false }: { auto?: boolean } = {}) => {
-        if (fetchInFlightRef.current) {
-            return;
-        }
-
-        fetchInFlightRef.current = true;
-        if (auto) {
-            setIsAutoRefreshing(true);
-        }
-        if (!hasLoadedOnceRef.current) {
-            setDeviceLoading(true);
-        }
-
-        try {
-            await ensureFreshSession();
-            const [devices, latestNotifications, preferences] = await Promise.all([
-                devicesAPI.list(undefined, { timeout: HOME_SCREEN_REQUEST_TIMEOUT_MS }),
-                notificationAPI.getNotifications(undefined, { timeout: HOME_SCREEN_REQUEST_TIMEOUT_MS }),
-                notificationAPI.getPreferences(),
-            ]);
-            if (devices.length === 0) {
-                setDevice(null);
-                setDeviceError('No pilot sign is linked to this account yet.');
-            } else {
-                const pilotDevice = devices[0];
-                setDevice(pilotDevice);
-                setDeviceError(null);
+    const fetchData = useCallback(
+        async ({ auto = false }: { auto?: boolean } = {}) => {
+            if (fetchInFlightRef.current) {
+                return;
             }
 
-            setNotifications(latestNotifications);
-            setNotificationPreferences(preferences);
-            setNotificationError(null);
-        } catch (error) {
-            console.error('[HomeScreen] Failed to load pilot sign:', error);
-            setDeviceError('Unable to load the pilot sign right now.');
-            setNotificationError('Unable to load notifications right now.');
-        } finally {
-            setDeviceLoading(false);
-            fetchInFlightRef.current = false;
-            hasLoadedOnceRef.current = true;
+            fetchInFlightRef.current = true;
             if (auto) {
-                setIsAutoRefreshing(false);
+                setIsAutoRefreshing(true);
             }
-        }
-    }, [ensureFreshSession]);
+            if (!hasLoadedOnceRef.current) {
+                setDeviceLoading(true);
+            }
+
+            try {
+                await ensureFreshSession();
+                const [devices, latestNotifications, preferences] =
+                    await Promise.all([
+                        devicesAPI.list(undefined, {
+                            timeout: HOME_SCREEN_REQUEST_TIMEOUT_MS,
+                        }),
+                        notificationAPI.getNotifications(undefined, {
+                            timeout: HOME_SCREEN_REQUEST_TIMEOUT_MS,
+                        }),
+                        notificationAPI.getPreferences(),
+                    ]);
+                if (devices.length === 0) {
+                    setDevice(null);
+                    setDeviceError(
+                        "No pilot sign is linked to this account yet.",
+                    );
+                } else {
+                    const pilotDevice = devices[0];
+                    setDevice(pilotDevice);
+                    setDeviceError(null);
+                }
+
+                setNotifications(latestNotifications);
+                setNotificationPreferences(preferences);
+                setNotificationError(null);
+            } catch (error) {
+                console.error("[HomeScreen] Failed to load pilot sign:", error);
+                setDeviceError("Unable to load the pilot sign right now.");
+                setNotificationError("Unable to load notifications right now.");
+            } finally {
+                setDeviceLoading(false);
+                fetchInFlightRef.current = false;
+                hasLoadedOnceRef.current = true;
+                if (auto) {
+                    setIsAutoRefreshing(false);
+                }
+            }
+        },
+        [ensureFreshSession],
+    );
 
     const resetAutoRefreshTimer = useCallback(() => {
         const now = Date.now();
@@ -157,7 +191,10 @@ export default function HomeScreen() {
     }, []);
 
     const triggerRefresh = useCallback(
-        async ({ auto = false, showSpinner = false }: { auto?: boolean; showSpinner?: boolean } = {}) => {
+        async ({
+            auto = false,
+            showSpinner = false,
+        }: { auto?: boolean; showSpinner?: boolean } = {}) => {
             resetAutoRefreshTimer();
 
             if (showSpinner) {
@@ -180,7 +217,12 @@ export default function HomeScreen() {
     }, [fetchData]);
 
     useEffect(() => {
-        if (Platform.OS === 'web' || !isFocused || !hasLoadedOnceRef.current || !token) {
+        if (
+            Platform.OS === "web" ||
+            !isFocused ||
+            !hasLoadedOnceRef.current ||
+            !token
+        ) {
             liveUpdatesConnectionRef.current?.close();
             liveUpdatesConnectionRef.current = null;
             setIsLiveUpdatesConnected(false);
@@ -198,31 +240,38 @@ export default function HomeScreen() {
                 }
 
                 liveUpdatesConnectionRef.current?.close();
-                liveUpdatesConnectionRef.current = openHomeLiveUpdatesConnection(accessToken, {
-                    onOpen: () => {
-                        if (cancelled) {
-                            return;
-                        }
+                liveUpdatesConnectionRef.current =
+                    openHomeLiveUpdatesConnection(accessToken, {
+                        onOpen: () => {
+                            if (cancelled) {
+                                return;
+                            }
 
-                        setIsLiveUpdatesConnected(true);
-                        void triggerRefresh({ auto: true });
-                    },
-                    onMessage: (update) => {
-                        if (cancelled || !shouldRefreshHomeOnLiveUpdate(update)) {
-                            return;
-                        }
+                            setIsLiveUpdatesConnected(true);
+                            void triggerRefresh({ auto: true });
+                        },
+                        onMessage: (update) => {
+                            if (
+                                cancelled ||
+                                !shouldRefreshHomeOnLiveUpdate(update)
+                            ) {
+                                return;
+                            }
 
-                        void triggerRefresh({ auto: true });
-                    },
-                    onError: (error) => {
-                        if (cancelled) {
-                            return;
-                        }
+                            void triggerRefresh({ auto: true });
+                        },
+                        onError: (error) => {
+                            if (cancelled) {
+                                return;
+                            }
 
-                        console.warn('[HomeScreen] Live updates stream error:', error);
-                        setIsLiveUpdatesConnected(false);
-                    },
-                });
+                            console.warn(
+                                "[HomeScreen] Live updates stream error:",
+                                error,
+                            );
+                            setIsLiveUpdatesConnected(false);
+                        },
+                    });
 
                 if (!liveUpdatesConnectionRef.current) {
                     setIsLiveUpdatesConnected(false);
@@ -232,7 +281,10 @@ export default function HomeScreen() {
                     return;
                 }
 
-                console.error('[HomeScreen] Failed to open live updates stream:', error);
+                console.error(
+                    "[HomeScreen] Failed to open live updates stream:",
+                    error,
+                );
                 setIsLiveUpdatesConnected(false);
             }
         };
@@ -288,24 +340,27 @@ export default function HomeScreen() {
     }, [isLiveUpdatesConnected]);
 
     useEffect(() => {
-        if (Platform.OS === 'web') {
+        if (Platform.OS === "web") {
             return;
         }
 
-        const subscription = AppState.addEventListener('change', (nextAppState) => {
-            const shouldRefresh = shouldRefreshOnAppActive({
-                hasLoadedOnce: hasLoadedOnceRef.current,
-                isScreenFocused: isFocused,
-                previousAppState: appStateRef.current,
-                nextAppState,
-            });
+        const subscription = AppState.addEventListener(
+            "change",
+            (nextAppState) => {
+                const shouldRefresh = shouldRefreshOnAppActive({
+                    hasLoadedOnce: hasLoadedOnceRef.current,
+                    isScreenFocused: isFocused,
+                    previousAppState: appStateRef.current,
+                    nextAppState,
+                });
 
-            appStateRef.current = nextAppState;
+                appStateRef.current = nextAppState;
 
-            if (shouldRefresh) {
-                void triggerRefresh({ auto: true });
-            }
-        });
+                if (shouldRefresh) {
+                    void triggerRefresh({ auto: true });
+                }
+            },
+        );
 
         return () => subscription.remove();
     }, [isFocused, triggerRefresh]);
@@ -331,7 +386,7 @@ export default function HomeScreen() {
             const updated = await devicesAPI.acknowledge(device.serial_number);
             setDevice(updated);
         } catch (error) {
-            console.error('[HomeScreen] Failed to acknowledge request:', error);
+            console.error("[HomeScreen] Failed to acknowledge request:", error);
         } finally {
             setDeviceActionLoading(false);
         }
@@ -346,14 +401,15 @@ export default function HomeScreen() {
             const updated = await devicesAPI.resolve(device.serial_number);
             setDevice(updated);
         } catch (error) {
-            console.error('[HomeScreen] Failed to resolve request:', error);
+            console.error("[HomeScreen] Failed to resolve request:", error);
         } finally {
             setDeviceActionLoading(false);
         }
     }, [device, ensureFreshSession]);
 
     const handleMarkFalsePositiveRequest = useCallback(async () => {
-        const latestAssistanceRequestNotification = getLatestAssistanceRequestNotification(notifications);
+        const latestAssistanceRequestNotification =
+            getLatestAssistanceRequestNotification(notifications);
         if (!device || !latestAssistanceRequestNotification?.device_event_id) {
             return;
         }
@@ -369,12 +425,16 @@ export default function HomeScreen() {
             setNotifications((currentNotifications) =>
                 currentNotifications.map((notification) =>
                     notification.device_event_id === updated.device_event.id
-                        ? { ...notification, device_event_correct_response: updated.device_event.correct_response }
+                        ? {
+                              ...notification,
+                              device_event_correct_response:
+                                  updated.device_event.correct_response,
+                          }
                         : notification,
                 ),
             );
         } catch (error) {
-            console.error('[HomeScreen] Failed to mark false positive:', error);
+            console.error("[HomeScreen] Failed to mark false positive:", error);
         } finally {
             setFalsePositiveActionLoading(false);
         }
@@ -393,56 +453,50 @@ export default function HomeScreen() {
     const handleOpenSignDetails = useCallback(() => {
         if (!device) return;
 
-        navigation.navigate('SignDetails', { device });
+        navigation.navigate("SignDetails", { device });
     }, [device, navigation]);
 
-    const handleOpenNotification = useCallback(async (notification: SignNotification) => {
-        setActiveNotificationId(notification.id);
-        try {
-            await ensureFreshSession();
-            const updatedNotification = notification.read
-                ? notification
-                : await notificationAPI.markAsRead(notification.id);
+    const handleOpenSettings = useCallback(() => {
+        setMenuVisible(false);
+        navigation.navigate("Settings");
+    }, [navigation]);
 
-            setNotifications((currentNotifications) =>
-                currentNotifications.map((currentNotification) =>
-                    currentNotification.id === updatedNotification.id ? updatedNotification : currentNotification,
-                ),
-            );
+    const handleOpenNotification = useCallback(
+        async (notification: SignNotification) => {
+            setActiveNotificationId(notification.id);
+            try {
+                await ensureFreshSession();
+                const updatedNotification = notification.read
+                    ? notification
+                    : await notificationAPI.markAsRead(notification.id);
 
-            navigation.navigate('NotificationDetail', {
-                notification: updatedNotification,
-                device,
-            });
-        } catch (error) {
-            console.error('[HomeScreen] Failed to open notification:', error);
-            navigation.navigate('NotificationDetail', {
-                notification,
-                device,
-            });
-        } finally {
-            setActiveNotificationId(null);
-        }
-    }, [device, ensureFreshSession, navigation]);
+                setNotifications((currentNotifications) =>
+                    currentNotifications.map((currentNotification) =>
+                        currentNotification.id === updatedNotification.id
+                            ? updatedNotification
+                            : currentNotification,
+                    ),
+                );
 
-    const handleToggleNotifications = useCallback(async () => {
-        if (!notificationPreferences) {
-            return;
-        }
-
-        setNotificationActionLoading(true);
-        try {
-            await ensureFreshSession();
-            const updatedPreferences = await notificationAPI.updatePreferences({
-                assistance_requests_enabled: !notificationPreferences.assistance_requests_enabled,
-            });
-            setNotificationPreferences(updatedPreferences);
-        } catch (error) {
-            console.error('[HomeScreen] Failed to update notification preferences:', error);
-        } finally {
-            setNotificationActionLoading(false);
-        }
-    }, [ensureFreshSession, notificationPreferences]);
+                navigation.navigate("NotificationDetail", {
+                    notification: updatedNotification,
+                    device,
+                });
+            } catch (error) {
+                console.error(
+                    "[HomeScreen] Failed to open notification:",
+                    error,
+                );
+                navigation.navigate("NotificationDetail", {
+                    notification,
+                    device,
+                });
+            } finally {
+                setActiveNotificationId(null);
+            }
+        },
+        [device, ensureFreshSession, navigation],
+    );
 
     const handleMarkAllNotificationsRead = useCallback(async () => {
         setNotificationActionLoading(true);
@@ -450,70 +504,111 @@ export default function HomeScreen() {
             await ensureFreshSession();
             await notificationAPI.markAllAsRead();
             setNotifications((currentNotifications) =>
-                currentNotifications.map((notification) => ({ ...notification, read: true })),
+                currentNotifications.map((notification) => ({
+                    ...notification,
+                    read: true,
+                })),
             );
         } catch (error) {
-            console.error('[HomeScreen] Failed to mark notifications as read:', error);
+            console.error(
+                "[HomeScreen] Failed to mark notifications as read:",
+                error,
+            );
         } finally {
             setNotificationActionLoading(false);
         }
     }, [ensureFreshSession]);
 
-    const status = useMemo(() => (device ? getOperationalStatus(device) : null), [device]);
-    const connectivityStatus = useMemo(() => (device ? getConnectivityStatus(device) : null), [device]);
-    const deviceOffline = connectivityStatus?.label.toLowerCase() === 'offline';
-    const canAcknowledge = useMemo(() => (device ? hasAcknowledgeRequest(device) : false), [device]);
-    const canResolve = useMemo(() => (device ? hasResolveRequest(device) : false), [device]);
+    const status = useMemo(
+        () => (device ? getOperationalStatus(device) : null),
+        [device],
+    );
+    const connectivityStatus = useMemo(
+        () => (device ? getConnectivityStatus(device) : null),
+        [device],
+    );
+    const deviceOffline = connectivityStatus?.label.toLowerCase() === "offline";
+    const canAcknowledge = useMemo(
+        () => (device ? hasAcknowledgeRequest(device) : false),
+        [device],
+    );
+    const canResolve = useMemo(
+        () => (device ? hasResolveRequest(device) : false),
+        [device],
+    );
     const latestAssistanceRequestNotification = useMemo(
         () => getLatestAssistanceRequestNotification(notifications),
         [notifications],
     );
     const canMarkFalsePositive = useMemo(
-        () => (device ? hasFalsePositiveRequest(device, latestAssistanceRequestNotification) : false),
+        () =>
+            device
+                ? hasFalsePositiveRequest(
+                      device,
+                      latestAssistanceRequestNotification,
+                  )
+                : false,
         [device, latestAssistanceRequestNotification],
     );
-    const millisecondsUntilRefresh = isLiveUpdatesConnected ? 0 : Math.max(0, nextRefreshAt - refreshClock);
+    const millisecondsUntilRefresh = isLiveUpdatesConnected
+        ? 0
+        : Math.max(0, nextRefreshAt - refreshClock);
     const secondsUntilRefresh = Math.ceil(millisecondsUntilRefresh / 1000);
     const refreshProgress = isLiveUpdatesConnected
         ? 1
         : isAutoRefreshing
-            ? 1
-            : Math.min(1, Math.max(0, 1 - millisecondsUntilRefresh / POLL_INTERVAL_MS));
+          ? 1
+          : Math.min(
+                1,
+                Math.max(0, 1 - millisecondsUntilRefresh / POLL_INTERVAL_MS),
+            );
     const refreshIndicatorText = isLiveUpdatesConnected
-        ? 'Live updates connected'
+        ? "Live updates connected"
         : isAutoRefreshing
-        ? 'Refreshing now…'
-        : `Next refresh in ${secondsUntilRefresh}s`;
+          ? "Refreshing now…"
+          : `Next refresh in ${secondsUntilRefresh}s`;
     const unreadNotificationCount = useMemo(
         () => notifications.filter((notification) => !notification.read).length,
         [notifications],
     );
-    const notificationsEnabled = notificationPreferences?.assistance_requests_enabled ?? true;
+    const notificationsEnabled =
+        notificationPreferences?.assistance_requests_enabled ?? true;
 
     useEffect(() => {
         if (canAcknowledge) {
             void startAssistanceAlertSound().catch((error) => {
-                console.error('[HomeScreen] Failed to start assistance alert sound:', error);
+                console.error(
+                    "[HomeScreen] Failed to start assistance alert sound:",
+                    error,
+                );
             });
             return;
         }
 
         void stopAssistanceAlertSound().catch((error) => {
-            console.error('[HomeScreen] Failed to stop assistance alert sound:', error);
+            console.error(
+                "[HomeScreen] Failed to stop assistance alert sound:",
+                error,
+            );
         });
     }, [canAcknowledge]);
 
     useEffect(() => {
         return () => {
             void stopAssistanceAlertSound().catch((error) => {
-                console.error('[HomeScreen] Failed to stop assistance alert sound during cleanup:', error);
+                console.error(
+                    "[HomeScreen] Failed to stop assistance alert sound during cleanup:",
+                    error,
+                );
             });
         };
     }, []);
 
     return (
         <View style={styles.root}>
-            <View style={[styles.header, { paddingTop: insets.top + spacing.sm }]}>
+            <View
+                style={[styles.header, { paddingTop: insets.top + spacing.sm }]}
+            >
                 <View style={styles.headerInner}>
                     <View style={styles.headerCopy}>
                         <Text style={styles.headerTitle}>Hi, {userName}</Text>
@@ -522,7 +617,10 @@ export default function HomeScreen() {
                         accessibilityLabel="Open account menu"
                         accessibilityRole="button"
                         onPress={() => setMenuVisible(true)}
-                        style={({ pressed }) => [styles.avatar, pressed && styles.pressed]}
+                        style={({ pressed }) => [
+                            styles.avatar,
+                            pressed && styles.pressed,
+                        ]}
                     >
                         <Text style={styles.avatarText}>{userInitial}</Text>
                     </Pressable>
@@ -535,18 +633,37 @@ export default function HomeScreen() {
                 transparent
                 visible={menuVisible}
             >
-                <Pressable onPress={() => setMenuVisible(false)} style={styles.menuOverlay}>
-                    <View style={[styles.menuSheet, { paddingTop: insets.top + spacing.sm }]}>
-                        <Pressable onPress={() => undefined} style={styles.menuContent}>
+                <Pressable
+                    onPress={() => setMenuVisible(false)}
+                    style={styles.menuOverlay}
+                >
+                    <View
+                        style={[
+                            styles.menuSheet,
+                            { paddingTop: insets.top + spacing.sm },
+                        ]}
+                    >
+                        <Pressable
+                            onPress={() => undefined}
+                            style={styles.menuContent}
+                        >
                             <View style={styles.menuUserRow}>
                                 <View style={styles.menuAvatar}>
-                                    <Text style={styles.menuAvatarText}>{userInitial}</Text>
+                                    <Text style={styles.menuAvatarText}>
+                                        {userInitial}
+                                    </Text>
                                 </View>
                                 <View style={styles.menuUserCopy}>
-                                    <Text numberOfLines={1} style={styles.menuUserName}>
-                                        {user?.name || 'Pilot operator'}
+                                    <Text
+                                        numberOfLines={1}
+                                        style={styles.menuUserName}
+                                    >
+                                        {user?.name || "Pilot operator"}
                                     </Text>
-                                    <Text numberOfLines={1} style={styles.menuUserEmail}>
+                                    <Text
+                                        numberOfLines={1}
+                                        style={styles.menuUserEmail}
+                                    >
                                         {user?.email}
                                     </Text>
                                 </View>
@@ -556,12 +673,26 @@ export default function HomeScreen() {
 
                             <Pressable
                                 accessibilityRole="button"
-                                onPress={handleLogout}
-                                style={({ pressed }) => [styles.menuItem, pressed && styles.menuItemPressed]}
+                                onPress={handleOpenSettings}
+                                style={({ pressed }) => [
+                                    styles.menuItem,
+                                    pressed && styles.menuItemPressed,
+                                ]}
                             >
-                                <Text style={styles.menuItemIcon}>↗</Text>
                                 <Text style={styles.menuItemText}>
-                                    {isLoggingOut ? 'Logging out…' : 'Log out'}
+                                    Settings
+                                </Text>
+                            </Pressable>
+                            <Pressable
+                                accessibilityRole="button"
+                                onPress={handleLogout}
+                                style={({ pressed }) => [
+                                    styles.menuItem,
+                                    pressed && styles.menuItemPressed,
+                                ]}
+                            >
+                                <Text style={styles.menuItemText}>
+                                    {isLoggingOut ? "Logging out…" : "Log out"}
                                 </Text>
                             </Pressable>
                         </Pressable>
@@ -572,7 +703,11 @@ export default function HomeScreen() {
             <ScrollView
                 contentContainerStyle={styles.scrollContent}
                 refreshControl={
-                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+                    <RefreshControl
+                        refreshing={refreshing}
+                        onRefresh={onRefresh}
+                        tintColor={colors.primary}
+                    />
                 }
                 style={styles.scrollView}
             >
@@ -581,7 +716,7 @@ export default function HomeScreen() {
                         <Pressable
                             accessibilityLabel={
                                 isAutoRefreshing
-                                    ? 'Pilot sign refresh in progress'
+                                    ? "Pilot sign refresh in progress"
                                     : `Refresh pilot sign now. Auto refresh resumes in ${secondsUntilRefresh} seconds`
                             }
                             accessibilityRole="button"
@@ -595,13 +730,18 @@ export default function HomeScreen() {
                             onPress={handleRefreshIndicatorPress}
                             style={({ pressed }) => [
                                 styles.refreshIndicator,
-                                (isAutoRefreshing || refreshing) && styles.disabledAction,
+                                (isAutoRefreshing || refreshing) &&
+                                    styles.disabledAction,
                                 pressed && styles.pressed,
                             ]}
                         >
                             <View style={styles.refreshIndicatorHeader}>
-                                <Text style={styles.refreshIndicatorLabel}>Auto refresh</Text>
-                                <Text style={styles.refreshIndicatorValue}>{refreshIndicatorText}</Text>
+                                <Text style={styles.refreshIndicatorLabel}>
+                                    Auto refresh
+                                </Text>
+                                <Text style={styles.refreshIndicatorValue}>
+                                    {refreshIndicatorText}
+                                </Text>
                             </View>
                             <View style={styles.refreshIndicatorTrack}>
                                 <View
@@ -615,41 +755,107 @@ export default function HomeScreen() {
 
                         {deviceLoading ? (
                             <View style={styles.emptyState}>
-                                <ActivityIndicator color={colors.primary} size="large" />
-                                <Text style={styles.emptyTitle}>Loading sign information…</Text>
+                                <ActivityIndicator
+                                    color={colors.primary}
+                                    size="large"
+                                />
+                                <Text style={styles.emptyTitle}>
+                                    Loading sign information…
+                                </Text>
                             </View>
                         ) : deviceError || !device ? (
                             <View style={styles.emptyState}>
                                 <Text style={styles.emptyIcon}>⚠️</Text>
-                                <Text style={styles.emptyTitle}>Sign information unavailable</Text>
-                                <Text style={styles.emptyBody}>{deviceError || 'No sign information found.'}</Text>
+                                <Text style={styles.emptyTitle}>
+                                    Sign information unavailable
+                                </Text>
+                                <Text style={styles.emptyBody}>
+                                    {deviceError ||
+                                        "No sign information found."}
+                                </Text>
                             </View>
                         ) : (
                             <>
                                 <Pressable
-                                    accessibilityLabel={`Open details for ${device.name || 'sign'}`}
+                                    accessibilityLabel={`Open details for ${device.name || "sign"}`}
                                     accessibilityRole="button"
                                     onPress={handleOpenSignDetails}
-                                    style={({ pressed }) => [pressed && styles.pressed]}
+                                    style={({ pressed }) => [
+                                        pressed && styles.pressed,
+                                    ]}
                                 >
                                     <View style={styles.signHeaderRow}>
-                                        <Text style={styles.signName}>{device.name || 'Sign'}</Text>
-                                        <Feather accessibilityLabel="Wi-Fi connected" name={deviceOffline ? "wifi-off" : "wifi"} size={24} color="black" />
+                                        <Text style={styles.signName}>
+                                            {device.name || "Sign"}
+                                        </Text>
+                                        <Feather
+                                            accessibilityLabel="Wi-Fi connected"
+                                            name={
+                                                deviceOffline
+                                                    ? "wifi-off"
+                                                    : "wifi"
+                                            }
+                                            size={24}
+                                            color="black"
+                                        />
                                     </View>
-                                        <Text style={styles.signName}>{device?.connectivity_status ?? 'Unknown'}</Text>
+                                    <Text style={styles.signName}>
+                                        {device?.connectivity_status ??
+                                            "Unknown"}
+                                    </Text>
 
-                                    <Text style={styles.signMeta}>{formatLastSeen(device.last_seen_at)}</Text>
+                                    <Text style={styles.signMeta}>
+                                        {formatLastSeen(device.last_seen_at)}
+                                    </Text>
 
-                                    <View style={[styles.statusBanner, { backgroundColor: status?.tone ?? colors.offWhite }]}>
-                                        <Text style={[styles.statusBannerText, { color: status?.color ?? colors.textPrimary }]}>
-                                            {status?.label ?? 'Status unavailable'}
+                                    <View
+                                        style={[
+                                            styles.statusBanner,
+                                            {
+                                                backgroundColor:
+                                                    status?.tone ??
+                                                    colors.offWhite,
+                                            },
+                                        ]}
+                                    >
+                                        <Text
+                                            style={[
+                                                styles.statusBannerText,
+                                                {
+                                                    color:
+                                                        status?.color ??
+                                                        colors.textPrimary,
+                                                },
+                                            ]}
+                                        >
+                                            {status?.label ??
+                                                "Status unavailable"}
                                         </Text>
                                     </View>
                                     {deviceOffline ? (
                                         <View style={styles.offlineWarningRow}>
-                                            <Text style={styles.offlineWarningIcon}>⚠️</Text>
-                                            <Text style={[styles.offlineWarningText, { color: connectivityStatus?.color ?? colors.textPrimary }]}> 
-                                                This sign appears to be offline. The above status may not be up to date, and assistance requests may not be received until connectivity is restored.
+                                            <Text
+                                                style={
+                                                    styles.offlineWarningIcon
+                                                }
+                                            >
+                                                ⚠️
+                                            </Text>
+                                            <Text
+                                                style={[
+                                                    styles.offlineWarningText,
+                                                    {
+                                                        color:
+                                                            connectivityStatus?.color ??
+                                                            colors.textPrimary,
+                                                    },
+                                                ]}
+                                            >
+                                                This sign appears to be offline.
+                                                The above status may not be up
+                                                to date, and assistance requests
+                                                may not be received until
+                                                connectivity is restored.
                                             </Text>
                                         </View>
                                     ) : null}
@@ -659,18 +865,30 @@ export default function HomeScreen() {
                                     <Pressable
                                         accessibilityLabel="Acknowledge assistance request"
                                         accessibilityRole="button"
-                                        disabled={deviceActionLoading || falsePositiveActionLoading}
+                                        disabled={
+                                            deviceActionLoading ||
+                                            falsePositiveActionLoading
+                                        }
                                         onPress={handleAcknowledgeRequest}
                                         style={({ pressed }) => [
                                             styles.primaryAction,
-                                            (deviceActionLoading || falsePositiveActionLoading) && styles.disabledAction,
+                                            (deviceActionLoading ||
+                                                falsePositiveActionLoading) &&
+                                                styles.disabledAction,
                                             pressed && styles.pressed,
                                         ]}
                                     >
                                         {deviceActionLoading ? (
-                                            <ActivityIndicator color={colors.white} size="small" />
+                                            <ActivityIndicator
+                                                color={colors.white}
+                                                size="small"
+                                            />
                                         ) : (
-                                            <Text style={styles.primaryActionText}>Acknowledge request</Text>
+                                            <Text
+                                                style={styles.primaryActionText}
+                                            >
+                                                Acknowledge request
+                                            </Text>
                                         )}
                                     </Pressable>
                                 ) : null}
@@ -679,18 +897,32 @@ export default function HomeScreen() {
                                     <Pressable
                                         accessibilityLabel="Mark assistance request as false positive"
                                         accessibilityRole="button"
-                                        disabled={falsePositiveActionLoading || deviceActionLoading}
+                                        disabled={
+                                            falsePositiveActionLoading ||
+                                            deviceActionLoading
+                                        }
                                         onPress={handleMarkFalsePositiveRequest}
                                         style={({ pressed }) => [
                                             styles.falsePositiveAction,
-                                            (falsePositiveActionLoading || deviceActionLoading) && styles.disabledAction,
+                                            (falsePositiveActionLoading ||
+                                                deviceActionLoading) &&
+                                                styles.disabledAction,
                                             pressed && styles.pressed,
                                         ]}
                                     >
                                         {falsePositiveActionLoading ? (
-                                            <ActivityIndicator color={colors.negative} size="small" />
+                                            <ActivityIndicator
+                                                color={colors.negative}
+                                                size="small"
+                                            />
                                         ) : (
-                                            <Text style={styles.falsePositiveActionText}>False Positive</Text>
+                                            <Text
+                                                style={
+                                                    styles.falsePositiveActionText
+                                                }
+                                            >
+                                                False Positive
+                                            </Text>
                                         )}
                                     </Pressable>
                                 ) : null}
@@ -699,18 +931,30 @@ export default function HomeScreen() {
                                     <Pressable
                                         accessibilityLabel="Resolve assistance request"
                                         accessibilityRole="button"
-                                        disabled={deviceActionLoading || falsePositiveActionLoading}
+                                        disabled={
+                                            deviceActionLoading ||
+                                            falsePositiveActionLoading
+                                        }
                                         onPress={handleResolveRequest}
                                         style={({ pressed }) => [
                                             styles.successAction,
-                                            (deviceActionLoading || falsePositiveActionLoading) && styles.disabledAction,
+                                            (deviceActionLoading ||
+                                                falsePositiveActionLoading) &&
+                                                styles.disabledAction,
                                             pressed && styles.pressed,
                                         ]}
                                     >
                                         {deviceActionLoading ? (
-                                            <ActivityIndicator color={colors.white} size="small" />
+                                            <ActivityIndicator
+                                                color={colors.white}
+                                                size="small"
+                                            />
                                         ) : (
-                                            <Text style={styles.primaryActionText}>Mark resolved</Text>
+                                            <Text
+                                                style={styles.primaryActionText}
+                                            >
+                                                Mark resolved
+                                            </Text>
                                         )}
                                     </Pressable>
                                 ) : null}
@@ -722,36 +966,20 @@ export default function HomeScreen() {
                         <View style={styles.sectionHeader}>
                             <View>
                                 <Text style={styles.sectionEyebrow}>Inbox</Text>
-                                <Text style={styles.sectionTitle}>Assistance alerts</Text>
+                                <Text style={styles.sectionTitle}>
+                                    Assistance alerts
+                                </Text>
                             </View>
                             {unreadNotificationCount > 0 ? (
                                 <View style={styles.unreadBadge}>
-                                    <Text style={styles.unreadBadgeText}>{unreadNotificationCount} new</Text>
+                                    <Text style={styles.unreadBadgeText}>
+                                        {unreadNotificationCount} new
+                                    </Text>
                                 </View>
                             ) : null}
                         </View>
 
                         <View style={styles.notificationControls}>
-                            <Pressable
-                                accessibilityLabel={
-                                    notificationsEnabled
-                                        ? 'Pause future assistance notifications'
-                                        : 'Turn assistance notifications back on'
-                                }
-                                accessibilityRole="button"
-                                disabled={notificationActionLoading}
-                                onPress={handleToggleNotifications}
-                                style={({ pressed }) => [
-                                    styles.secondaryAction,
-                                    notificationActionLoading && styles.disabledAction,
-                                    pressed && styles.pressed,
-                                ]}
-                            >
-                                <Text style={styles.secondaryActionText}>
-                                    {notificationsEnabled ? 'Pause alerts' : 'Turn alerts back on'}
-                                </Text>
-                            </Pressable>
-
                             {unreadNotificationCount > 0 ? (
                                 <Pressable
                                     accessibilityLabel="Mark all notifications as read"
@@ -760,21 +988,28 @@ export default function HomeScreen() {
                                     onPress={handleMarkAllNotificationsRead}
                                     style={({ pressed }) => [
                                         styles.inlineAction,
-                                        notificationActionLoading && styles.disabledAction,
+                                        notificationActionLoading &&
+                                            styles.disabledAction,
                                         pressed && styles.pressed,
                                     ]}
                                 >
-                                    <Text style={styles.inlineActionText}>Mark all read</Text>
+                                    <Text style={styles.inlineActionText}>
+                                        Mark all read
+                                    </Text>
                                 </Pressable>
                             ) : null}
                         </View>
 
                         {!notificationsEnabled ? (
                             <View style={styles.noticeCard}>
-                                <Text style={styles.noticeTitle}>Alerts are paused</Text>
+                                <Text style={styles.noticeTitle}>
+                                    Alerts are paused
+                                </Text>
                                 <Text style={styles.noticeBody}>
-                                    New assistance requests will still appear on the home screen, but the inbox will stop
-                                    adding new alerts until you turn notifications back on.
+                                    New assistance requests will still appear on
+                                    the home screen, but the inbox will stop
+                                    adding new alerts until you turn
+                                    notifications back on.
                                 </Text>
                             </View>
                         ) : null}
@@ -782,21 +1017,30 @@ export default function HomeScreen() {
                         {notificationError ? (
                             <View style={styles.emptyState}>
                                 <Text style={styles.emptyIcon}>⚠️</Text>
-                                <Text style={styles.emptyTitle}>Inbox unavailable</Text>
-                                <Text style={styles.emptyBody}>{notificationError}</Text>
+                                <Text style={styles.emptyTitle}>
+                                    Inbox unavailable
+                                </Text>
+                                <Text style={styles.emptyBody}>
+                                    {notificationError}
+                                </Text>
                             </View>
                         ) : notifications.length === 0 ? (
                             <View style={styles.emptyState}>
                                 <Text style={styles.emptyIcon}>🔔</Text>
-                                <Text style={styles.emptyTitle}>No assistance alerts yet</Text>
+                                <Text style={styles.emptyTitle}>
+                                    No assistance alerts yet
+                                </Text>
                                 <Text style={styles.emptyBody}>
-                                    When the sign requests help, the alert will appear here for operators to review.
+                                    When the sign requests help, the alert will
+                                    appear here for operators to review.
                                 </Text>
                             </View>
                         ) : (
                             <View style={styles.notificationList}>
                                 {notifications.map((notification) => {
-                                    const isOpeningNotification = activeNotificationId === notification.id;
+                                    const isOpeningNotification =
+                                        activeNotificationId ===
+                                        notification.id;
 
                                     return (
                                         <Pressable
@@ -804,30 +1048,78 @@ export default function HomeScreen() {
                                             accessibilityLabel={`Open notification: ${notification.title}`}
                                             accessibilityRole="button"
                                             disabled={isOpeningNotification}
-                                            onPress={() => void handleOpenNotification(notification)}
+                                            onPress={() =>
+                                                void handleOpenNotification(
+                                                    notification,
+                                                )
+                                            }
                                             style={({ pressed }) => [
                                                 styles.notificationRow,
-                                                !notification.read && styles.notificationRowUnread,
+                                                !notification.read &&
+                                                    styles.notificationRowUnread,
                                                 pressed && styles.pressed,
                                             ]}
                                         >
-                                            <View style={styles.notificationRowHeader}>
-                                                <Text style={styles.notificationTitle}>{notification.title}</Text>
-                                                <Text style={styles.notificationTimestamp}>
-                                                    {formatRelativeTime(notification.created_at)}
+                                            <View
+                                                style={
+                                                    styles.notificationRowHeader
+                                                }
+                                            >
+                                                <Text
+                                                    style={
+                                                        styles.notificationTitle
+                                                    }
+                                                >
+                                                    {notification.title}
+                                                </Text>
+                                                <Text
+                                                    style={
+                                                        styles.notificationTimestamp
+                                                    }
+                                                >
+                                                    {formatRelativeTime(
+                                                        notification.created_at,
+                                                    )}
                                                 </Text>
                                             </View>
-                                            <Text style={styles.notificationBody}>{notification.body}</Text>
-                                            <View style={styles.notificationFooter}>
+                                            <Text
+                                                style={styles.notificationBody}
+                                            >
+                                                {notification.body}
+                                            </Text>
+                                            <View
+                                                style={
+                                                    styles.notificationFooter
+                                                }
+                                            >
                                                 {!notification.read ? (
-                                                    <View style={styles.notificationStatusPill}>
-                                                        <Text style={styles.notificationStatusPillText}>Unread</Text>
+                                                    <View
+                                                        style={
+                                                            styles.notificationStatusPill
+                                                        }
+                                                    >
+                                                        <Text
+                                                            style={
+                                                                styles.notificationStatusPillText
+                                                            }
+                                                        >
+                                                            Unread
+                                                        </Text>
                                                     </View>
                                                 ) : (
-                                                    <Text style={styles.notificationReadText}>Read</Text>
+                                                    <Text
+                                                        style={
+                                                            styles.notificationReadText
+                                                        }
+                                                    >
+                                                        Read
+                                                    </Text>
                                                 )}
                                                 {isOpeningNotification ? (
-                                                    <ActivityIndicator color={colors.primary} size="small" />
+                                                    <ActivityIndicator
+                                                        color={colors.primary}
+                                                        size="small"
+                                                    />
                                                 ) : null}
                                             </View>
                                         </Pressable>
@@ -836,7 +1128,6 @@ export default function HomeScreen() {
                             </View>
                         )}
                     </View>
-
                 </View>
             </ScrollView>
         </View>
@@ -856,12 +1147,12 @@ const styles = StyleSheet.create({
         paddingHorizontal: layout.contentPadding,
     },
     headerInner: {
-        alignItems: 'center',
-        alignSelf: 'center',
-        flexDirection: 'row',
-        justifyContent: 'space-between',
+        alignItems: "center",
+        alignSelf: "center",
+        flexDirection: "row",
+        justifyContent: "space-between",
         maxWidth: layout.maxWidth,
-        width: '100%',
+        width: "100%",
     },
     headerCopy: {
         flex: 1,
@@ -871,7 +1162,7 @@ const styles = StyleSheet.create({
         ...typography.label,
         color: colors.primary,
         marginBottom: spacing.xs,
-        textTransform: 'uppercase',
+        textTransform: "uppercase",
     },
     headerTitle: {
         ...typography.h3,
@@ -883,21 +1174,21 @@ const styles = StyleSheet.create({
         marginTop: spacing.xs,
     },
     avatar: {
-        alignItems: 'center',
+        alignItems: "center",
         backgroundColor: colors.ctaPrimary,
         borderRadius: 18,
         height: 36,
-        justifyContent: 'center',
+        justifyContent: "center",
         width: 36,
     },
     avatarText: {
         color: colors.white,
-        fontWeight: '700',
+        fontWeight: "700",
     },
     menuOverlay: {
-        backgroundColor: 'rgba(0,0,0,0.35)',
+        backgroundColor: "rgba(0,0,0,0.35)",
         flex: 1,
-        justifyContent: 'flex-start',
+        justifyContent: "flex-start",
     },
     menuSheet: {
         backgroundColor: colors.white,
@@ -908,25 +1199,25 @@ const styles = StyleSheet.create({
         ...shadows.elevated,
     },
     menuContent: {
-        width: '100%',
+        width: "100%",
     },
     menuUserRow: {
-        alignItems: 'center',
-        flexDirection: 'row',
+        alignItems: "center",
+        flexDirection: "row",
         paddingVertical: spacing.lg,
     },
     menuAvatar: {
-        alignItems: 'center',
+        alignItems: "center",
         backgroundColor: colors.ctaPrimary,
         borderRadius: 24,
         height: 48,
-        justifyContent: 'center',
+        justifyContent: "center",
         width: 48,
     },
     menuAvatarText: {
         color: colors.white,
         fontSize: 20,
-        fontWeight: '700',
+        fontWeight: "700",
     },
     menuUserCopy: {
         flex: 1,
@@ -947,9 +1238,9 @@ const styles = StyleSheet.create({
         marginBottom: spacing.xs,
     },
     menuItem: {
-        alignItems: 'center',
+        alignItems: "center",
         borderRadius: layout.borderRadiusSm,
-        flexDirection: 'row',
+        flexDirection: "row",
         paddingHorizontal: spacing.sm,
         paddingVertical: 14,
     },
@@ -972,10 +1263,10 @@ const styles = StyleSheet.create({
         paddingVertical: spacing.xl,
     },
     content: {
-        alignSelf: 'center',
+        alignSelf: "center",
         gap: spacing.lg,
         maxWidth: 720,
-        width: '100%',
+        width: "100%",
     },
     card: {
         backgroundColor: colors.card,
@@ -984,15 +1275,15 @@ const styles = StyleSheet.create({
         ...shadows.card,
     },
     sectionHeader: {
-        alignItems: 'center',
-        flexDirection: 'row',
-        justifyContent: 'space-between',
+        alignItems: "center",
+        flexDirection: "row",
+        justifyContent: "space-between",
         marginBottom: spacing.lg,
     },
     sectionEyebrow: {
         ...typography.label,
         color: colors.textSecondary,
-        textTransform: 'uppercase',
+        textTransform: "uppercase",
     },
     sectionTitle: {
         ...typography.h4,
@@ -1017,14 +1308,14 @@ const styles = StyleSheet.create({
         paddingVertical: spacing.md,
     },
     refreshIndicatorHeader: {
-        alignItems: 'center',
-        flexDirection: 'row',
-        justifyContent: 'space-between',
+        alignItems: "center",
+        flexDirection: "row",
+        justifyContent: "space-between",
     },
     refreshIndicatorLabel: {
         ...typography.label,
         color: colors.textSecondary,
-        textTransform: 'uppercase',
+        textTransform: "uppercase",
     },
     refreshIndicatorValue: {
         ...typography.captionBold,
@@ -1035,12 +1326,12 @@ const styles = StyleSheet.create({
         borderRadius: layout.borderRadiusPill,
         height: 6,
         marginTop: spacing.sm,
-        overflow: 'hidden',
+        overflow: "hidden",
     },
     refreshIndicatorFill: {
         backgroundColor: colors.primaryLight,
         borderRadius: layout.borderRadiusPill,
-        height: '100%',
+        height: "100%",
     },
     signName: {
         ...typography.h2,
@@ -1048,8 +1339,8 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     signHeaderRow: {
-        alignItems: 'center',
-        flexDirection: 'row',
+        alignItems: "center",
+        flexDirection: "row",
         gap: spacing.sm,
     },
     wifiIcon: {
@@ -1060,6 +1351,27 @@ const styles = StyleSheet.create({
         color: colors.textSecondary,
         marginTop: spacing.xs,
     },
+    extraInfoCard: {
+        backgroundColor: colors.offWhite,
+        borderRadius: layout.borderRadiusSm,
+        marginTop: spacing.md,
+        padding: spacing.md,
+    },
+    extraInfoEyebrow: {
+        ...typography.caption,
+        color: colors.textSecondary,
+        marginBottom: spacing.xs,
+    },
+    extraInfoTitle: {
+        ...typography.bodySmall,
+        color: colors.textSecondary,
+        marginBottom: spacing.xs,
+    },
+    extraInfoBody: {
+        ...typography.body,
+        color: colors.textPrimary,
+        fontFamily: "Montserrat_600SemiBold",
+    },
     statusBanner: {
         borderRadius: layout.borderRadiusMd,
         marginTop: spacing.lg,
@@ -1068,11 +1380,11 @@ const styles = StyleSheet.create({
     },
     statusBannerText: {
         ...typography.h3,
-        textAlign: 'center',
+        textAlign: "center",
     },
     offlineIndicator: {
-        alignSelf: 'center',
-        backgroundColor: '#86868B12',
+        alignSelf: "center",
+        backgroundColor: "#86868B12",
         borderRadius: layout.borderRadiusPill,
         marginTop: spacing.sm,
         paddingHorizontal: spacing.md,
@@ -1083,7 +1395,7 @@ const styles = StyleSheet.create({
         color: colors.textMuted,
     },
     primaryAction: {
-        alignItems: 'center',
+        alignItems: "center",
         backgroundColor: colors.warning,
         borderRadius: layout.borderRadiusPill,
         marginTop: spacing.lg,
@@ -1091,16 +1403,16 @@ const styles = StyleSheet.create({
         paddingVertical: 14,
     },
     successAction: {
-        alignItems: 'center',
-        backgroundColor: '#34C759',
+        alignItems: "center",
+        backgroundColor: "#34C759",
         borderRadius: layout.borderRadiusPill,
         marginTop: spacing.lg,
         paddingHorizontal: spacing.lg,
         paddingVertical: 14,
     },
     falsePositiveAction: {
-        alignItems: 'center',
-        backgroundColor: '#FFF5F5',
+        alignItems: "center",
+        backgroundColor: "#FFF5F5",
         borderColor: colors.negative,
         borderRadius: layout.borderRadiusPill,
         borderWidth: 1,
@@ -1120,7 +1432,7 @@ const styles = StyleSheet.create({
         opacity: 0.6,
     },
     emptyState: {
-        alignItems: 'center',
+        alignItems: "center",
         paddingVertical: spacing.lg,
     },
     emptyIcon: {
@@ -1131,17 +1443,17 @@ const styles = StyleSheet.create({
         ...typography.h4,
         color: colors.textPrimary,
         marginTop: spacing.sm,
-        textAlign: 'center',
+        textAlign: "center",
     },
     emptyBody: {
         ...typography.bodySmall,
         color: colors.textSecondary,
         marginTop: spacing.xs,
-        textAlign: 'center',
+        textAlign: "center",
     },
     offlineWarningRow: {
-        alignItems: 'flex-start',
-        flexDirection: 'row',
+        alignItems: "flex-start",
+        flexDirection: "row",
         gap: spacing.sm,
         marginTop: spacing.md,
     },
@@ -1155,19 +1467,19 @@ const styles = StyleSheet.create({
         lineHeight: 20,
     },
     inlineAction: {
-        alignSelf: 'flex-start',
+        alignSelf: "flex-start",
         marginTop: spacing.sm,
     },
     notificationControls: {
-        alignItems: 'center',
-        flexDirection: 'row',
-        flexWrap: 'wrap',
+        alignItems: "center",
+        flexDirection: "row",
+        flexWrap: "wrap",
         gap: spacing.md,
         marginBottom: spacing.lg,
     },
     secondaryAction: {
-        alignItems: 'center',
-        alignSelf: 'flex-start',
+        alignItems: "center",
+        alignSelf: "flex-start",
         backgroundColor: colors.offWhite,
         borderRadius: layout.borderRadiusPill,
         paddingHorizontal: spacing.lg,
@@ -1176,7 +1488,7 @@ const styles = StyleSheet.create({
     secondaryActionText: {
         ...typography.bodySmall,
         color: colors.textPrimary,
-        fontWeight: '600',
+        fontWeight: "600",
     },
     noticeCard: {
         backgroundColor: colors.offWhite,
@@ -1187,7 +1499,7 @@ const styles = StyleSheet.create({
     noticeTitle: {
         ...typography.body,
         color: colors.textPrimary,
-        fontFamily: 'Montserrat_600SemiBold',
+        fontFamily: "Montserrat_600SemiBold",
     },
     noticeBody: {
         ...typography.bodySmall,
@@ -1208,15 +1520,15 @@ const styles = StyleSheet.create({
         borderWidth: 1,
     },
     notificationRowHeader: {
-        alignItems: 'flex-start',
-        flexDirection: 'row',
-        justifyContent: 'space-between',
+        alignItems: "flex-start",
+        flexDirection: "row",
+        justifyContent: "space-between",
     },
     notificationTitle: {
         ...typography.body,
         color: colors.textPrimary,
         flex: 1,
-        fontFamily: 'Montserrat_600SemiBold',
+        fontFamily: "Montserrat_600SemiBold",
         paddingRight: spacing.md,
     },
     notificationTimestamp: {
@@ -1230,9 +1542,9 @@ const styles = StyleSheet.create({
         marginTop: spacing.sm,
     },
     notificationFooter: {
-        alignItems: 'center',
-        flexDirection: 'row',
-        justifyContent: 'space-between',
+        alignItems: "center",
+        flexDirection: "row",
+        justifyContent: "space-between",
         marginTop: spacing.md,
     },
     notificationStatusPill: {
@@ -1252,7 +1564,7 @@ const styles = StyleSheet.create({
     inlineActionText: {
         ...typography.bodySmall,
         color: colors.primary,
-        fontWeight: '600',
+        fontWeight: "600",
     },
     pressed: {
         opacity: 0.82,

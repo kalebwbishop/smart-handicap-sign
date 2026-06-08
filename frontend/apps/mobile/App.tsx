@@ -8,8 +8,9 @@ import {
     getStateFromPath as defaultGetStateFromPath,
 } from '@react-navigation/native';
 import RootNavigator from './src/navigation/RootNavigator';
+import { SettingsProvider, useSettings } from './src/context/SettingsContext';
 import { RootStackParamList } from './src/types/navigation';
-import { View, StyleSheet, Platform, Pressable, Text, AppState, AppStateStatus } from 'react-native';
+import { ActivityIndicator, View, StyleSheet, Platform, Pressable, Text, AppState, AppStateStatus } from 'react-native';
 import * as Linking from 'expo-linking';
 import * as Notifications from 'expo-notifications';
 import { authAPI, notificationAPI, pushTokenAPI } from './src/api/api';
@@ -76,7 +77,7 @@ function useQueryParam(name: string) {
     }, [url, name]);
 }
 
-export default function App() {
+function AppContent() {
     console.log('[APP] App() rendering');
 
     const code = useQueryParam("code");
@@ -89,6 +90,7 @@ export default function App() {
     const hasHydratedNotificationsRef = React.useRef(false);
     const isSyncingForegroundNotificationsRef = React.useRef(false);
     const { setUser, isAuthenticated, ensureFreshSession } = useAuthStore();
+    const { isSettingsLoaded } = useSettings();
 
     const navigateHomeAfterNotificationOpen = React.useCallback(() => {
         const nextState = handleNotificationOpen({
@@ -311,6 +313,19 @@ export default function App() {
         };
     }, [isAuthenticated]);
 
+    if (!isSettingsLoaded) {
+        return (
+            <View style={styles.container}>
+                <View style={[styles.appContainer, Platform.OS === 'web' && styles.webAppContainer]}>
+                    <View style={styles.settingsLoadingContainer}>
+                        <ActivityIndicator size="large" color={colors.primary} />
+                        <Text style={styles.settingsLoadingText}>Loading settings…</Text>
+                    </View>
+                </View>
+            </View>
+        );
+    }
+
     return (
         <View style={styles.container}>
             <View style={[styles.appContainer, Platform.OS === 'web' && styles.webAppContainer]}>
@@ -360,6 +375,14 @@ export default function App() {
     );
 }
 
+export default function App() {
+    return (
+        <SettingsProvider>
+            <AppContent />
+        </SettingsProvider>
+    );
+}
+
 const styles = StyleSheet.create({
     container: {
         flex: 1,
@@ -374,6 +397,16 @@ const styles = StyleSheet.create({
     },
     webAppContainer: {
         height: '100%',
+    },
+    settingsLoadingContainer: {
+        alignItems: 'center',
+        flex: 1,
+        justifyContent: 'center',
+    },
+    settingsLoadingText: {
+        ...typography.body,
+        color: colors.textSecondary,
+        marginTop: spacing.md,
     },
     foregroundNotificationContainer: {
         left: layout.contentPadding,

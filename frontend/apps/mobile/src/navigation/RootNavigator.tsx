@@ -7,6 +7,7 @@ import LoginScreen from '../screens/LoginScreen';
 import HomeScreen from '../screens/HomeScreen';
 import NotificationDetailScreen from '../screens/NotificationDetailScreen';
 import ProvisionSignScreen from '../screens/ProvisionSignScreen';
+import SettingsScreen from '../screens/SettingsScreen';
 import SignDetailsScreen from '../screens/SignDetailsScreen';
 import { useAuthStore } from '../store/authStore';
 import { ActivityIndicator, Platform, View } from 'react-native';
@@ -70,6 +71,11 @@ export default function RootNavigator() {
                         name="NotificationDetail"
                         component={NotificationDetailScreen}
                         options={{ title: 'Request Details' }}
+                    />
+                    <Stack.Screen
+                        name="Settings"
+                        component={SettingsScreen}
+                        options={{ title: 'Settings' }}
                     />
                     <Stack.Screen
                         name="SignDetails"

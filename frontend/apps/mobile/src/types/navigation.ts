@@ -6,6 +6,7 @@ export type RootStackParamList = {
     LandingScreen: undefined;
     LoginScreen: undefined;
     ProvisionSign: undefined;
+    Settings: undefined;
     SignDetails: { device: Device };
     NotificationDetail: { notification: SignNotification; device?: Device | null };
 };
