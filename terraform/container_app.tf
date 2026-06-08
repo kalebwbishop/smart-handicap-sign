@@ -107,6 +107,11 @@ resource "azurerm_container_app" "this" {
         secret_name = "workos-client-id"
       }
 
+      env {
+        name = "AZURE_CLIENT_ID"
+        value = azurerm_user_assigned_identity.container_app.client_id
+      }
+
       dynamic "env" {
         for_each = {
           for name, value in local.optional_container_env : name => value if trimspace(value) != ""
