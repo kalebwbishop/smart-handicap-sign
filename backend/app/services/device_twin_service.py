@@ -8,7 +8,7 @@ from typing import Any, Optional
 from urllib.parse import quote
 
 import httpx
-from azure.identity.aio import DefaultAzureCredential
+from azure.identity import DefaultAzureCredential
 
 from app.config.settings import get_settings
 
