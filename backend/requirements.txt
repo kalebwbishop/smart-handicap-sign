@@ -6,7 +6,7 @@ pydantic-settings==2.7.1
 workos==5.42.0
 PyJWT[crypto]>=2.0.0
 httpx==0.28.1
-deploy-box-python @ file:../../deploy-box-python
+deploy-box-python @ git+https://github.com/Deploy-Box/deploy-box-python@main
 torch>=2.0.0
 numpy>=1.24.0
 matplotlib>=3.9.0
