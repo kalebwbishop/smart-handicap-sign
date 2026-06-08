@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Optional
 from urllib.parse import quote
 
 import httpx
-from azure.identity import DefaultAzureCredential
+from azure.identity.aio import DefaultAzureCredential
 
 from app.config.settings import get_settings
 
@@ -28,8 +29,14 @@ class _CredentialBundle:
 
 @lru_cache(maxsize=1)
 def _get_credential_bundle() -> _CredentialBundle:
-    return _CredentialBundle(credential=DefaultAzureCredential(), lock=asyncio.Lock())
+    managed_identity_client_id = os.environ.get("AZURE_CLIENT_ID")
 
+    return _CredentialBundle(
+        credential=DefaultAzureCredential(
+            managed_identity_client_id=managed_identity_client_id
+        ),
+        lock=asyncio.Lock(),
+    )
 
 def _get_service_config() -> IoTHubServiceConfig:
     settings = get_settings()

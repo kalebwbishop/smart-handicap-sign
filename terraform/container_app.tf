@@ -107,16 +107,6 @@ resource "azurerm_container_app" "this" {
         secret_name = "workos-client-id"
       }
 
-      env {
-        name  = "IOTHUB_SERVICE_CONNECTION_STRING"
-        value = azurerm_iothub_shared_access_policy.service.primary_connection_string
-      }
-
-      env {
-        name  = "IOTHUB_EVENTHUB_CONNECTION_STRING"
-        value = local.iothub_eventhub_connection_string
-      }
-
       dynamic "env" {
         for_each = {
           for name, value in local.optional_container_env : name => value if trimspace(value) != ""
