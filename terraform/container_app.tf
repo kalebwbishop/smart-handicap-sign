@@ -60,6 +60,12 @@ resource "azurerm_container_app" "this" {
     key_vault_secret_id = data.azurerm_key_vault_secret.workos_client_id.versionless_id
   }
 
+  secret {
+    name     = "iothub_eventhub_connection_string"
+    identity = azurerm_user_assigned_identity.container_app.id
+    value    = local.iothub_eventhub_connection_string
+  }
+
   ingress {
     allow_insecure_connections = false
     external_enabled           = true
@@ -110,6 +116,11 @@ resource "azurerm_container_app" "this" {
       env {
         name  = "AZURE_CLIENT_ID"
         value = azurerm_user_assigned_identity.container_app.client_id
+      }
+
+      env {
+        name        = "IOTHUB_EVENTHUB_CONNECTION_STRING"
+        secret_name = "iothub_eventhub_connection_string"
       }
 
       dynamic "env" {

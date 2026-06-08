@@ -116,15 +116,23 @@ def _build_consumer_client() -> EventHubConsumerClient:
     if not eventhub_name:
         raise RuntimeError("IOTHUB_EVENTHUB_NAME is not configured")
 
-    managed_identity_client_id = os.environ.get("AZURE_CLIENT_ID")
+    iothub_eventhub_connection_string = os.environ.get("IOTHUB_EVENTHUB_CONNECTION_STRING")
+    if not iothub_eventhub_connection_string:
+        raise RuntimeError("IOTHUB_EVENTHUB_CONNECTION_STRING is not configured")
 
-    return EventHubConsumerClient(
-        fully_qualified_namespace=host_name,
-        eventhub_name=eventhub_name,
+    return EventHubConsumerClient.from_connection_string(
+        conn_str=iothub_eventhub_connection_string,
         consumer_group=settings.iothub_consumer_group,
-        credential=DefaultAzureCredential(managed_identity_client_id=managed_identity_client_id),
         transport_type=TransportType.Amqp,
     )
+
+    # return EventHubConsumerClient(
+    #     fully_qualified_namespace=host_name,
+    #     eventhub_name=eventhub_name,
+    #     consumer_group=settings.iothub_consumer_group,
+    #     credential=DefaultAzureCredential(managed_identity_client_id=managed_identity_client_id),
+    #     transport_type=TransportType.Amqp,
+    # )
 
 
 async def run_iothub_telemetry_consumer(stop_event: asyncio.Event) -> None:

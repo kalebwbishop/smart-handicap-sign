@@ -52,3 +52,8 @@ resource "azurerm_role_assignment" "iothub_data_contributor" {
   principal_id                     = azurerm_user_assigned_identity.container_app.principal_id
   skip_service_principal_aad_check = true
 }
+
+
+locals {
+  iothub_eventhub_connection_string = "Endpoint=${azurerm_iothub.this.event_hub_events_endpoint};SharedAccessKeyName=${azurerm_iothub_shared_access_policy.service.name};SharedAccessKey=${azurerm_iothub_shared_access_policy.service.primary_key};EntityPath=${azurerm_iothub.this.event_hub_events_path}"
+}
