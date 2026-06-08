@@ -4,24 +4,15 @@ import asyncio
 import json
 from typing import Any
 
-from azure.eventhub.aio import EventHubConsumerClient, EventHubSharedKeyCredential
+from azure.eventhub.aio import EventHubConsumerClient
 from azure.eventhub import TransportType
+from azure.identity import DefaultAzureCredential
 from pydantic import ValidationError
 
 from app.config.settings import get_settings
 from app.services import device_service
 from app.services.telemetry_service import DeviceTelemetryIn, process_device_signal
 from app.utils.logger import logger
-
-
-def _parse_eventhub_connection_string(connection_string: str) -> dict[str, str]:
-    parsed: dict[str, str] = {}
-    for segment in connection_string.split(";"):
-        if not segment or "=" not in segment:
-            continue
-        key, value = segment.split("=", 1)
-        parsed[key] = value
-    return parsed
 
 
 def _parse_event_body(event: Any) -> dict[str, Any]:
@@ -117,36 +108,26 @@ async def _on_error(partition_context: Any, error: Exception) -> None:
 
 def _build_consumer_client() -> EventHubConsumerClient:
     settings = get_settings()
-    connection_string = settings.iothub_eventhub_connection_string.strip()
-    if not connection_string:
-        raise RuntimeError("IOTHUB_EVENTHUB_CONNECTION_STRING is not configured")
-
-    parsed = _parse_eventhub_connection_string(connection_string)
-    try:
-        endpoint = parsed["Endpoint"]
-        eventhub_name = parsed["EntityPath"]
-        shared_access_policy = parsed["SharedAccessKeyName"]
-        shared_access_key = parsed["SharedAccessKey"]
-    except KeyError as exc:
-        raise RuntimeError("IOTHUB_EVENTHUB_CONNECTION_STRING is missing required parts") from exc
-
-    namespace = endpoint.removeprefix("sb://").rstrip("/")
-    if not namespace:
-        raise RuntimeError("IOTHUB_EVENTHUB_CONNECTION_STRING has an invalid Endpoint value")
+    host_name = settings.iothub_host_name.strip()
+    eventhub_name = settings.iothub_eventhub_name.strip()
+    if not host_name:
+        raise RuntimeError("IOTHUB_HOST_NAME is not configured")
+    if not eventhub_name:
+        raise RuntimeError("IOTHUB_EVENTHUB_NAME is not configured")
 
     return EventHubConsumerClient(
-        fully_qualified_namespace=namespace,
+        fully_qualified_namespace=host_name,
         eventhub_name=eventhub_name,
         consumer_group=settings.iothub_consumer_group,
-        credential=EventHubSharedKeyCredential(shared_access_policy, shared_access_key),
+        credential=DefaultAzureCredential(),
         transport_type=TransportType.Amqp,
     )
 
 
 async def run_iothub_telemetry_consumer(stop_event: asyncio.Event) -> None:
     settings = get_settings()
-    if not settings.iothub_eventhub_connection_string.strip():
-        logger.info("IoT Hub telemetry consumer disabled because no Event Hub connection string is configured")
+    if not settings.iothub_host_name.strip() or not settings.iothub_eventhub_name.strip():
+        logger.info("IoT Hub telemetry consumer disabled because hub name or event hub name is not configured")
         return
 
     backoff_seconds = 1

@@ -44,8 +44,10 @@ locals {
     workos_client_id           = "workos-client-id"
   }
   optional_container_env = {
-    FRONTEND_URL        = var.frontend_url
-    WORKOS_REDIRECT_URI = var.workos_redirect_uri
-    CORS_ORIGIN         = var.cors_origin
+    FRONTEND_URL         = var.frontend_url
+    WORKOS_REDIRECT_URI  = var.workos_redirect_uri
+    CORS_ORIGIN          = var.cors_origin
+    IOTHUB_HOST_NAME     = var.iothub_host_name
+    IOTHUB_EVENTHUB_NAME = var.iothub_eventhub_name
   }
 }

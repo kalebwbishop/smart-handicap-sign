@@ -16,8 +16,8 @@ class Settings(BaseSettings):
     postgres_connection_string: str = "postgresql://devuser:devpassword@localhost:5432/social_stack_dev"
 
     # Azure IoT Hub
-    iothub_eventhub_connection_string: str = ""
-    iothub_service_connection_string: str = ""
+    iothub_host_name: str = ""
+    iothub_eventhub_name: str = ""
     iothub_consumer_group: str = "$Default"
 
     # Frontend

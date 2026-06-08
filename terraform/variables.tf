@@ -108,6 +108,18 @@ variable "cors_origin" {
   default     = ""
 }
 
+variable "iothub_host_name" {
+  description = "Azure IoT Hub host name used by the backend"
+  type        = string
+  default     = "hazardhero-iothub.azure-devices.net"
+}
+
+variable "iothub_eventhub_name" {
+  description = "Event Hub-compatible endpoint name used by the backend"
+  type        = string
+  default     = "iothub-ehub-hazardhero-72042401-0a34df473a"
+}
+
 # Application secrets
 variable "workos_api_key" {
   description = "Legacy compatibility input. The WorkOS API key is now read from Azure Key Vault."

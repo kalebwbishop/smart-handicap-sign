@@ -55,12 +55,12 @@ async def lifespan(app: FastAPI):
         sweep_stop_event = asyncio.Event()
         sweep_task = asyncio.create_task(run_connectivity_sweep_loop(sweep_stop_event))
         logger.info("Started connectivity sweep loop")
-        if settings.iothub_eventhub_connection_string.strip():
+        if settings.iothub_host_name.strip() and settings.iothub_eventhub_name.strip():
             iothub_stop_event = asyncio.Event()
             iothub_task = asyncio.create_task(run_iothub_telemetry_consumer(iothub_stop_event))
             logger.info("Started IoT Hub telemetry consumer loop")
         else:
-            logger.info("IoT Hub telemetry consumer not started; no Event Hub connection string configured")
+            logger.info("IoT Hub telemetry consumer not started; hub name or event hub name not configured")
     yield
     if sweep_task is not None and sweep_stop_event is not None:
         sweep_stop_event.set()
