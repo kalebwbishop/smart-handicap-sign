@@ -61,9 +61,8 @@ resource "azurerm_container_app" "this" {
   }
 
   secret {
-    name     = "iothub-eventhub-connection-string"
-    identity = azurerm_user_assigned_identity.container_app.id
-    value    = local.iothub_eventhub_connection_string
+    name  = "iothub-eventhub-connection-string"
+    value = local.iothub_eventhub_connection_string
   }
 
   ingress {
