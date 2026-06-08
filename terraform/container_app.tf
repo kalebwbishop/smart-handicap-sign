@@ -60,18 +60,6 @@ resource "azurerm_container_app" "this" {
     key_vault_secret_id = data.azurerm_key_vault_secret.workos_client_id.versionless_id
   }
 
-  secret {
-    name                = "iothub-service-connection-string"
-    identity            = azurerm_user_assigned_identity.container_app.id
-    key_vault_secret_id = data.azurerm_key_vault_secret.iothub_service_connection_string.versionless_id
-  }
-
-  secret {
-    name                = "iothub-eventhub-connection-string"
-    identity            = azurerm_user_assigned_identity.container_app.id
-    key_vault_secret_id = data.azurerm_key_vault_secret.iothub_eventhub_connection_string.versionless_id
-  }
-
   ingress {
     allow_insecure_connections = false
     external_enabled           = true
@@ -120,13 +108,13 @@ resource "azurerm_container_app" "this" {
       }
 
       env {
-        name        = "IOTHUB_SERVICE_CONNECTION_STRING"
-        secret_name = "iothub-service-connection-string"
+        name  = "IOTHUB_SERVICE_CONNECTION_STRING"
+        value = azurerm_iothub_shared_access_policy.service.primary_connection_string
       }
 
       env {
-        name        = "IOTHUB_EVENTHUB_CONNECTION_STRING"
-        secret_name = "iothub-eventhub-connection-string"
+        name  = "IOTHUB_EVENTHUB_CONNECTION_STRING"
+        value = local.iothub_eventhub_connection_string
       }
 
       dynamic "env" {
