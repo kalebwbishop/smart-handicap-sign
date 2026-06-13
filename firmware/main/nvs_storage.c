@@ -16,6 +16,8 @@ static const char *WIFI_VALIDATED_KEY = "wifi_valid";
 static const char *SERIAL_KEY = "serial";
 static const char *AUTH_TOKEN_KEY = "auth_token";
 static const char *IOT_HUB_STATE_KEY = "iot_hub_state";
+static const char *DPS_ASSIGNED_HUB_KEY = "dps_hub";
+static const char *DPS_DEVICE_ID_KEY = "dps_dev_id";
 
 static esp_err_t validate_input_string(const char *value, size_t min_len, size_t max_len, const char *field_name)
 {
@@ -371,4 +373,88 @@ esp_err_t nvs_iot_hub_state_load(char *state_json, size_t len)
 bool nvs_iot_hub_state_exists(void)
 {
     return key_exists(DEVICE_NAMESPACE, IOT_HUB_STATE_KEY);
+}
+
+
+esp_err_t nvs_dps_assignment_save(const char *assigned_hub, const char *device_id)
+{
+    esp_err_t err = validate_input_string(assigned_hub, 1, NVS_DPS_ASSIGNED_HUB_MAX_LEN, "DPS assigned hub");
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = validate_input_string(device_id, 1, NVS_DPS_DEVICE_ID_MAX_LEN, "DPS device ID");
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    nvs_handle_t handle;
+    err = open_namespace(DEVICE_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = nvs_set_str(handle, DPS_ASSIGNED_HUB_KEY, assigned_hub);
+    if (err == ESP_OK) {
+        err = nvs_set_str(handle, DPS_DEVICE_ID_KEY, device_id);
+    }
+    if (err == ESP_OK) {
+        err = nvs_commit(handle);
+    }
+
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to save DPS assignment: %s", esp_err_to_name(err));
+    } else {
+        ESP_LOGI(TAG, "Saved DPS assignment to NVS");
+    }
+
+    nvs_close(handle);
+    return err;
+}
+
+esp_err_t nvs_dps_assignment_load(char *assigned_hub, size_t assigned_hub_len, char *device_id, size_t device_id_len)
+{
+    esp_err_t err = load_string_value(DEVICE_NAMESPACE, DPS_ASSIGNED_HUB_KEY, assigned_hub, assigned_hub_len);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = load_string_value(DEVICE_NAMESPACE, DPS_DEVICE_ID_KEY, device_id, device_id_len);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    ESP_LOGI(TAG, "Loaded DPS assignment from NVS");
+    return ESP_OK;
+}
+
+bool nvs_dps_assignment_exists(void)
+{
+    return key_exists(DEVICE_NAMESPACE, DPS_ASSIGNED_HUB_KEY) && key_exists(DEVICE_NAMESPACE, DPS_DEVICE_ID_KEY);
+}
+
+esp_err_t nvs_dps_assignment_clear(void)
+{
+    nvs_handle_t handle;
+    esp_err_t err = open_namespace(DEVICE_NAMESPACE, NVS_READWRITE, &handle);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = erase_key_if_exists(handle, DPS_ASSIGNED_HUB_KEY);
+    if (err == ESP_OK) {
+        err = erase_key_if_exists(handle, DPS_DEVICE_ID_KEY);
+    }
+    if (err == ESP_OK) {
+        err = nvs_commit(handle);
+    }
+
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to clear DPS assignment: %s", esp_err_to_name(err));
+    } else {
+        ESP_LOGI(TAG, "Cleared DPS assignment from NVS");
+    }
+
+    nvs_close(handle);
+    return err;
 }

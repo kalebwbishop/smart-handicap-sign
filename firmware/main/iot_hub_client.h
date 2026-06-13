@@ -1,23 +1,49 @@
-#ifndef IOT_HUB_CLIENT_H
-#define IOT_HUB_CLIENT_H
+#pragma once
 
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
 #include "esp_err.h"
-#include "led_driver.h"
+#include "adc_sampler.h"
 
-#define IOT_HUB_HOST_MAX_LEN 128
-#define IOT_HUB_DEVICE_ID_MAX_LEN 128
-#define IOT_HUB_API_VERSION_MAX_LEN 16
-#define IOT_HUB_SAS_TOKEN_MAX_LEN 512
+#ifndef IOT_HUB_HOST_MAX_LEN
+#define IOT_HUB_HOST_MAX_LEN 128U
+#endif
+
+#ifndef IOT_HUB_DEVICE_ID_MAX_LEN
+#define IOT_HUB_DEVICE_ID_MAX_LEN 128U
+#endif
+
+#ifndef IOT_HUB_API_VERSION_MAX_LEN
+#define IOT_HUB_API_VERSION_MAX_LEN 16U
+#endif
+
+#ifndef IOT_HUB_SAS_TOKEN_MAX_LEN
+#define IOT_HUB_SAS_TOKEN_MAX_LEN 512U
+#endif
+
+typedef enum {
+    STATUS_AVAILABLE = 0,
+    STATUS_ASSISTANCE_REQUESTED,
+    STATUS_ASSISTANCE_IN_PROGRESS,
+    STATUS_OFFLINE,
+    STATUS_ERROR,
+} device_status_t;
+
+typedef enum {
+    IOT_HUB_AUTH_SAS = 0,
+    IOT_HUB_AUTH_X509 = 1,
+} iot_hub_auth_mode_t;
 
 typedef struct {
-    char host[IOT_HUB_HOST_MAX_LEN + 1];
-    char device_id[IOT_HUB_DEVICE_ID_MAX_LEN + 1];
-    char api_version[IOT_HUB_API_VERSION_MAX_LEN + 1];
-    char sas_token[IOT_HUB_SAS_TOKEN_MAX_LEN + 1];
+    char host[IOT_HUB_HOST_MAX_LEN + 1U];
+    char device_id[IOT_HUB_DEVICE_ID_MAX_LEN + 1U];
+    char api_version[IOT_HUB_API_VERSION_MAX_LEN + 1U];
+    char sas_token[IOT_HUB_SAS_TOKEN_MAX_LEN + 1U];
+    const char *client_cert_pem;
+    const char *client_key_pem;
+    iot_hub_auth_mode_t auth_mode;
     uint16_t mqtt_port;
 } iot_hub_client_settings_t;
 
@@ -34,5 +60,3 @@ esp_err_t iot_hub_client_stop(void);
 bool iot_hub_client_is_connected(void);
 esp_err_t iot_hub_client_get_state(iot_hub_state_t *state);
 esp_err_t iot_hub_client_publish_telemetry(const int *samples, size_t sample_count);
-
-#endif

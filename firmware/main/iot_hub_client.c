@@ -35,6 +35,9 @@ typedef struct {
     char device_id[IOT_HUB_DEVICE_ID_MAX_LEN + 1];
     char api_version[IOT_HUB_API_VERSION_MAX_LEN + 1];
     char sas_token[IOT_HUB_SAS_TOKEN_MAX_LEN + 1];
+    const char *client_cert_pem;
+    const char *client_key_pem;
+    iot_hub_auth_mode_t auth_mode;
     uint16_t mqtt_port;
     bool credentials_ready;
 } hub_settings_t;
@@ -765,8 +768,19 @@ esp_err_t iot_hub_client_init(const iot_hub_client_settings_t *settings, const i
     strlcpy(s_settings.device_id, settings->device_id, sizeof(s_settings.device_id));
     strlcpy(s_settings.api_version, settings->api_version, sizeof(s_settings.api_version));
     strlcpy(s_settings.sas_token, settings->sas_token, sizeof(s_settings.sas_token));
+    s_settings.client_cert_pem = settings->client_cert_pem;
+    s_settings.client_key_pem = settings->client_key_pem;
+    s_settings.auth_mode = settings->auth_mode;
     s_settings.mqtt_port = settings->mqtt_port;
-    s_settings.credentials_ready = s_settings.sas_token[0] != '\0';
+
+    if (s_settings.auth_mode == IOT_HUB_AUTH_X509) {
+        s_settings.credentials_ready = s_settings.client_cert_pem != NULL &&
+                                       s_settings.client_cert_pem[0] != '\0' &&
+                                       s_settings.client_key_pem != NULL &&
+                                       s_settings.client_key_pem[0] != '\0';
+    } else {
+        s_settings.credentials_ready = s_settings.sas_token[0] != '\0';
+    }
 
     if (initial_state != NULL) {
         s_state = *initial_state;
@@ -791,7 +805,7 @@ esp_err_t iot_hub_client_init(const iot_hub_client_settings_t *settings, const i
 
     ESP_LOGI(TAG, "IoT Hub client initialized for %s", s_settings.device_id);
     if (!s_settings.credentials_ready) {
-        ESP_LOGW(TAG, "IoT Hub SAS token not configured; cloud transport remains disabled");
+        ESP_LOGW(TAG, "IoT Hub credentials are not configured; cloud transport remains disabled");
     }
 
     return ESP_OK;
@@ -824,7 +838,7 @@ esp_err_t iot_hub_client_start(void)
         return ESP_ERR_INVALID_ARG;
     }
 
-    const esp_mqtt_client_config_t mqtt_cfg = {
+    esp_mqtt_client_config_t mqtt_cfg = {
         .broker = {
             .address.uri = broker_uri,
             .verification.crt_bundle_attach = esp_crt_bundle_attach,
@@ -832,7 +846,6 @@ esp_err_t iot_hub_client_start(void)
         .credentials = {
             .client_id = s_settings.device_id,
             .username = username,
-            .authentication.password = s_settings.sas_token,
         },
         .session = {
             .keepalive = 60,
@@ -848,6 +861,13 @@ esp_err_t iot_hub_client_start(void)
             .size = 2048,
         },
     };
+
+    if (s_settings.auth_mode == IOT_HUB_AUTH_X509) {
+        mqtt_cfg.credentials.authentication.certificate = s_settings.client_cert_pem;
+        mqtt_cfg.credentials.authentication.key = s_settings.client_key_pem;
+    } else {
+        mqtt_cfg.credentials.authentication.password = s_settings.sas_token;
+    }
 
     s_client = esp_mqtt_client_init(&mqtt_cfg);
     if (s_client == NULL) {

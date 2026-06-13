@@ -11,6 +11,9 @@ venv/
 .env.local
 .env.*.local
 
+# Certs
+*.pem
+
 # Build outputs
 dist/
 build/

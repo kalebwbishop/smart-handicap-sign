@@ -10,26 +10,25 @@
 
 #include "adc_sampler.h"
 #include "connection_policy.h"
+#include "dps_certificates.h"
+#include "dps_client.h"
 #include "iot_hub_client.h"
 #include "led_driver.h"
 #include "nvs_storage.h"
 #include "provisioning_server.h"
 #include "wifi_manager.h"
 
-#ifndef IOT_HUB_HOST
-#define IOT_HUB_HOST "your-iot-hub.azure-devices.net"
+#ifndef DPS_ID_SCOPE
+#define DPS_ID_SCOPE ""
 #endif
-#ifndef IOT_HUB_DEVICE_ID
-#define IOT_HUB_DEVICE_ID ""
+#ifndef DPS_REGISTRATION_ID
+#define DPS_REGISTRATION_ID ""
 #endif
 #ifndef IOT_HUB_MQTT_PORT
 #define IOT_HUB_MQTT_PORT 8883
 #endif
 #ifndef IOT_HUB_API_VERSION
 #define IOT_HUB_API_VERSION "2021-04-12"
-#endif
-#ifndef IOT_HUB_SAS_TOKEN
-#define IOT_HUB_SAS_TOKEN ""
 #endif
 
 #define DEFAULT_TELEMETRY_INTERVAL_MS 1000
@@ -116,9 +115,9 @@ static esp_err_t load_device_identity(char *serial_number, size_t serial_len)
         return ESP_ERR_INVALID_ARG;
     }
 
-    if (IOT_HUB_DEVICE_ID[0] != '\0') {
-        strlcpy(serial_number, IOT_HUB_DEVICE_ID, serial_len);
-        ESP_LOGI(TAG, "Using compile-time device ID override");
+    if (DPS_REGISTRATION_ID[0] != '\0') {
+        strlcpy(serial_number, DPS_REGISTRATION_ID, serial_len);
+        ESP_LOGI(TAG, "Using DPS registration ID as device serial number");
         return ESP_OK;
     }
 
@@ -142,28 +141,63 @@ static esp_err_t load_device_identity(char *serial_number, size_t serial_len)
     return ESP_OK;
 }
 
-static esp_err_t load_iot_hub_settings(const char *device_id, iot_hub_client_settings_t *settings)
+static esp_err_t resolve_iot_hub_settings_x509(const char *registration_id, iot_hub_client_settings_t *settings)
 {
-    if (device_id == NULL || device_id[0] == '\0' || settings == NULL) {
+    if (registration_id == NULL || registration_id[0] == '\0' || settings == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (DPS_ID_SCOPE[0] == '\0') {
+        ESP_LOGE(TAG, "DPS_ID_SCOPE is not configured");
         return ESP_ERR_INVALID_ARG;
     }
 
     memset(settings, 0, sizeof(*settings));
-    strlcpy(settings->host, IOT_HUB_HOST, sizeof(settings->host));
-    strlcpy(settings->device_id, device_id, sizeof(settings->device_id));
+
+    char assigned_hub[NVS_DPS_ASSIGNED_HUB_MAX_LEN + 1U] = {0};
+    char assigned_device_id[NVS_DPS_DEVICE_ID_MAX_LEN + 1U] = {0};
+
+    if (!nvs_dps_assignment_exists()) {
+        ESP_LOGI(TAG, "No cached DPS assignment found; registering with DPS");
+
+        dps_client_config_t dps_config = {0};
+        strlcpy(dps_config.id_scope, DPS_ID_SCOPE, sizeof(dps_config.id_scope));
+        strlcpy(dps_config.registration_id, registration_id, sizeof(dps_config.registration_id));
+        dps_config.client_cert_pem = DEVICE_CERT_PEM;
+        dps_config.client_key_pem = DEVICE_KEY_PEM;
+
+        dps_assignment_t assignment = {0};
+        esp_err_t err = dps_client_register(&dps_config, &assignment);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "DPS registration failed: %s", esp_err_to_name(err));
+            return err;
+        }
+
+        err = nvs_dps_assignment_save(assignment.assigned_hub, assignment.device_id);
+        if (err != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to cache DPS assignment: %s", esp_err_to_name(err));
+            return err;
+        }
+    }
+
+    esp_err_t err = nvs_dps_assignment_load(
+        assigned_hub,
+        sizeof(assigned_hub),
+        assigned_device_id,
+        sizeof(assigned_device_id));
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    strlcpy(settings->host, assigned_hub, sizeof(settings->host));
+    strlcpy(settings->device_id, assigned_device_id, sizeof(settings->device_id));
     strlcpy(settings->api_version, IOT_HUB_API_VERSION, sizeof(settings->api_version));
     settings->mqtt_port = IOT_HUB_MQTT_PORT;
+    settings->auth_mode = IOT_HUB_AUTH_X509;
+    settings->client_cert_pem = DEVICE_CERT_PEM;
+    settings->client_key_pem = DEVICE_KEY_PEM;
 
-    if (IOT_HUB_SAS_TOKEN[0] != '\0') {
-        strlcpy(settings->sas_token, IOT_HUB_SAS_TOKEN, sizeof(settings->sas_token));
-        return ESP_OK;
-    }
-
-    if (nvs_auth_token_exists()) {
-        return nvs_auth_token_load(settings->sas_token, sizeof(settings->sas_token));
-    }
-
-    ESP_LOGW(TAG, "IoT Hub SAS token not configured in firmware or NVS");
+    ESP_LOGI(TAG, "Resolved IoT Hub through DPS: hub=%s deviceId=%s", settings->host, settings->device_id);
     return ESP_OK;
 }
 
@@ -280,7 +314,7 @@ void app_main(void)
         fatal_restart("Failed to initialize ADC sampler", err);
     }
 
-    err = load_iot_hub_settings(serial_number, &iot_hub_settings);
+    err = resolve_iot_hub_settings_x509(serial_number, &iot_hub_settings);
     if (err != ESP_OK) {
         fatal_restart("Failed to build IoT Hub settings", err);
     }
