@@ -270,6 +270,7 @@ void app_main(void)
     if (err != ESP_OK) {
         fatal_restart("Failed to initialize LED driver", err);
     }
+    led_driver_set_status(STATUS_BOOTING);
 
     err = load_device_identity(serial_number, sizeof(serial_number));
     if (err != ESP_OK) {
@@ -286,6 +287,7 @@ void app_main(void)
         enter_provisioning_mode("No WiFi credentials found in NVS");
     }
 
+    led_driver_set_status(STATUS_CONNECTING);
     err = nvs_wifi_load(wifi_ssid, sizeof(wifi_ssid), wifi_password, sizeof(wifi_password));
     if (err != ESP_OK) {
         fatal_restart("Failed to load WiFi credentials", err);
@@ -296,6 +298,7 @@ void app_main(void)
     memset(wifi_ssid, 0, sizeof(wifi_ssid));
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "Initial WiFi connection failed: %s", esp_err_to_name(err));
+        led_driver_set_status(STATUS_ERROR);
         if (should_enter_provisioning_on_initial_connect_failure(nvs_wifi_is_validated())) {
             enter_provisioning_mode("Unable to connect with saved WiFi credentials");
         }
@@ -305,6 +308,7 @@ void app_main(void)
         if (validated_err != ESP_OK) {
             ESP_LOGW(TAG, "Connected to WiFi but failed to persist validated flag: %s", esp_err_to_name(validated_err));
         }
+        led_driver_set_status(STATUS_AVAILABLE);
     }
 
     vTaskDelay(pdMS_TO_TICKS(NETWORK_STABILITY_DELAY_MS));
@@ -356,6 +360,7 @@ void app_main(void)
         led_driver_set_status(cloud_state.status);
 
         if (!wifi_sta_is_connected()) {
+            led_driver_set_status(STATUS_CONNECTING);
             err = reconnect_wifi(&reconnect_failures);
             if (err == ESP_OK) {
                 vTaskDelay(pdMS_TO_TICKS(NETWORK_STABILITY_DELAY_MS));
@@ -367,7 +372,13 @@ void app_main(void)
 
         reconnect_failures = 0;
 
-        if (cloud_state.status != STATUS_AVAILABLE || !cloud_state.telemetry_enabled) {
+        if (!cloud_state.telemetry_enabled) {
+            vTaskDelay(pdMS_TO_TICKS(cloud_state.telemetry_interval_ms));
+            continue;
+        }
+
+        if (cloud_state.status != STATUS_AVAILABLE) {
+            ESP_LOGI(TAG, "Skipping telemetry while status is %d", cloud_state.status);
             vTaskDelay(pdMS_TO_TICKS(cloud_state.telemetry_interval_ms));
             continue;
         }

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 from unittest.mock import AsyncMock, patch
 
 from app.services.telemetry_service import SAMPLE_COUNT
@@ -30,6 +29,15 @@ def test_process_iothub_telemetry_event_uses_device_id_fallback(mock_last_seen, 
     assert mock_process.await_args.args[1] == [100] * SAMPLE_COUNT
 
 
+@patch("app.services.iothub_consumer.logger.info")
+@patch("app.services.iothub_consumer.process_iothub_telemetry_event", new_callable=AsyncMock)
+def test_on_event_logs_message_arrival(mock_process, mock_info):
+    asyncio.run(__import__("app.services.iothub_consumer", fromlist=["_on_event"])._on_event(object(), _FakeEvent({"samples": [100] * SAMPLE_COUNT})))
+
+    mock_info.assert_called_once_with("Received IoT Hub telemetry message")
+    mock_process.assert_awaited_once()
+
+
 class _FakeConsumerClient:
     def __init__(self, **kwargs):
         self.kwargs = kwargs
@@ -43,6 +51,7 @@ def test_build_consumer_client_uses_async_credential(monkeypatch):
             "iothub_host_name": "example.servicebus.windows.net",
             "iothub_eventhub_name": "iothub-telemetry",
             "iothub_consumer_group": "$Default",
+            "iothub_eventhub_connection_string": "Endpoint=sb://example/;SharedAccessKeyName=test;SharedAccessKey=abc",
         },
     )()
 
@@ -52,4 +61,26 @@ def test_build_consumer_client_uses_async_credential(monkeypatch):
     client = _build_consumer_client()
 
     assert isinstance(client, _FakeConsumerClient)
-    assert inspect.iscoroutinefunction(client.kwargs["credential"].get_token)
+    assert client.kwargs["conn_str"] == "Endpoint=sb://example/;SharedAccessKeyName=test;SharedAccessKey=abc"
+    assert client.kwargs["consumer_group"] == "$Default"
+
+
+def test_build_consumer_client_requires_connection_string(monkeypatch):
+    settings = type(
+        "Settings",
+        (),
+        {
+            "iothub_host_name": "example.servicebus.windows.net",
+            "iothub_eventhub_name": "iothub-telemetry",
+            "iothub_consumer_group": "$Default",
+            "iothub_eventhub_connection_string": "   ",
+        },
+    )()
+
+    monkeypatch.setattr("app.services.iothub_consumer.get_settings", lambda: settings)
+
+    try:
+        _build_consumer_client()
+        raise AssertionError("expected RuntimeError")
+    except RuntimeError as exc:
+        assert str(exc) == "IOTHUB_EVENTHUB_CONNECTION_STRING is not configured"

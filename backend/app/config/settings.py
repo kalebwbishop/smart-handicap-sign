@@ -1,4 +1,4 @@
-import os
+from pathlib import Path
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 
@@ -16,9 +16,10 @@ class Settings(BaseSettings):
     postgres_connection_string: str = "postgresql://devuser:devpassword@localhost:5432/social_stack_dev"
 
     # Azure IoT Hub
-    iothub_host_name: str = ""
-    iothub_eventhub_name: str = ""
+    iothub_host_name: str = "hazardhero-iothub.azure-devices.net"
+    iothub_eventhub_name: str = "hazardhero-iothub"
     iothub_consumer_group: str = "$Default"
+    iothub_eventhub_connection_string: str = ""
 
     # Frontend
     frontend_url: str = "http://localhost:8081"
@@ -33,7 +34,7 @@ class Settings(BaseSettings):
     cors_origin: str = "http://localhost:19006,http://localhost:19000,http://localhost:8081,https://res007-0-8a1a2ecf605e412c-dev.redground-500683d1.eastus.azurecontainerapps.io"
 
     model_config = {
-        "env_file": ".env",
+        "env_file": Path(__file__).resolve().parents[2] / ".env",
         "env_file_encoding": "utf-8",
         "extra": "ignore",
     }

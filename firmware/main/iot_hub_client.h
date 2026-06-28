@@ -24,11 +24,14 @@
 #endif
 
 typedef enum {
-    STATUS_AVAILABLE = 0,
+    STATUS_BOOTING = 0,
+    STATUS_CONNECTING,
+    STATUS_AVAILABLE,
     STATUS_ASSISTANCE_REQUESTED,
     STATUS_ASSISTANCE_IN_PROGRESS,
     STATUS_OFFLINE,
     STATUS_ERROR,
+    STATUS_COUNT,
 } device_status_t;
 
 typedef enum {

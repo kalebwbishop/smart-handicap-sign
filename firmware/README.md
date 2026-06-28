@@ -141,6 +141,20 @@ If the board is already connected over USB on Windows, this is the fastest pilot
    py -m serial.tools.miniterm COM3 115200
    ```
 
+### Copilot extension for build, flash, and logs
+
+The repository also includes a Copilot extension at `.github/extensions/hazard-hero-esp32/` with three tools:
+
+- `hazard_hero_esp32_build`
+- `hazard_hero_esp32_flash`
+- `hazard_hero_esp32_logs`
+
+Use `hazard_hero_esp32_flash` with the device port such as `COM3` or `/dev/ttyUSB0`. Use `hazard_hero_esp32_logs` to capture a bounded window of serial output from the ESP32. If you plan to use the log tool on Windows, install `pyserial` first:
+
+```cmd
+py -m pip install pyserial
+```
+
 #### Why this flow
 
 `idf.py` inside WSL cannot use Windows serial ports such as `COM3` directly. The reliable path on this repo is:
@@ -161,6 +175,21 @@ set(HAZARD_HERO_BACKEND_URL "https://api.example.com/api/v1" CACHE STRING "Backe
 ```
 
 Use the real pilot backend URL, including `/api/v1`.
+
+### IoT Hub / DPS enrollment
+
+The firmware requires these CMake definitions at build time:
+
+```cmake
+set(DPS_ID_SCOPE "0ne00000000" CACHE STRING "Azure DPS ID scope")
+set(DPS_REGISTRATION_ID "hazard-hero-sign-01" CACHE STRING "DPS registration ID")
+```
+
+Notes:
+
+- `DPS_ID_SCOPE` is required for the device to resolve its assigned IoT Hub.
+- `DPS_REGISTRATION_ID` is optional if the device can load a saved identity from NVS.
+- If `DPS_ID_SCOPE` is empty, startup stops with `DPS_ID_SCOPE is not configured`.
 
 ### Device identity
 

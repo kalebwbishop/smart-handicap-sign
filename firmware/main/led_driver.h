@@ -3,18 +3,11 @@
 
 #include "driver/gpio.h"
 #include "esp_err.h"
+#include "iot_hub_client.h"
 
-#define LED_GPIO GPIO_NUM_2
-
-// Device status values (must match backend enum)
-typedef enum {
-    STATUS_AVAILABLE,
-    STATUS_ASSISTANCE_REQUESTED,
-    STATUS_ASSISTANCE_IN_PROGRESS,
-    STATUS_OFFLINE,
-    STATUS_ERROR,
-    STATUS_COUNT  // sentinel
-} device_status_t;
+#define LED_RED_GPIO GPIO_NUM_25
+#define LED_GREEN_GPIO GPIO_NUM_26
+#define LED_BLUE_GPIO GPIO_NUM_27
 
 // Initialize LED driver (GPIO + timer)
 esp_err_t led_driver_init(void);

@@ -20,8 +20,11 @@
 #define STATE_JSON_BUFFER_SIZE 256U
 #define HAZARD_HERO_NAMESPACE "hazardHero"
 #define D2C_TOPIC_SUFFIX "/messages/events/"
-#define DESIRED_TOPIC_FILTER_SUFFIX "/twin/PATCH/properties/desired/#"
-#define TWIN_RESPONSE_TOPIC_FRAGMENT "/twin/res/"
+#define DESIRED_TOPIC_FILTER "$iothub/twin/PATCH/properties/desired/#"
+#define DESIRED_TOPIC_PREFIX "$iothub/twin/PATCH/properties/desired/"
+#define TWIN_RESPONSE_TOPIC_FRAGMENT "$iothub/twin/res/"
+#define TWIN_GET_TOPIC "$iothub/twin/GET/"
+#define TWIN_REPORTED_TOPIC "$iothub/twin/PATCH/properties/reported/"
 #define MAX_SAMPLE_VALUE 4095
 
 typedef struct {
@@ -66,7 +69,7 @@ static void set_default_state(iot_hub_state_t *state)
     }
 
     state->status = STATUS_OFFLINE;
-    state->telemetry_enabled = false;
+    state->telemetry_enabled = true;
     state->telemetry_interval_ms = DEFAULT_TELEMETRY_INTERVAL_MS;
     state->last_desired_version = 0U;
 }
@@ -116,6 +119,20 @@ static bool parse_status_string(const char *status_str, device_status_t *status)
     }
 
     return false;
+}
+
+static const cJSON *get_desired_status_property(const cJSON *patch)
+{
+    if (patch == NULL) {
+        return NULL;
+    }
+
+    const cJSON *status = cJSON_GetObjectItemCaseSensitive(patch, "status");
+    if (status != NULL) {
+        return status;
+    }
+
+    return cJSON_GetObjectItemCaseSensitive(patch, "operational_status");
 }
 
 static esp_err_t format_state_json(const iot_hub_state_t *state, char *buffer, size_t buffer_len)
@@ -244,14 +261,14 @@ static esp_err_t load_cached_state(iot_hub_state_t *state)
         return ESP_OK;
     }
 
-    const cJSON *status = cJSON_GetObjectItemCaseSensitive(json, "status");
+    const cJSON *operational_status = cJSON_GetObjectItemCaseSensitive(json, "operational_status");
     const cJSON *telemetry_enabled = cJSON_GetObjectItemCaseSensitive(json, "telemetryEnabled");
     const cJSON *telemetry_interval_ms = cJSON_GetObjectItemCaseSensitive(json, "telemetryIntervalMs");
     const cJSON *desired_version = cJSON_GetObjectItemCaseSensitive(json, "lastDesiredVersion");
 
-    if (cJSON_IsString(status) && status->valuestring != NULL) {
+    if (cJSON_IsString(operational_status) && operational_status->valuestring != NULL) {
         device_status_t parsed_status;
-        if (parse_status_string(status->valuestring, &parsed_status)) {
+        if (parse_status_string(operational_status->valuestring, &parsed_status)) {
             state->status = parsed_status;
         }
     }
@@ -368,11 +385,14 @@ static esp_err_t publish_message(const char *topic, const char *payload)
         return ESP_ERR_INVALID_STATE;
     }
 
-    int msg_id = esp_mqtt_client_enqueue(s_client, topic, payload, (int)strlen(payload), 1, 0, true);
+    size_t payload_len = strlen(payload);
+    int msg_id = esp_mqtt_client_enqueue(s_client, topic, payload, (int)payload_len, 1, 0, true);
     if (msg_id >= 0) {
+        ESP_LOGI(TAG, "Sent to Azure IoT Hub: topic=%s payload_len=%zu msg_id=%d", topic, payload_len, msg_id);
         return ESP_OK;
     }
 
+    ESP_LOGW(TAG, "Failed to send to Azure IoT Hub: topic=%s payload_len=%zu msg_id=%d", topic, payload_len, msg_id);
     if (msg_id == -2) {
         return ESP_ERR_NO_MEM;
     }
@@ -386,21 +406,15 @@ static esp_err_t publish_reported_state(void)
     copy_state(&current_state);
 
     char payload[PAYLOAD_BUFFER_SIZE] = {0};
-    char topic[TOPIC_BUFFER_SIZE] = {0};
 
     esp_err_t err = format_reported_payload(&current_state, payload, sizeof(payload));
     if (err != ESP_OK) {
         return err;
     }
 
-    err = build_topic(topic, sizeof(topic), "/twin/PATCH/properties/reported/");
-    if (err != ESP_OK) {
-        return err;
-    }
-
     uint32_t rid = next_request_id();
     char reported_topic[TOPIC_BUFFER_SIZE] = {0};
-    int written = snprintf(reported_topic, sizeof(reported_topic), "%s?$rid=%" PRIu32, topic, rid);
+    int written = snprintf(reported_topic, sizeof(reported_topic), "%s?$rid=%" PRIu32, TWIN_REPORTED_TOPIC, rid);
     if (written < 0 || (size_t)written >= sizeof(reported_topic)) {
         return ESP_ERR_NO_MEM;
     }
@@ -410,15 +424,9 @@ static esp_err_t publish_reported_state(void)
 
 static esp_err_t publish_twin_get(void)
 {
-    char topic[TOPIC_BUFFER_SIZE] = {0};
     uint32_t rid = next_request_id();
-    esp_err_t err = build_topic(topic, sizeof(topic), "/twin/get/");
-    if (err != ESP_OK) {
-        return err;
-    }
-
     char request_topic[TOPIC_BUFFER_SIZE] = {0};
-    int written = snprintf(request_topic, sizeof(request_topic), "%s?$rid=%" PRIu32, topic, rid);
+    int written = snprintf(request_topic, sizeof(request_topic), "%s?$rid=%" PRIu32, TWIN_GET_TOPIC, rid);
     if (written < 0 || (size_t)written >= sizeof(request_topic)) {
         return ESP_ERR_NO_MEM;
     }
@@ -500,7 +508,7 @@ static esp_err_t apply_patch_object(cJSON *version_source, cJSON *patch)
     copy_state(&next_state);
     bool changed = false;
 
-    const cJSON *status = cJSON_GetObjectItemCaseSensitive(patch, "status");
+    const cJSON *status = get_desired_status_property(patch);
     if (cJSON_IsString(status) && status->valuestring != NULL) {
         device_status_t parsed_status;
         if (!parse_status_string(status->valuestring, &parsed_status)) {
@@ -511,7 +519,7 @@ static esp_err_t apply_patch_object(cJSON *version_source, cJSON *patch)
         next_state.status = parsed_status;
         changed = true;
     } else if (status != NULL) {
-        ESP_LOGW(TAG, "Ignoring desired property 'status' with invalid type");
+        ESP_LOGW(TAG, "Ignoring desired property 'status'/'operational_status' with invalid type");
         return ESP_ERR_INVALID_ARG;
     }
 
@@ -590,8 +598,14 @@ static esp_err_t apply_desired_properties_json(const char *json, bool from_twin_
             desired = cJSON_GetObjectItemCaseSensitive(properties, "desired");
         }
         if (cJSON_IsObject(desired)) {
-            patch = desired;
-            version_source = desired;
+            cJSON *namespaced = cJSON_GetObjectItemCaseSensitive(desired, HAZARD_HERO_NAMESPACE);
+            if (cJSON_IsObject(namespaced)) {
+                patch = namespaced;
+                version_source = desired;
+            } else {
+                patch = desired;
+                version_source = desired;
+            }
         } else {
             cJSON_Delete(root);
             ESP_LOGW(TAG, "Twin response did not contain desired properties");
@@ -620,7 +634,7 @@ static void process_complete_mqtt_message(void)
         return;
     }
 
-    if (strstr(s_rx_topic, DESIRED_TOPIC_FILTER_SUFFIX) != NULL || strstr(s_rx_topic, "/twin/PATCH/properties/desired/") != NULL) {
+    if (strstr(s_rx_topic, DESIRED_TOPIC_PREFIX) != NULL) {
         (void)apply_desired_properties_json(s_rx_payload, false);
     }
 }
@@ -678,7 +692,8 @@ static void subscribe_desired_properties(void)
     }
 
     char topic[TOPIC_BUFFER_SIZE] = {0};
-    if (build_topic(topic, sizeof(topic), DESIRED_TOPIC_FILTER_SUFFIX) != ESP_OK) {
+    int written = snprintf(topic, sizeof(topic), "%s", DESIRED_TOPIC_FILTER);
+    if (written < 0 || (size_t)written >= sizeof(topic)) {
         return;
     }
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import json
 from typing import Any
 
@@ -99,6 +98,7 @@ async def process_iothub_telemetry_event(event: Any) -> None:
 
 async def _on_event(partition_context: Any, event: Any) -> None:
     del partition_context
+    logger.info("Received IoT Hub telemetry message")
     await process_iothub_telemetry_event(event)
 
 
@@ -116,7 +116,7 @@ def _build_consumer_client() -> EventHubConsumerClient:
     if not eventhub_name:
         raise RuntimeError("IOTHUB_EVENTHUB_NAME is not configured")
 
-    iothub_eventhub_connection_string = os.environ.get("IOTHUB_EVENTHUB_CONNECTION_STRING")
+    iothub_eventhub_connection_string = settings.iothub_eventhub_connection_string.strip()
     if not iothub_eventhub_connection_string:
         raise RuntimeError("IOTHUB_EVENTHUB_CONNECTION_STRING is not configured")
 
