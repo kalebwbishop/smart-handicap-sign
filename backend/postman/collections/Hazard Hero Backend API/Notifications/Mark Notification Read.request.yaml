@@ -1,8 +1,0 @@
-$kind: http-request
-description: |-
-  Mark a single notification as read.
-
-  Auth: Bearer `{{access_token}}`
-url: "{{base_url}}/api/v1/notifications/{{notification_id}}/read"
-method: POST
-order: 6000

@@ -1,8 +1,0 @@
-$kind: http-request
-description: |-
-  Remove a member from the organization. Requires owner or admin role.
-
-  Auth: Bearer `{{access_token}}`
-url: "{{base_url}}/api/v1/organizations/{{organization_id}}/members/{{user_id}}"
-method: DELETE
-order: 9000

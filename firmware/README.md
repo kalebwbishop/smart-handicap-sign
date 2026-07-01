@@ -11,6 +11,16 @@ ESP-IDF firmware for the **single pilot sign**. This firmware is intentionally f
 - Mirrors backend-driven sign state on the LED at **GPIO 2**
 - Falls back to SoftAP provisioning when Wi-Fi credentials are missing or invalid
 
+## Dev-only data recorder
+
+The recorder is a separate ESP-IDF project under `firmware/dev/data_recorder/`. It does one job only:
+
+- sample raw ADC data
+- POST the samples to the backend over plain HTTP
+- ignore HTTP failures and keep looping
+
+That build does **not** use certificates, IoT Hub, provisioning, or sign-state polling.
+
 ## Pilot-only scope
 
 This firmware is for operating one installed sign. It does **not** depend on:
@@ -71,12 +81,24 @@ firmware/
 ├── version.txt
 ├── server_certs/
 │   └── ca_cert.pem
+├── dev/
+│   └── data_recorder/
+│       ├── CMakeLists.txt
+│       └── main/
+│           ├── CMakeLists.txt
+│           └── main.c
+├── battery_test/
+│   ├── CMakeLists.txt
+│   └── main/
+│       ├── CMakeLists.txt
+│       └── main.c
 └── main/
     ├── main.c
     ├── adc_sampler.c
     ├── adc_sampler.h
-    ├── https_client.c
-    ├── https_client.h
+    ├── connection_policy.c
+    ├── dps_client.c
+    ├── iot_hub_client.c
     ├── led_driver.c
     ├── led_driver.h
     ├── nvs_storage.c
@@ -175,6 +197,30 @@ set(HAZARD_HERO_BACKEND_URL "https://api.example.com/api/v1" CACHE STRING "Backe
 ```
 
 Use the real pilot backend URL, including `/api/v1`.
+
+### Dev recorder build
+
+Build it from the separate project directory:
+
+```bash
+cd firmware/dev/data_recorder
+idf.py -DDEV_BACKEND_URL="http://192.168.1.50:8000/api/v1/dev/training-captures" \
+       -DDEV_WIFI_SSID="DevLabWiFi" \
+       -DDEV_WIFI_PASSWORD="replace-me" \
+       -DDEV_CAPTURE_LABEL="unlabeled" \
+       build
+```
+
+The dev recorder sends:
+
+- `serial_number`
+- `sample_count`
+- `sample_interval_ms`
+- `capture_label`
+- `firmware_version`
+- `samples`
+
+The backend records those batches for later training use.
 
 ### IoT Hub / DPS enrollment
 

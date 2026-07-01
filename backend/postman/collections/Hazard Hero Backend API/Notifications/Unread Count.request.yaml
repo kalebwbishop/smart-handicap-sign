@@ -1,8 +1,0 @@
-$kind: http-request
-description: |-
-  Get the count of unread notifications for the current user.
-
-  Auth: Bearer `{{access_token}}`
-url: "{{base_url}}/api/v1/notifications/unread/count"
-method: GET
-order: 3000

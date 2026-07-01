@@ -1,8 +1,0 @@
-$kind: http-request
-description: |-
-  Acknowledge an assistance request — moves to assistance_in_progress.
-
-  Auth: Bearer `{{access_token}}`
-url: "{{base_url}}/api/v1/devices/{{serial_number}}/acknowledge"
-method: POST
-order: 4000

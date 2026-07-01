@@ -1,8 +1,0 @@
-$kind: http-request
-description: |-
-  List organizations the current user belongs to.
-
-  Auth: Bearer `{{access_token}}`
-url: "{{base_url}}/api/v1/organizations"
-method: GET
-order: 1000

@@ -1,0 +1,153 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("POSTGRES_CONNECTION_STRING")
+}
+
+enum device_connectivity_status {
+  online
+  offline
+}
+
+enum device_operational_status {
+  available
+  assistance_requested
+  assistance_in_progress
+  offline
+  error
+}
+
+model User {
+  id                     String                  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  workosUserId           String                  @unique @map("workos_user_id") @db.VarChar(255)
+  email                  String                  @unique @db.VarChar(255)
+  name                   String                  @db.VarChar(255)
+  avatarUrl              String?                 @map("avatar_url") @db.Text
+  createdAt              DateTime?               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime?               @default(now()) @map("updated_at") @db.Timestamptz(6)
+  profile                Profile?
+  notificationPreference NotificationPreference?
+  notifications          Notification[]
+  pushTokens             PushToken[]
+
+  @@index([email])
+  @@index([workosUserId])
+  @@map("users")
+}
+
+model Profile {
+  userId          String   @id @map("user_id") @db.Uuid
+  displayName     String?  @map("display_name") @db.VarChar(100)
+  bio             String?  @db.Text
+  profileImageUrl String?  @map("profile_image_url") @db.VarChar(500)
+  coverImageUrl   String?  @map("cover_image_url") @db.VarChar(500)
+  location        String?  @db.VarChar(255)
+  website         String?  @db.VarChar(255)
+  createdAt       DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("profiles")
+}
+
+model Device {
+  id                  String                  @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  serialNumber        String                  @unique @map("serial_number") @db.VarChar(30)
+  modelCode           String?                 @map("model_code") @db.VarChar(10)
+  hardwareRevision    String?                 @map("hardware_revision") @db.VarChar(10)
+  firmwareVersion     String?                 @map("firmware_version") @db.VarChar(20)
+  authTokenHash       String?                 @map("auth_token_hash") @db.VarChar(128)
+  authTokenSalt       String?                 @map("auth_token_salt") @db.VarChar(64)
+  connectivityStatus  device_connectivity_status @default(offline) @map("connectivity_status")
+  operationalStatus   device_operational_status  @default(available) @map("operational_status")
+  lastSeenAt          DateTime?               @map("last_seen_at") @db.Timestamptz(6)
+  name                String?                 @db.Text
+  createdAt           DateTime?               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime?               @default(now()) @map("updated_at") @db.Timestamptz(6)
+  deviceEvents        DeviceEvent[]
+  notifications       Notification[]
+
+  @@index([serialNumber])
+  @@index([connectivityStatus])
+  @@index([operationalStatus])
+  @@map("devices")
+}
+
+model DeviceEvent {
+  id              String     @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  deviceId        String     @map("device_id") @db.Uuid
+  eventType       String     @map("event_type") @db.VarChar(50)
+  payload         Json       @db.JsonB
+  correctResponse Boolean?   @default(true) @map("correct_response")
+  createdAt       DateTime?  @default(now()) @map("created_at") @db.Timestamptz(6)
+  device          Device     @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  notifications   Notification[]
+
+  @@index([deviceId])
+  @@map("device_events")
+}
+
+model TrainingCapture {
+  id                  String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  deviceSerialNumber  String    @map("device_serial_number") @db.VarChar(30)
+  captureLabel        String    @default("unlabeled") @map("capture_label") @db.VarChar(50)
+  firmwareVersion     String?   @map("firmware_version") @db.VarChar(20)
+  sampleCount         Int       @map("sample_count")
+  sampleIntervalMs    Int       @default(20) @map("sample_interval_ms")
+  samples             Json      @db.JsonB
+  createdAt           DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([deviceSerialNumber, createdAt], map: "idx_training_captures_device_created")
+  @@index([captureLabel, createdAt], map: "idx_training_captures_label_created")
+  @@map("training_captures")
+}
+
+model NotificationPreference {
+  userId                   String    @id @map("user_id") @db.Uuid
+  assistanceRequestsEnabled Boolean   @default(true) @map("assistance_requests_enabled")
+  pushEnabled              Boolean   @default(true) @map("push_enabled")
+  createdAt                DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+  user                     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notification_preferences")
+}
+
+model Notification {
+  id            String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  deviceId      String    @map("device_id") @db.Uuid
+  deviceEventId String    @map("device_event_id") @db.Uuid
+  kind          String    @db.VarChar(50)
+  title         String
+  body          String
+  read          Boolean   @default(false)
+  createdAt     DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  device        Device    @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  deviceEvent   DeviceEvent @relation(fields: [deviceEventId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceEventId], map: "notifications_user_event_unique")
+  @@index([userId, createdAt], map: "idx_notifications_user_created")
+  @@index([userId, read, createdAt], map: "idx_notifications_user_read")
+  @@index([deviceId, createdAt], map: "idx_notifications_device")
+  @@map("notifications")
+}
+
+model PushToken {
+  id             String    @id @default(dbgenerated("uuid_generate_v4()")) @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  expoPushToken  String    @unique @map("expo_push_token") @db.VarChar(255)
+  platform       String?   @db.VarChar(20)
+  deviceName     String?   @map("device_name") @db.Text
+  createdAt      DateTime? @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime? @default(now()) @map("updated_at") @db.Timestamptz(6)
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "idx_push_tokens_user")
+  @@map("push_tokens")
+}

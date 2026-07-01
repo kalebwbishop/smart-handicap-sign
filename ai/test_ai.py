@@ -13,6 +13,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+import json
 
 import numpy as np
 import pytest
@@ -33,7 +34,7 @@ from data import (
     _random_noise,
     _random_silence,
 )
-from train import _accuracy, _run_epoch
+from train import _accuracy, _capture_label_to_target, _coerce_samples, _row_to_example, _run_epoch, _stratified_split
 from infer import WaveClassifier, SEQ_LEN
 
 
@@ -253,6 +254,46 @@ class TestTrainHelpers:
         targets = torch.tensor([1.0, 0.0])
         assert _accuracy(preds, targets, threshold=0.7) == pytest.approx(0.5)
         assert _accuracy(preds, targets, threshold=0.5) == 1.0
+
+    def test_capture_label_to_target_maps_real_labels(self):
+        positive = {"wave", "training_positive"}
+        negative = {"non-wave", "training_negative"}
+        assert _capture_label_to_target("wave", positive, negative) == 1.0
+        assert _capture_label_to_target("training_negative", positive, negative) == 0.0
+        assert _capture_label_to_target("unlabeled", positive, negative) is None
+
+    def test_coerce_samples_accepts_json_string(self):
+        samples = [100] * SEQ_LEN
+        assert _coerce_samples(json.dumps(samples)) == samples
+
+    def test_row_to_example_normalizes_real_capture(self):
+        row = {
+            "device_serial_number": "DEV-1",
+            "capture_label": "wave",
+            "sample_count": SEQ_LEN,
+            "samples": [MAX_VAL // 2] * SEQ_LEN,
+        }
+        signal, label = _row_to_example(
+            row,
+            positive_labels={"wave"},
+            negative_labels={"non-wave"},
+        )
+        assert signal.shape == (1, SEQ_LEN)
+        assert label.item() == pytest.approx(1.0)
+        assert signal.min() >= 0.0 and signal.max() <= 1.0
+
+    def test_stratified_split_keeps_both_classes(self):
+        examples = []
+        for _ in range(4):
+            examples.append((torch.zeros(1, SEQ_LEN), torch.tensor(1.0)))
+            examples.append((torch.zeros(1, SEQ_LEN), torch.tensor(0.0)))
+
+        train, val = _stratified_split(examples, seed=42, train_cap=6, val_cap=2)
+        train_labels = {float(label.item()) for _, label in train}
+        val_labels = {float(label.item()) for _, label in val}
+
+        assert train_labels == {0.0, 1.0}
+        assert val_labels == {0.0, 1.0}
 
 
 class TestRunEpoch:

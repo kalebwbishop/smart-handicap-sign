@@ -121,6 +121,22 @@ CREATE TABLE device_events (
 CREATE INDEX idx_device_events_device ON device_events(device_id);
 CREATE INDEX idx_device_events_device_created ON device_events(device_id, created_at DESC);
 
+CREATE TABLE training_captures (
+    id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    device_serial_number VARCHAR(30) NOT NULL,
+    capture_label       VARCHAR(50) NOT NULL DEFAULT 'unlabeled',
+    firmware_version    VARCHAR(20),
+    sample_count        INTEGER NOT NULL CHECK (sample_count > 0),
+    sample_interval_ms  INTEGER NOT NULL DEFAULT 20 CHECK (sample_interval_ms > 0),
+    samples             JSONB NOT NULL,
+    created_at          TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT training_captures_samples_array_check CHECK (jsonb_typeof(samples) = 'array'),
+    CONSTRAINT training_captures_count_check CHECK (sample_count = jsonb_array_length(samples))
+);
+
+CREATE INDEX idx_training_captures_device_created ON training_captures(device_serial_number, created_at DESC);
+CREATE INDEX idx_training_captures_label_created ON training_captures(capture_label, created_at DESC);
+
 CREATE TABLE notification_preferences (
     user_id                       UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
     assistance_requests_enabled   BOOLEAN NOT NULL DEFAULT TRUE,

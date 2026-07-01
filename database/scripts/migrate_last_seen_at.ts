@@ -1,5 +1,5 @@
 import { Client } from 'pg';
-import * as path from 'path';
+import * as path from 'node:path';
 import * as dotenv from 'dotenv';
 
 const envPath = path.resolve(__dirname, '../../backend/.env');

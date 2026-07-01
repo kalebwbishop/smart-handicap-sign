@@ -31,7 +31,7 @@ async function migrateToV2() {
 
         const schemaSQL = fs.readFileSync(schemaPath, 'utf-8');
 
-        console.log('⚠️  Applying canonical v2 schema (destructive reset)...');
+        console.log('⚠️  Applying canonical schema reset (destructive bootstrap)...');
         await client.query(schemaSQL);
 
         console.log('✅ Schema applied successfully');

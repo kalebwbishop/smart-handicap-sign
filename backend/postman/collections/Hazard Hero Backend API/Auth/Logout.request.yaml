@@ -1,8 +1,0 @@
-$kind: http-request
-description: |-
-  Logout the user by revoking the WorkOS session.
-
-  Auth: Bearer `{{access_token}}`
-url: "{{base_url}}/api/v1/auth/logout"
-method: POST
-order: 6000

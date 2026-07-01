@@ -1,256 +1,91 @@
-# Hazard Hero Pilot Plan
+# Pilot checklist
 
-## Pilot definition
+This checklist is the launch gate for the **single-sign physical pilot**.
 
-This pilot is a **single-sign, single-site proof of concept**. The goal is to prove one real-world outcome:
+The pilot is ready only when the one-sign loop works end to end:
 
-1. A visitor triggers a help request at the sign.
-2. The backend records the request and changes the sign status.
-3. A staff member sees the request quickly.
-4. Staff acknowledges the request.
-5. Staff resolves the request and the sign returns to available.
+1. The sign boots.
+2. The sign connects to Wi-Fi.
+3. The sign polls backend status.
+4. The sign samples the photoresistor only when status is `available`.
+5. A real wave triggers `assistance_requested`.
+6. The operator can acknowledge and resolve the request.
+7. The system recovers after temporary Wi-Fi or backend loss.
 
-If that loop works reliably with one installed sign, the pilot is successful.
+## 1. Environment readiness
 
-## What the pilot should include
+- [x] Backend environment is configured.
+- [x] Frontend environment is configured.
+- [x] Database connection string points at the pilot PostgreSQL instance.
+- [x] WorkOS auth credentials are present.
+- [ ] Pilot sign serial number and auth token are available.
+- [ ] Pilot Wi-Fi credentials are available.
+- [ ] Pilot backend URL includes `/api/v1`.
+- [ ] TLS CA certificate matches the pilot backend chain.
 
-### Core scope
+## 2. Database readiness
 
-- **One physical sign**
-- **One backend environment**
-- **One organization or one shared operator account**
-- **One staff-facing mobile app flow**
-- **One notification path**: assistance-request notifications should exist in-app and may also be delivered by push; `offline` remains a frontend-only stale indicator for now
-- **One install location**
-- **Basic event history** for requests, acknowledgements, and resolutions
+- [ ] Pilot schema is applied cleanly.
+- [ ] Seeded pilot device row exists.
+- [ ] `device_events` stores request payloads and false-positive labels.
+- [ ] `notifications`, `notification_preferences`, and `push_tokens` behave as expected for the pilot workflow.
 
-### Required states
+## 3. Backend readiness
 
-- `available`
-- `assistance_requested`
-- `assistance_in_progress`
-- `offline`
-- return to `available`
+- [ ] `GET /health` returns healthy.
+- [ ] `GET /api/v1/status` returns the API version and timestamp.
+- [ ] `GET /api/v1/devices/{serial_number}/status` returns the installed sign state.
+- [ ] `POST /api/v1/inference/classify` accepts the configured sample window.
+- [ ] `POST /api/v1/devices/{serial_number}/acknowledge` transitions `assistance_requested` to `assistance_in_progress`.
+- [ ] `POST /api/v1/devices/{serial_number}/resolve` returns the sign to `available`.
+- [ ] `POST /api/v1/devices/{serial_number}/events/{device_event_id}/false-positive` marks false positives correctly.
 
-For pilot purposes, `offline` should mean the sign has missed its expected backend check-ins long enough that staff should not trust the displayed availability until the device reconnects.
+## 4. Frontend readiness
 
-### Required working surfaces in this repo
+- [ ] Operator can log in.
+- [ ] Operator can see the pilot sign status.
+- [ ] Operator can acknowledge a new assistance request.
+- [ ] Operator can resolve a request after helping the visitor.
+- [ ] Operator can mark a request as false positive.
 
-- **Firmware/device loop**
-  - Poll sign status
-  - Sample and send wave data
-  - Respect backend status before classifying
-- **Backend**
-  - `POST /api/v1/inference/classify`
-  - `GET /api/v1/devices/{serial_number}/status`
-  - `POST /api/v1/devices/{serial_number}/acknowledge`
-  - `POST /api/v1/devices/{serial_number}/resolve`
-  - device event logging
-- **Frontend**
-  - Login
-  - Home screen showing current sign status
-  - Acknowledge action
-  - Resolve action
-  - Basic request/event visibility
+## 5. Firmware readiness
 
-## What should be removed from pilot scope
+- [ ] Firmware builds with ESP-IDF 5.4+.
+- [ ] Firmware is flashed successfully to the installed ESP32.
+- [ ] Device identity is preloaded or generated as expected.
+- [ ] Wi-Fi provisioning works as recovery mode.
+- [ ] Status polling works while connected to the pilot backend.
+- [ ] LED patterns match backend state.
+- [ ] Classification only runs when status is `available`.
+- [ ] Device recovers after temporary Wi-Fi loss.
 
-These items may remain in the repo, but they should be treated as **out of scope for pilot launch** and not block pilot completion.
+## 6. Physical installation readiness
 
-### Defer from launch
+- [ ] Sign is mounted at the pilot location.
+- [ ] Power is stable.
+- [ ] Wi-Fi coverage is strong enough at the install location.
+- [ ] ADC/photoresistor wiring is correct.
+- [ ] Operator can observe the sign and use the app during a live request.
 
-- Multi-organization administration
-- Full member management and role complexity beyond what one pilot operator needs
-- Full QR claim/install workflow
-- Site and parking-space management UI beyond one seeded assignment
-- Device fleet management for many devices
-- Transfer / revoke / release workflows for pilot operations
-- Claim ID regeneration workflows
-- Inference debug screens as part of the operator workflow
-- OTA update workflows as a launch dependency
-- Advanced firmware provisioning flows unless needed for this one install
-- Training states:
-  - `training_ready`
-  - `training_positive`
-  - `training_negative`
-- Billing / subscription concepts
-- Any old social/media/template leftovers in documentation
+## 7. Pilot validation run
 
-### Recommended repo-level simplifications for pilot focus
+- [ ] Run a boot test.
+- [ ] Run a Wi-Fi reconnect test.
+- [ ] Run a status poll test.
+- [ ] Run a real wave detection test.
+- [ ] Run an acknowledge/resolve test.
+- [ ] Run a false-positive labeling test.
+- [ ] Run a temporary backend outage test.
+- [ ] Run a temporary Wi-Fi outage test.
 
-- **Hide or ignore** non-pilot screens from normal navigation if they distract from the operator flow.
-- **Seed one known device** and one known user instead of requiring the full installer claim process.
-- **Treat sites / parking spaces as fixed setup data** for the pilot, not operator-managed content.
-- **Keep the in-app inbox authoritative** even if push delivery is enabled for assistance requests.
-- **Make the home screen the primary pilot surface** and avoid requiring operators to visit secondary admin screens.
+## Go / no-go
 
-## What may need to be added or tightened before pilot launch
+**Go** only if every required checkbox above is complete and the live end-to-end loop works on the installed sign.
 
-### Product and UX
+**No-go** if any of these still fail:
 
-- A clearly named **pilot operator flow**:
-  - see current sign status
-  - see new request
-  - acknowledge
-  - resolve
-- Clear copy for each status so staff can act without training
-- A visible last-updated or last-seen timestamp for device freshness
-- A simple error/offline indicator for the sign
-
-### Backend
-
-- Confirm `assistance_requested -> assistance_in_progress -> available` is the only supported operator loop for pilot
-- Keep the current frontend-only stale/offline indicator clear for operators without making backend offline handling a launch dependency
-- Add assistance-request notifications without changing the core sign state machine
-- Ensure acknowledge and resolve actions create auditable device events
-- Ensure one wave does not create noisy duplicate requests while already in a requested/in-progress state
-- Ensure device status polling remains lightweight and stable
-- Ensure the pilot can run with seeded data and minimal setup steps
-
-### Frontend
-
-- Make the home screen robust when exactly one device is present
-- Show the most recent request clearly
-- Show `offline` as a distinct state, not as generic failure text
-- Prevent double taps on acknowledge / resolve actions
-- Show actionable failure states if the backend call fails
-- Keep navigation minimal for pilot users
-
-### Firmware / device setup
-
-- Lock in the production-like URL and credentials for the pilot device
-- Verify the sign behaves safely when backend is unreachable
-- Verify LED/status behavior matches the backend state machine
-- Verify the sign does not continuously spam classify requests when unavailable
-
-### Documentation and ops
-
-- Update repo-facing docs so the pilot story is obvious
-- Document exact install steps for the one pilot sign
-- Document operator steps for handling a request
-- Document recovery steps for:
-  - sign offline
-  - backend unavailable
-  - sign stuck in requested/in-progress state
-
-## Pilot launch checklist
-
-### Scope freeze
-
-- [ ] Pilot success criteria are limited to one-sign end-to-end assistance handling
-- [ ] Non-pilot features are explicitly marked as deferred
-- [ ] Operators know which app screens are in scope for launch
-
-### Environment and data
-
-- [ ] Backend environment is deployed and reachable from the sign
-- [ ] Database schema is applied
-- [ ] Seed data or manual setup creates:
-  - [ ] one operator user
-  - [ ] one organization or shared pilot account
-  - [ ] one active device
-  - [ ] one fixed site/parking-space assignment if needed
-- [ ] Device serial number and auth token are confirmed
-
-### Device readiness
-
-- [ ] Firmware is flashed on the pilot sign
-- [ ] Sign can reach Wi-Fi reliably from the installation location
-- [ ] Sign can reach backend endpoints reliably
-- [ ] Sign status polling works
-- [ ] If the sign stops checking in, the app still shows the existing stale/offline indicator clearly enough for pilot operators
-- [ ] Wave classification requests succeed
-- [ ] LED/status indication is correct for each pilot state
-
-### App readiness
-
-- [ ] Operator can log in
-- [ ] Operator can view the pilot sign from the home screen
-- [ ] Operator can acknowledge a request
-- [ ] Operator can resolve a request
-- [ ] Operator can recover from a transient backend failure without app restart
-
-### Operational readiness
-
-- [ ] Staff know what to do when a request appears
-- [ ] Staff know expected response-time target for the pilot
-- [ ] A contact person is assigned for pilot issues
-- [ ] A rollback/manual fallback exists if the sign or backend fails
-
-## Tests that should pass before pilot launch
-
-## 1. Backend API behavior
-
-- [ ] `GET /health` returns healthy in the pilot environment
-- [ ] `GET /api/v1/devices/{serial_number}/status` returns the current device state for the pilot sign
-- [ ] `POST /api/v1/inference/classify` accepts payloads matching the configured sample count from the pilot device
-- [ ] A positive classification changes the sign to `assistance_requested`
-- [ ] A positive classification creates a device event
-- [ ] A positive classification creates one assistance-request notification per opted-in operator
-- [ ] `POST /api/v1/devices/{serial_number}/acknowledge` changes state to `assistance_in_progress`
-- [ ] `POST /api/v1/devices/{serial_number}/resolve` changes state back to `available`
-- [ ] Invalid or unauthorized device submissions are rejected
-- [ ] Repeated classifications do not create invalid state transitions or unbounded duplicate alerts
-
-## 2. Frontend operator workflow
-
-- [ ] Operator login succeeds
-- [ ] Home screen loads with the pilot sign visible
-- [ ] Sign status updates are visible without confusing navigation
-- [ ] `offline` is clearly distinguishable from `available` and request states
-- [ ] A newly requested assistance event becomes visible to staff quickly enough for the pilot
-- [ ] Assistance-request notifications can be opened, read, and opted out of by an operator
-- [ ] Acknowledge action updates UI and backend state correctly
-- [ ] Resolve action updates UI and backend state correctly
-- [ ] App handles temporary API failures with a clear retry path
-
-## 3. Device and firmware behavior
-
-- [ ] Device authenticates successfully with backend
-- [ ] Device polls status successfully on boot
-- [ ] Device only submits classify requests when status is `available`
-- [ ] Device remains stable during repeated polling/classification cycles
-- [ ] Device recovers cleanly from temporary Wi-Fi loss
-- [ ] Device does not enter a broken loop after backend errors
-
-## 4. End-to-end pilot scenario
-
-- [ ] Starting state is `available`
-- [ ] A real user wave at the installed sign generates `assistance_requested`
-- [ ] Staff sees the request on the app
-- [ ] Staff acknowledges the request
-- [ ] Sign becomes `assistance_in_progress`
-- [ ] Staff resolves the request
-- [ ] Sign returns to `available`
-- [ ] Event history shows the full sequence with timestamps
-
-## 5. Negative and recovery scenarios
-
-- [ ] Non-wave/noise does not frequently trigger false requests during a short observation run
-- [ ] If the backend is down, the device fails safely
-- [ ] If the app is unavailable, the request still exists in backend state/event history
-- [ ] If a request is already active, additional detections do not break the workflow
-- [ ] If the device stops checking in, operators still see the existing stale/offline indicator in the app
-- [ ] If the sign reboots, it returns to the correct backend-driven state
-
-## Suggested pilot exit criteria
-
-The pilot is ready to launch when all of the following are true:
-
-- [ ] The one-sign assistance loop works end to end
-- [ ] Staff can operate the system without developer intervention
-- [ ] The device remains connected and usable in the real install location
-- [ ] Failures are understandable and recoverable
-- [ ] Deferred features are no longer blocking decisions for launch
-
-## Post-pilot items
-
-These should be evaluated **after** the pilot proves the core workflow:
-
-- Multi-sign dashboards
-- Full installer claim flow
-- Rich org/member/site administration
-- OTA updates
-- Better analytics and reporting
-- Training-mode productization
-- Production hardening for scale
+- boot or Wi-Fi provisioning
+- backend status polling
+- wave detection and classification
+- acknowledge / resolve flow
+- recovery from transient connectivity loss

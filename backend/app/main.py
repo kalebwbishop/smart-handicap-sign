@@ -32,6 +32,7 @@ from app.config.database import close_pool, get_pool
 from app.config.settings import get_settings
 from app.middleware.error_handler import AppError, app_error_handler, generic_error_handler
 from app.routes.devices import router as devices_router
+from app.routes.dev_telemetry import router as dev_telemetry_router
 from app.routes.inference import router as inference_router
 from app.routes.mobile_updates import router as mobile_updates_router
 from app.routes.notifications import router as notifications_router
@@ -114,6 +115,8 @@ async def log_requests(request: Request, call_next):
     )
     return response
 
+def get_current_timestamp():
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
 @app.get("/health")
 async def health():
@@ -122,7 +125,7 @@ async def health():
         await pool.fetchval("SELECT 1")
         return {
             "status": "healthy",
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "timestamp": get_current_timestamp(),
             "database": "connected",
         }
     except Exception:
@@ -130,7 +133,7 @@ async def health():
             status_code=503,
             content={
                 "status": "unhealthy",
-                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "timestamp": get_current_timestamp(),
                 "error": "Database connection failed",
             },
         )
@@ -141,18 +144,15 @@ async def status():
     return {
         "message": "Hazard Hero API is running",
         "version": "2.0.0",
-        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "timestamp": get_current_timestamp(),
     }
-
-
-@app.get("/mock-device", include_in_schema=False)
-async def mock_device_page():
-    return FileResponse(STATIC_DIR / "mock-device.html")
 
 
 API_PREFIX = "/api/v1"
 auth_router = build_auth_router()
 app.include_router(auth_router, prefix=API_PREFIX)
+if settings.environment != "cloud":
+    app.include_router(dev_telemetry_router, prefix=API_PREFIX)
 app.include_router(inference_router, prefix=API_PREFIX)
 app.include_router(devices_router, prefix=API_PREFIX)
 app.include_router(mobile_updates_router, prefix=API_PREFIX)

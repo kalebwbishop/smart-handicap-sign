@@ -14,6 +14,10 @@ endif()
 idf_component_register(
     SRCS
         "main.c"
+        "boot_support.c"
+        "identity_service.c"
+        "cloud_settings.c"
+        "wifi_recovery.c"
         "connection_policy.c"
         "adc_sampler.c"
         "nvs_storage.c"

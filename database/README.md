@@ -6,8 +6,10 @@ PostgreSQL 15 schema assets for the one-sign Hazard Hero pilot.
 
 - `schemas/shs_schema.sql` — bootstrap entrypoint used by Docker and local setup
 - `schemas/shs_schema_v2.sql` — canonical pilot schema loaded by `shs_schema.sql`
+- `prisma/schema.prisma` — Prisma schema used for non-destructive migration management
+- `prisma/migrations/` — Prisma migration history
 - `seeds/dev_data_v2.sql` — deterministic pilot sign bootstrap data
-- `scripts/migrate_v2.ts` — default migration entrypoint
+- `scripts/migrate_prisma.ts` — default migration entrypoint
 
 ## Commands
 
@@ -15,7 +17,7 @@ Run these from `database/`:
 
 ```bash
 npm run migrate
-npm run migrate:last-seen
+npm run migrate:reset
 npm run load:sign
 npm run seed
 ```
@@ -24,9 +26,9 @@ The scripts load `../backend/.env` and expect `POSTGRES_CONNECTION_STRING` (or `
 
 ## Migration behavior
 
-`npm run migrate` drops and recreates the database as the pilot schema. It is destructive by design and should only be used where data reset is acceptable.
+`npm run migrate` applies Prisma-managed migrations without dropping existing data.
 
-`npm run migrate:last-seen` is an additive migration that ensures `devices.last_seen_at` and `devices.connectivity_status` exist on an already-provisioned pilot database.
+`npm run migrate:reset` runs the destructive schema reset/bootstrap path and should only be used where data reset is acceptable.
 
 ## Pilot schema overview
 
