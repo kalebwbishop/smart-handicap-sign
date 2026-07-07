@@ -16,6 +16,26 @@ class _FakeEvent:
         return self._body
 
 
+@patch("app.services.iothub_consumer.device_service.update_device_heartbeat", new_callable=AsyncMock)
+def test_process_iothub_heartbeat_event_updates_device(mock_update):
+    event = _FakeEvent(
+        {
+            "messageType": "heartbeat",
+            "batteryPercentage": 73,
+            "uptimeMs": 60000,
+            "wifiConnectedMs": 45000,
+            "wifiRssiDbm": -61,
+        }
+    )
+
+    asyncio.run(process_iothub_telemetry_event(event))
+
+    mock_update.assert_awaited_once()
+    assert mock_update.await_args.kwargs["serial_number"] == "SHS-2605-S01-A7K-00001-J"
+    assert mock_update.await_args.kwargs["battery_percentage"] == 73
+    assert mock_update.await_args.kwargs["heartbeat_data"]["messageType"] == "heartbeat"
+
+
 @patch("app.services.iothub_consumer.process_device_signal", new_callable=AsyncMock)
 @patch("app.services.iothub_consumer.device_service.update_device_last_seen", new_callable=AsyncMock)
 def test_process_iothub_telemetry_event_uses_device_id_fallback(mock_last_seen, mock_process):

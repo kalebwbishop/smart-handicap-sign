@@ -13,8 +13,8 @@
 #define TAG "iot_hub_client"
 
 #define DEFAULT_TELEMETRY_INTERVAL_MS 1000U
+#define HEARTBEAT_PUBLISH_INTERVAL_MS 60000U
 #define MAX_TELEMETRY_INTERVAL_MS 3600000U
-#define TELEMETRY_QUEUE_DEPTH 4U
 #define TOPIC_BUFFER_SIZE 512U
 #define PAYLOAD_BUFFER_SIZE 2048U
 #define STATE_JSON_BUFFER_SIZE 256U
@@ -32,6 +32,16 @@ typedef struct {
     size_t sample_count;
     uint32_t sequence;
 } telemetry_batch_t;
+
+typedef struct {
+    uint32_t uptime_ms;
+    uint32_t wifi_connected_ms;
+    int wifi_rssi_dbm;
+    uint32_t battery_percentage;
+    uint32_t telemetry_interval_ms;
+    bool telemetry_enabled;
+    device_operational_status_t operational_status;
+} heartbeat_snapshot_t;
 
 typedef struct {
     char host[IOT_HUB_HOST_MAX_LEN + 1];
@@ -53,9 +63,6 @@ static bool s_started;
 static bool s_connected;
 static uint32_t s_next_rid = 1U;
 static uint32_t s_next_sequence = 1U;
-static telemetry_batch_t s_pending[TELEMETRY_QUEUE_DEPTH];
-static size_t s_pending_head;
-static size_t s_pending_count;
 static char s_rx_topic[TOPIC_BUFFER_SIZE];
 static char s_rx_payload[PAYLOAD_BUFFER_SIZE];
 static size_t s_rx_payload_len;
@@ -68,13 +75,13 @@ static void set_default_state(iot_hub_state_t *state)
         return;
     }
 
-    state->status = STATUS_OFFLINE;
+    state->operational_status = STATUS_AVAILABLE;
     state->telemetry_enabled = true;
     state->telemetry_interval_ms = DEFAULT_TELEMETRY_INTERVAL_MS;
     state->last_desired_version = 0U;
 }
 
-static const char *status_to_string(device_status_t status)
+static const char *status_to_string(device_operational_status_t status)
 {
     switch (status) {
     case STATUS_AVAILABLE:
@@ -91,7 +98,7 @@ static const char *status_to_string(device_status_t status)
     }
 }
 
-static bool parse_status_string(const char *status_str, device_status_t *status)
+static bool parse_status_string(const char *status_str, device_operational_status_t *status)
 {
     if (status_str == NULL || status == NULL) {
         return false;
@@ -145,7 +152,7 @@ static esp_err_t format_state_json(const iot_hub_state_t *state, char *buffer, s
         buffer,
         buffer_len,
         "{\"status\":\"%s\",\"telemetryEnabled\":%s,\"telemetryIntervalMs\":%" PRIu32 ",\"lastDesiredVersion\":%" PRIu32 "}",
-        status_to_string(state->status),
+        status_to_string(state->operational_status),
         state->telemetry_enabled ? "true" : "false",
         state->telemetry_interval_ms,
         state->last_desired_version);
@@ -172,6 +179,31 @@ static esp_err_t format_reported_payload(const iot_hub_state_t *state, char *buf
     return ESP_OK;
 }
 
+static esp_err_t format_heartbeat_payload(const heartbeat_snapshot_t *snapshot, char *buffer, size_t buffer_len)
+{
+    if (snapshot == NULL || buffer == NULL || buffer_len == 0U) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    int written = snprintf(
+        buffer,
+        buffer_len,
+        "{\"deviceId\":\"%s\",\"messageType\":\"heartbeat\",\"uptimeMs\":%" PRIu32 ",\"wifiConnectedMs\":%" PRIu32 ",\"wifiRssiDbm\":%d,\"batteryPercentage\":%" PRIu32 ",\"telemetryEnabled\":%s,\"telemetryIntervalMs\":%" PRIu32 ",\"status\":\"%s\"}",
+        s_settings.device_id,
+        snapshot->uptime_ms,
+        snapshot->wifi_connected_ms,
+        snapshot->wifi_rssi_dbm,
+        snapshot->battery_percentage,
+        snapshot->telemetry_enabled ? "true" : "false",
+        snapshot->telemetry_interval_ms,
+        status_to_string(snapshot->operational_status));
+    if (written < 0 || (size_t)written >= buffer_len) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    return ESP_OK;
+}
+
 static esp_err_t format_telemetry_payload(const telemetry_batch_t *batch, const iot_hub_state_t *state, char *buffer, size_t buffer_len)
 {
     if (batch == NULL || state == NULL || buffer == NULL || buffer_len == 0U) {
@@ -184,7 +216,7 @@ static esp_err_t format_telemetry_payload(const telemetry_batch_t *batch, const 
         "{\"deviceId\":\"%s\",\"sequence\":%" PRIu32 ",\"status\":\"%s\",\"sampleCount\":%zu,\"samples\":[",
         s_settings.device_id,
         batch->sequence,
-        status_to_string(state->status),
+        status_to_string(state->operational_status),
         batch->sample_count);
     if (written < 0 || (size_t)written >= buffer_len) {
         return ESP_ERR_NO_MEM;
@@ -223,7 +255,7 @@ static esp_err_t build_topic(char *buffer, size_t buffer_len, const char *suffix
 
 static bool validate_samples(const int *samples, size_t sample_count)
 {
-    if (samples == NULL || sample_count != SAMPLES_PER_BATCH) {
+    if (samples == NULL || sample_count == 0U || sample_count > SAMPLES_PER_BATCH) {
         return false;
     }
 
@@ -267,9 +299,9 @@ static esp_err_t load_cached_state(iot_hub_state_t *state)
     const cJSON *desired_version = cJSON_GetObjectItemCaseSensitive(json, "lastDesiredVersion");
 
     if (cJSON_IsString(operational_status) && operational_status->valuestring != NULL) {
-        device_status_t parsed_status;
+        device_operational_status_t parsed_status;
         if (parse_status_string(operational_status->valuestring, &parsed_status)) {
-            state->status = parsed_status;
+            state->operational_status = parsed_status;
         }
     }
     if (cJSON_IsBool(telemetry_enabled)) {
@@ -314,52 +346,6 @@ static esp_err_t save_cached_state(const iot_hub_state_t *state)
     return err;
 }
 
-static bool queue_pending_batch(const telemetry_batch_t *batch)
-{
-    bool dropped_oldest = false;
-
-    portENTER_CRITICAL(&s_lock);
-
-    if (s_pending_count >= TELEMETRY_QUEUE_DEPTH) {
-        s_pending_head = (s_pending_head + 1U) % TELEMETRY_QUEUE_DEPTH;
-        s_pending_count--;
-        dropped_oldest = true;
-    }
-
-    size_t slot = (s_pending_head + s_pending_count) % TELEMETRY_QUEUE_DEPTH;
-    s_pending[slot] = *batch;
-    s_pending_count++;
-
-    portEXIT_CRITICAL(&s_lock);
-    return dropped_oldest;
-}
-
-static bool peek_pending_batch(telemetry_batch_t *batch)
-{
-    if (batch == NULL) {
-        return false;
-    }
-
-    bool available = false;
-    portENTER_CRITICAL(&s_lock);
-    if (s_pending_count > 0U) {
-        *batch = s_pending[s_pending_head];
-        available = true;
-    }
-    portEXIT_CRITICAL(&s_lock);
-    return available;
-}
-
-static void drop_pending_batch(void)
-{
-    portENTER_CRITICAL(&s_lock);
-    if (s_pending_count > 0U) {
-        s_pending_head = (s_pending_head + 1U) % TELEMETRY_QUEUE_DEPTH;
-        s_pending_count--;
-    }
-    portEXIT_CRITICAL(&s_lock);
-}
-
 static uint32_t next_request_id(void)
 {
     portENTER_CRITICAL(&s_lock);
@@ -389,6 +375,7 @@ static esp_err_t publish_message(const char *topic, const char *payload)
     int msg_id = esp_mqtt_client_enqueue(s_client, topic, payload, (int)payload_len, 1, 0, true);
     if (msg_id >= 0) {
         ESP_LOGI(TAG, "Sent to Azure IoT Hub: topic=%s payload_len=%zu msg_id=%d", topic, payload_len, msg_id);
+        ESP_LOGI(TAG, "Payload: %s", payload);
         return ESP_OK;
     }
 
@@ -434,45 +421,6 @@ static esp_err_t publish_twin_get(void)
     return publish_message(request_topic, "");
 }
 
-static void flush_pending_batches(void)
-{
-    if (s_client == NULL) {
-        return;
-    }
-
-    for (;;) {
-        telemetry_batch_t batch = {0};
-        if (!peek_pending_batch(&batch)) {
-            return;
-        }
-
-        char payload[PAYLOAD_BUFFER_SIZE] = {0};
-        char topic[TOPIC_BUFFER_SIZE] = {0};
-        iot_hub_state_t current_state;
-        copy_state(&current_state);
-
-        esp_err_t err = format_telemetry_payload(&batch, &current_state, payload, sizeof(payload));
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "Failed to serialize queued telemetry batch: %s", esp_err_to_name(err));
-            return;
-        }
-
-        err = build_topic(topic, sizeof(topic), D2C_TOPIC_SUFFIX);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "Failed to build telemetry topic: %s", esp_err_to_name(err));
-            return;
-        }
-
-        err = publish_message(topic, payload);
-        if (err != ESP_OK) {
-            ESP_LOGW(TAG, "Deferred telemetry publish still pending: %s", esp_err_to_name(err));
-            return;
-        }
-
-        drop_pending_batch();
-    }
-}
-
 static esp_err_t publish_telemetry_batch(const telemetry_batch_t *batch)
 {
     if (batch == NULL) {
@@ -498,6 +446,28 @@ static esp_err_t publish_telemetry_batch(const telemetry_batch_t *batch)
     return publish_message(topic, payload);
 }
 
+static esp_err_t publish_heartbeat(const heartbeat_snapshot_t *snapshot)
+{
+    if (snapshot == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    char payload[PAYLOAD_BUFFER_SIZE] = {0};
+    char topic[TOPIC_BUFFER_SIZE] = {0};
+
+    esp_err_t err = format_heartbeat_payload(snapshot, payload, sizeof(payload));
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    err = build_topic(topic, sizeof(topic), D2C_TOPIC_SUFFIX);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    return publish_message(topic, payload);
+}
+
 static esp_err_t apply_patch_object(cJSON *version_source, cJSON *patch)
 {
     if (version_source == NULL || patch == NULL) {
@@ -510,13 +480,13 @@ static esp_err_t apply_patch_object(cJSON *version_source, cJSON *patch)
 
     const cJSON *status = get_desired_status_property(patch);
     if (cJSON_IsString(status) && status->valuestring != NULL) {
-        device_status_t parsed_status;
+        device_operational_status_t parsed_status;
         if (!parse_status_string(status->valuestring, &parsed_status)) {
             ESP_LOGW(TAG, "Ignoring desired property with unknown status '%s'", status->valuestring);
             return ESP_ERR_INVALID_ARG;
         }
 
-        next_state.status = parsed_status;
+        next_state.operational_status = parsed_status;
         changed = true;
     } else if (status != NULL) {
         ESP_LOGW(TAG, "Ignoring desired property 'status'/'operational_status' with invalid type");
@@ -746,7 +716,6 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
         subscribe_desired_properties();
         (void)publish_twin_get();
         (void)publish_reported_state();
-        flush_pending_batches();
         break;
 
     case MQTT_EVENT_DISCONNECTED:
@@ -813,8 +782,6 @@ esp_err_t iot_hub_client_init(const iot_hub_client_settings_t *settings, const i
     s_client = NULL;
     s_started = false;
     s_connected = false;
-    s_pending_head = 0U;
-    s_pending_count = 0U;
     reset_rx_message();
     s_initialized = true;
 
@@ -969,18 +936,32 @@ esp_err_t iot_hub_client_publish_telemetry(const int *samples, size_t sample_cou
     batch.sequence = s_next_sequence++;
     portEXIT_CRITICAL(&s_lock);
 
-    flush_pending_batches();
-
     esp_err_t err = publish_telemetry_batch(&batch);
     if (err == ESP_OK) {
         return ESP_OK;
     }
+    ESP_LOGW(TAG, "Telemetry publish failed: %s", esp_err_to_name(err));
+    return err;
+}
 
-    bool dropped_oldest = queue_pending_batch(&batch);
-    if (dropped_oldest) {
-        ESP_LOGW(TAG, "Telemetry queue full; dropping oldest batch");
-    }
+esp_err_t iot_hub_client_publish_heartbeat(
+    uint32_t uptime_ms,
+    uint32_t wifi_connected_ms,
+    int wifi_rssi_dbm,
+    uint32_t battery_percentage,
+    uint32_t telemetry_interval_ms,
+    bool telemetry_enabled,
+    device_operational_status_t operational_status)
+{
+    heartbeat_snapshot_t snapshot = {
+        .uptime_ms = uptime_ms,
+        .wifi_connected_ms = wifi_connected_ms,
+        .wifi_rssi_dbm = wifi_rssi_dbm,
+        .battery_percentage = battery_percentage,
+        .telemetry_interval_ms = telemetry_interval_ms,
+        .telemetry_enabled = telemetry_enabled,
+        .operational_status = operational_status,
+    };
 
-    ESP_LOGW(TAG, "Telemetry publish deferred: %s", esp_err_to_name(err));
-    return dropped_oldest ? ESP_ERR_NO_MEM : ESP_OK;
+    return publish_heartbeat(&snapshot);
 }

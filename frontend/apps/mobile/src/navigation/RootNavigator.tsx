@@ -1,17 +1,22 @@
 console.log('[NAV] RootNavigator module evaluating...');
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../types/navigation';
 import LandingScreen from '../screens/LandingScreen';
 import LoginScreen from '../screens/LoginScreen';
 import HomeScreen from '../screens/HomeScreen';
+import RequestsScreen from '../screens/RequestsScreen';
 import NotificationDetailScreen from '../screens/NotificationDetailScreen';
 import ProvisionSignScreen from '../screens/ProvisionSignScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import SignDetailsScreen from '../screens/SignDetailsScreen';
+import SignsScreen from '../screens/SignsScreen';
 import { useAuthStore } from '../store/authStore';
-import { ActivityIndicator, Platform, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { colors } from '../theme/colors';
+import Feather from '@expo/vector-icons/Feather';
 import {
     useFonts,
     Montserrat_300Light,
@@ -20,6 +25,7 @@ import {
     Montserrat_600SemiBold,
     Montserrat_700Bold,
 } from '@expo-google-fonts/montserrat';
+import Header from "../components/Header"
 console.log('[NAV] All RootNavigator imports resolved');
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -30,6 +36,52 @@ const sharedHeaderStyle = {
     headerTitleStyle: { fontFamily: 'Montserrat_600SemiBold', fontWeight: '600' as const },
     headerShadowVisible: false,
 };
+
+function MainTabs({ navigation }: { navigation: NativeStackNavigationProp<RootStackParamList> }) {
+    const insets = useSafeAreaInsets();
+    const [activeTab, setActiveTab] = useState<'Dashboard' | 'Signs' | 'Requests' | 'Settings'>('Dashboard');
+    const headerTitle = activeTab;
+
+    const renderScreen = () => {
+        switch (activeTab) {
+            case 'Signs':
+                return <SignsScreen />;
+            case 'Requests':
+                return <RequestsScreen />;
+            case 'Settings':
+                return <SettingsScreen />;
+            default:
+                return <HomeScreen />;
+        }
+    };
+
+    return (
+        <View style={{ flex: 1 }}>
+            <Header headerTitle={headerTitle} onPressRequests={() => setActiveTab('Requests')} />
+            <View style={{ flex: 1 }}>
+                {renderScreen()}
+            </View>
+            <View style={{ flexDirection: 'row', borderTopColor: colors.divider, borderTopWidth: 1, backgroundColor: colors.white, paddingBottom: Math.max(insets.bottom, 8) }}>
+                {(['Dashboard', 'Signs', 'Requests', 'Settings'] as const).map((tab) => {
+                    const iconName = tab === 'Dashboard' ? 'home' : tab === 'Signs' ? 'map' : tab === 'Requests' ? 'bell' : 'settings';
+                    const isActive = activeTab === tab;
+                    return (
+                        <Pressable
+                            key={tab}
+                            onPress={() => setActiveTab(tab)}
+                            style={{ flex: 1, alignItems: 'center', paddingTop: 10, paddingBottom: 6 }}
+                        >
+                            <Feather name={iconName} size={20} color={isActive ? colors.primary : colors.textSecondary} />
+                            <Text style={{ color: isActive ? colors.primary : colors.textSecondary, fontSize: 12, marginTop: 4 }}>
+                                {tab}
+                            </Text>
+                        </Pressable>
+                    );
+                })}
+            </View>
+        </View>
+    );
+}
 
 export default function RootNavigator() {
     const { isAuthenticated, isLoading, restoreSession } = useAuthStore();
@@ -63,8 +115,8 @@ export default function RootNavigator() {
             {isAuthenticated ? (
                 <>
                     <Stack.Screen
-                        name="Home"
-                        component={HomeScreen}
+                        name="MainTabs"
+                        children={({ navigation }) => <MainTabs navigation={navigation} />}
                         options={{ title: '', headerShown: false }}
                     />
                     <Stack.Screen
@@ -73,14 +125,15 @@ export default function RootNavigator() {
                         options={{ title: 'Request Details' }}
                     />
                     <Stack.Screen
-                        name="Settings"
-                        component={SettingsScreen}
-                        options={{ title: 'Settings' }}
-                    />
-                    <Stack.Screen
                         name="SignDetails"
                         component={SignDetailsScreen}
-                        options={{ title: 'Sign Details' }}
+                        options={{
+                            title: 'Sign Details',
+                            presentation: 'transparentModal',
+                            animation: 'slide_from_bottom',
+                            headerShown: false,
+                            contentStyle: { backgroundColor: 'transparent' },
+                        }}
                     />
                 </>
             ) : Platform.OS === 'web' ? (

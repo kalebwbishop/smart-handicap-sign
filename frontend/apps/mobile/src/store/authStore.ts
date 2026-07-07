@@ -12,6 +12,8 @@ import { resolveApiV1BaseUrl } from '../api/baseUrl';
 import { getAuthRedirectUri } from '../utils/authRedirect';
 console.log('[STORE] All authStore imports resolved');
 
+const TAG = 'AuthStore';
+
 interface AuthState {
     user: User | null;
     token: string | null;
@@ -44,7 +46,7 @@ function getTokenExpiryMs(token: string | null): number | null {
         const decoded = JSON.parse(globalThis.atob(padded));
         return typeof decoded.exp === 'number' ? decoded.exp * 1000 : null;
     } catch (error) {
-        console.warn('[Auth] Failed to decode token expiry:', error);
+        console.warn(`[${TAG}] Failed to decode token expiry:`, error);
         return null;
     }
 }
@@ -88,13 +90,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 }
             }
         } catch (error) {
-            console.error('[Auth] Login error:', error);
+            console.error(`[${TAG}] Login error:`, error);
         }
     },
 
     handleAuthCode: async (code: string) => {
         if (code === lastExchangedCode) {
-            console.log('[Auth] Skipping duplicate code exchange');
+            console.log(`[${TAG}] Skipping duplicate code exchange`);
             return;
         }
         lastExchangedCode = code;
@@ -103,7 +105,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             const authResponse = await authAPI.handleCallback(code);
             await get().setUser(authResponse.user, authResponse.accessToken, authResponse.refreshToken);
         } catch (error) {
-            console.error('[Auth] Code exchange failed:', error);
+            console.error(`[${TAG}] Code exchange failed:`, error);
             lastExchangedCode = null;
         }
     },
@@ -122,7 +124,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 set({ user: null, token: null, refreshToken: null, isAuthenticated: false, isLoading: false });
             }
         } catch (error) {
-            console.error('[Auth] Error saving auth state:', error);
+            console.error(`[${TAG}] Error saving auth state:`, error);
             set({ isLoading: false });
         }
     },
@@ -133,7 +135,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             await tokenStorage.setRefreshToken(refreshToken);
             set({ token, refreshToken });
         } catch (error) {
-            console.error('[Auth] Error saving tokens:', error);
+            console.error(`[${TAG}] Error saving tokens:`, error);
         }
     },
 
@@ -148,11 +150,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 try {
                     await pushTokenAPI.unregister(storedPushToken);
                 } catch (error) {
-                    console.error('[Auth] Error unregistering Expo push token during logout:', error);
+                    console.error(`[${TAG}] Error unregistering Expo push token during logout:`, error);
                 }
             }
         } catch (error) {
-            console.error('[Auth] Error calling logout API:', error);
+            console.error(`[${TAG}] Error calling logout API:`, error);
         } finally {
             await tokenStorage.clear();
             await clearStoredExpoPushToken();
@@ -171,26 +173,26 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     restoreSession: async () => {
         try {
             const timeoutMs = 8000;
-            console.log('[Auth] restoreSession() called, timeout:', timeoutMs, 'ms');
+            console.log(`[${TAG}] restoreSession() called, timeout:`, timeoutMs, 'ms');
 
             const restorePromise = (async () => {
-                console.log('[Auth] Step 1: Getting refresh token from storage...');
+                console.log(`[${TAG}] Step 1: Getting refresh token from storage...`);
                 const t0 = Date.now();
                 const refreshToken = await tokenStorage.getRefreshToken();
-                console.log('[Auth] Step 1 done in', Date.now() - t0, 'ms. Has token:', !!refreshToken);
+                console.log(`[${TAG}] Step 1 done in`, Date.now() - t0, 'ms. Has token:', !!refreshToken);
 
                 if (!refreshToken) {
-                    console.log('[Auth] No refresh token — setting isLoading=false');
+                    console.log(`[${TAG}] No refresh token — setting isLoading=false`);
                     set({ isLoading: false });
                     return;
                 }
 
-                console.log('[Auth] Step 2: Refreshing token via API...');
+                console.log(`[${TAG}] Step 2: Refreshing token via API...`);
                 const t1 = Date.now();
                 const tokens = await apiClient_refresh(refreshToken as string);
-                console.log('[Auth] Step 2 done in', Date.now() - t1, 'ms. Got new tokens:', !!tokens?.accessToken);
+                console.log(`[${TAG}] Step 2 done in`, Date.now() - t1, 'ms. Got new tokens:', !!tokens?.accessToken);
 
-                console.log('[Auth] Step 3: Saving new access token...');
+                console.log(`[${TAG}] Step 3: Saving new access token...`);
                 await tokenStorage.setAccessToken(tokens.accessToken);
                 if (tokens.refreshToken) {
                     await tokenStorage.setRefreshToken(tokens.refreshToken);
@@ -199,15 +201,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                     token: tokens.accessToken,
                     refreshToken: tokens.refreshToken ?? refreshToken,
                 });
-                console.log('[Auth] Step 3 done — tokens saved');
+                console.log(`[${TAG}] Step 3 done — tokens saved`);
 
-                console.log('[Auth] Step 4: Fetching user profile...');
+                console.log(`[${TAG}] Step 4: Fetching user profile...`);
                 const t2 = Date.now();
                 const user = await authAPI.getCurrentUser();
-                console.log('[Auth] Step 4 done in', Date.now() - t2, 'ms. User:', user?.email || 'none');
+                console.log(`[${TAG}] Step 4 done in`, Date.now() - t2, 'ms. User:', user?.email || 'none');
 
                 set({ user, isAuthenticated: true, isLoading: false });
-                console.log('[Auth] Session restored successfully');
+                console.log(`[${TAG}] Session restored successfully`);
             })();
 
             const timeoutPromise = new Promise((_, reject) =>
@@ -216,16 +218,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
             await Promise.race([restorePromise, timeoutPromise]);
         } catch (error: any) {
-            console.error('[Auth] Session restore FAILED:', error?.message || error);
-            console.error('[Auth] Error name:', error?.name);
-            console.error('[Auth] Error stack:', error?.stack?.substring(0, 300));
+            console.error(`[${TAG}] Session restore FAILED:`, error?.message || error);
+            console.error(`[${TAG}] Error name:`, error?.name);
+            console.error(`[${TAG}] Error stack:`, error?.stack?.substring(0, 300));
             if (error?.response) {
-                console.error('[Auth] HTTP status:', error.response.status);
-                console.error('[Auth] HTTP data:', JSON.stringify(error.response.data)?.substring(0, 200));
+                console.error(`[${TAG}] HTTP status:`, error.response.status);
+                console.error(`[${TAG}] HTTP data:`, JSON.stringify(error.response.data)?.substring(0, 200));
             }
             await tokenStorage.clear();
             set({ user: null, token: null, refreshToken: null, isAuthenticated: false, isLoading: false });
-            console.log('[Auth] Cleared auth state after failure');
+            console.log(`[${TAG}] Cleared auth state after failure`);
         }
     },
 
@@ -262,7 +264,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         try {
             await refreshInFlight;
         } catch (error) {
-            console.error('[Auth] ensureFreshSession failed:', error);
+            console.error(`[${TAG}] ensureFreshSession failed:`, error);
             get().handleSessionExpired();
             throw error;
         } finally {
@@ -290,14 +292,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
  */
 async function apiClient_refresh(refreshToken: string) {
     const API_URL = resolveApiV1BaseUrl();
-    console.log('[Auth] apiClient_refresh — calling', `${API_URL}/auth/refresh`);
+    console.log(`[${TAG}] apiClient_refresh — calling`, `${API_URL}/auth/refresh`);
     try {
         const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
-        console.log('[Auth] apiClient_refresh — success');
+        console.log(`[${TAG}] apiClient_refresh — success`);
         return data as { accessToken: string; refreshToken: string };
     } catch (err: any) {
-        console.error('[Auth] apiClient_refresh — FAILED:', err?.message);
-        console.error('[Auth] apiClient_refresh — status:', err?.response?.status);
+        console.error(`[${TAG}] apiClient_refresh — FAILED:`, err?.message);
+        console.error(`[${TAG}] apiClient_refresh — status:`, err?.response?.status);
         throw err;
     }
 }

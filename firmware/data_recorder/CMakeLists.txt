@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 
-file(STRINGS "${CMAKE_CURRENT_LIST_DIR}/../../version.txt" PROJECT_VER LIMIT_COUNT 1)
+file(STRINGS "${CMAKE_CURRENT_LIST_DIR}/../version.txt" PROJECT_VER LIMIT_COUNT 1)
 
 set(DEV_BACKEND_URL "" CACHE STRING "Dev logger backend URL")
 set(DEV_WIFI_SSID "" CACHE STRING "Dev logger Wi-Fi SSID")

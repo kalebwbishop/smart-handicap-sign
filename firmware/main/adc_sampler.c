@@ -65,6 +65,39 @@ esp_err_t adc_sampler_init(void)
     return ESP_OK;
 }
 
+esp_err_t adc_sampler_configure_channel(adc_channel_t channel)
+{
+    if (s_adc_handle == NULL) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    adc_oneshot_chan_cfg_t channel_config = {
+        .bitwidth = ADC_BITWIDTH_12,
+        .atten = ADC_ATTEN_DB_12,
+    };
+
+    return adc_oneshot_config_channel(s_adc_handle, channel, &channel_config);
+}
+
+esp_err_t adc_sampler_read_channel_raw(adc_channel_t channel, int *raw_value)
+{
+    if (raw_value == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    if (s_adc_handle == NULL) {
+        ESP_LOGE(TAG, "ADC sampler not initialized");
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    esp_err_t err = adc_oneshot_read(s_adc_handle, channel, raw_value);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to read ADC channel %d: %s", channel, esp_err_to_name(err));
+    }
+
+    return err;
+}
+
 int adc_sampler_read_raw(void)
 {
     int raw_value = -1;
@@ -89,7 +122,7 @@ esp_err_t adc_sampler_collect_batch(int *buffer, size_t buffer_size_bytes)
     for (size_t i = 0; i < SAMPLES_PER_BATCH; ++i) {
         if ((i % ADC_SAMPLER_WDT_FEED_INTERVAL) == 0U) {
             esp_err_t wdt_err = esp_task_wdt_reset();
-            if (wdt_err != ESP_OK && wdt_err != ESP_ERR_INVALID_STATE) {
+            if (wdt_err != ESP_OK && wdt_err != ESP_ERR_INVALID_STATE && wdt_err != ESP_ERR_NOT_FOUND) {
                 ESP_LOGW(TAG, "Failed to reset task watchdog during sampling: %s", esp_err_to_name(wdt_err));
             }
         }

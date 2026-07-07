@@ -14,6 +14,19 @@
 static const char *TAG = "adc_sampler";
 static adc_oneshot_unit_handle_t s_adc_handle;
 
+static void adc_sampler_feed_task_wdt(void)
+{
+    esp_err_t status = esp_task_wdt_status(NULL);
+    if (status != ESP_OK) {
+        return;
+    }
+
+    esp_err_t err = esp_task_wdt_reset();
+    if (err != ESP_OK && err != ESP_ERR_INVALID_STATE && err != ESP_ERR_NOT_FOUND) {
+        ESP_LOGW(TAG, "Failed to reset task watchdog during sampling: %s", esp_err_to_name(err));
+    }
+}
+
 static esp_err_t adc_sampler_read_internal(int *raw_value)
 {
     if (raw_value == NULL) {
@@ -88,10 +101,7 @@ esp_err_t adc_sampler_collect_batch(int *buffer, size_t buffer_size_bytes)
 
     for (size_t i = 0; i < SAMPLES_PER_BATCH; ++i) {
         if ((i % ADC_SAMPLER_WDT_FEED_INTERVAL) == 0U) {
-            esp_err_t wdt_err = esp_task_wdt_reset();
-            if (wdt_err != ESP_OK && wdt_err != ESP_ERR_INVALID_STATE) {
-                ESP_LOGW(TAG, "Failed to reset task watchdog during sampling: %s", esp_err_to_name(wdt_err));
-            }
+            adc_sampler_feed_task_wdt();
         }
 
         esp_err_t err = adc_sampler_read_internal(&buffer[i]);

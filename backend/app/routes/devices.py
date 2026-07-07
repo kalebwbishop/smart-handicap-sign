@@ -1,8 +1,9 @@
 from datetime import datetime
+import json
 from typing import Any, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.middleware.auth import CurrentUser, get_current_user
 from app.services import device_service
@@ -17,6 +18,8 @@ class DeviceOut(BaseModel):
     model_code: Optional[str] = None
     hardware_revision: Optional[str] = None
     firmware_version: Optional[str] = None
+    battery_percentage: Optional[int] = 0
+    heartbeat_data: Optional[dict[str, Any]] = None
     lifecycle_status: Optional[str] = "active"
     connectivity_status: Optional[str] = "online"
     operational_status: Optional[str] = None
@@ -29,12 +32,40 @@ class DeviceOut(BaseModel):
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
+    @field_validator("heartbeat_data", mode="before")
+    @classmethod
+    def parse_heartbeat_data(cls, value: Any) -> Optional[dict[str, Any]]:
+        if value is None or isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except json.JSONDecodeError:
+                return None
+            return parsed if isinstance(parsed, dict) else None
+        return None
+
 
 class DeviceStatusOut(BaseModel):
     serial_number: str
     status: str
     operational_status: str
     connectivity_status: str = "online"
+    battery_percentage: int = 0
+    heartbeat_data: Optional[dict[str, Any]] = None
+
+    @field_validator("heartbeat_data", mode="before")
+    @classmethod
+    def parse_heartbeat_data(cls, value: Any) -> Optional[dict[str, Any]]:
+        if value is None or isinstance(value, dict):
+            return value
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except json.JSONDecodeError:
+                return None
+            return parsed if isinstance(parsed, dict) else None
+        return None
 
 
 class DeviceEventOut(BaseModel):
@@ -94,6 +125,8 @@ async def get_device_status(serial_number: str):
         "status": status,
         "operational_status": status,
         "connectivity_status": device.get("connectivity_status") or "online",
+        "battery_percentage": device.get("battery_percentage") or 0,
+        "heartbeat_data": device.get("heartbeat_data"),
     }
 
 

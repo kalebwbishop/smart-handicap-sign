@@ -13,6 +13,12 @@
 // Initialize ADC1 for photoresistor reading
 esp_err_t adc_sampler_init(void);
 
+// Configure an additional ADC1 channel on the shared oneshot unit
+esp_err_t adc_sampler_configure_channel(adc_channel_t channel);
+
+// Read a single raw sample from a specific ADC channel
+esp_err_t adc_sampler_read_channel_raw(adc_channel_t channel, int *raw_value);
+
 // Read a single raw sample (0–4095, 12-bit)
 int adc_sampler_read_raw(void);
 

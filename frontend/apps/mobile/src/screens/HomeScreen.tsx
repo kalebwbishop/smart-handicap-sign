@@ -9,7 +9,6 @@ import {
     ActivityIndicator,
     AppState,
     AppStateStatus,
-    Modal,
     Platform,
     Pressable,
     RefreshControl,
@@ -18,7 +17,6 @@ import {
     Text,
     View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
     useFocusEffect,
     useIsFocused,
@@ -27,6 +25,7 @@ import {
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { devicesAPI, notificationAPI } from "@/api/api";
 import { useAuthStore } from "@/store/authStore";
+import { useNotificationStore } from "@/store/notificationStore";
 import { Device } from "@/types/device";
 import { RootStackParamList } from "@/types/navigation";
 import { NotificationPreferences, SignNotification } from "@/types/types";
@@ -56,6 +55,8 @@ import {
 } from "@/lib/homeLiveUpdates";
 import Feather from "@expo/vector-icons/Feather";
 
+const TAG = "HomeScreen";
+
 const POLL_INTERVAL_MS = 30_000;
 const HOME_SCREEN_REQUEST_TIMEOUT_MS = 10_000;
 const REFRESH_INDICATOR_TICK_MS = 250;
@@ -84,13 +85,10 @@ function formatLastSeen(iso: string | null): string {
 }
 
 export default function HomeScreen() {
-    const insets = useSafeAreaInsets();
     const isFocused = useIsFocused();
     const navigation =
         useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-    const { user, token, logout, ensureFreshSession } = useAuthStore();
-    const [menuVisible, setMenuVisible] = useState(false);
-    const [isLoggingOut, setIsLoggingOut] = useState(false);
+    const { token, ensureFreshSession } = useAuthStore();
     const [refreshing, setRefreshing] = useState(false);
     const [isAutoRefreshing, setIsAutoRefreshing] = useState(false);
     const [nextRefreshAt, setNextRefreshAt] = useState(
@@ -124,9 +122,6 @@ export default function HomeScreen() {
     const liveUpdatesConnectionRef = useRef<HomeLiveUpdatesConnection | null>(
         null,
     );
-
-    const userName = user?.name?.split(" ")[0] || user?.email || "Operator";
-    const userInitial = userName.charAt(0).toUpperCase();
 
     const fetchData = useCallback(
         async ({ auto = false }: { auto?: boolean } = {}) => {
@@ -169,7 +164,7 @@ export default function HomeScreen() {
                 setNotificationPreferences(preferences);
                 setNotificationError(null);
             } catch (error) {
-                console.error("[HomeScreen] Failed to load pilot sign:", error);
+                console.error(`[${TAG}] Failed to load pilot sign:`, error);
                 setDeviceError("Unable to load the pilot sign right now.");
                 setNotificationError("Unable to load notifications right now.");
             } finally {
@@ -266,7 +261,7 @@ export default function HomeScreen() {
                             }
 
                             console.warn(
-                                "[HomeScreen] Live updates stream error:",
+                                `[${TAG}] Live updates stream error:`,
                                 error,
                             );
                             setIsLiveUpdatesConnected(false);
@@ -282,7 +277,7 @@ export default function HomeScreen() {
                 }
 
                 console.error(
-                    "[HomeScreen] Failed to open live updates stream:",
+                    `[${TAG}] Failed to open live updates stream:`,
                     error,
                 );
                 setIsLiveUpdatesConnected(false);
@@ -386,7 +381,7 @@ export default function HomeScreen() {
             const updated = await devicesAPI.acknowledge(device.serial_number);
             setDevice(updated);
         } catch (error) {
-            console.error("[HomeScreen] Failed to acknowledge request:", error);
+            console.error(`[${TAG}] Failed to acknowledge request:`, error);
         } finally {
             setDeviceActionLoading(false);
         }
@@ -401,7 +396,7 @@ export default function HomeScreen() {
             const updated = await devicesAPI.resolve(device.serial_number);
             setDevice(updated);
         } catch (error) {
-            console.error("[HomeScreen] Failed to resolve request:", error);
+            console.error(`[${TAG}] Failed to resolve request:`, error);
         } finally {
             setDeviceActionLoading(false);
         }
@@ -434,32 +429,17 @@ export default function HomeScreen() {
                 ),
             );
         } catch (error) {
-            console.error("[HomeScreen] Failed to mark false positive:", error);
+            console.error(`[${TAG}] Failed to mark false positive:`, error);
         } finally {
             setFalsePositiveActionLoading(false);
         }
     }, [device, ensureFreshSession, notifications]);
-
-    const handleLogout = useCallback(async () => {
-        setMenuVisible(false);
-        setIsLoggingOut(true);
-        try {
-            await logout();
-        } finally {
-            setIsLoggingOut(false);
-        }
-    }, [logout]);
 
     const handleOpenSignDetails = useCallback(() => {
         if (!device) return;
 
         navigation.navigate("SignDetails", { device });
     }, [device, navigation]);
-
-    const handleOpenSettings = useCallback(() => {
-        setMenuVisible(false);
-        navigation.navigate("Settings");
-    }, [navigation]);
 
     const handleOpenNotification = useCallback(
         async (notification: SignNotification) => {
@@ -484,7 +464,7 @@ export default function HomeScreen() {
                 });
             } catch (error) {
                 console.error(
-                    "[HomeScreen] Failed to open notification:",
+                    `[${TAG}] Failed to open notification:`,
                     error,
                 );
                 navigation.navigate("NotificationDetail", {
@@ -511,7 +491,7 @@ export default function HomeScreen() {
             );
         } catch (error) {
             console.error(
-                "[HomeScreen] Failed to mark notifications as read:",
+                `[${TAG}] Failed to mark notifications as read:`,
                 error,
             );
         } finally {
@@ -567,10 +547,15 @@ export default function HomeScreen() {
         : isAutoRefreshing
           ? "Refreshing now…"
           : `Next refresh in ${secondsUntilRefresh}s`;
+    const setUnreadCount = useNotificationStore((s) => s.setUnreadCount);
     const unreadNotificationCount = useMemo(
         () => notifications.filter((notification) => !notification.read).length,
         [notifications],
     );
+    useEffect(() => {
+        if (!hasLoadedOnceRef.current) return;
+        setUnreadCount(unreadNotificationCount);
+    }, [unreadNotificationCount, setUnreadCount]);
     const notificationsEnabled =
         notificationPreferences?.assistance_requests_enabled ?? true;
 
@@ -578,7 +563,7 @@ export default function HomeScreen() {
         if (canAcknowledge) {
             void startAssistanceAlertSound().catch((error) => {
                 console.error(
-                    "[HomeScreen] Failed to start assistance alert sound:",
+                    `[${TAG}] Failed to start assistance alert sound:`,
                     error,
                 );
             });
@@ -587,7 +572,7 @@ export default function HomeScreen() {
 
         void stopAssistanceAlertSound().catch((error) => {
             console.error(
-                "[HomeScreen] Failed to stop assistance alert sound:",
+                `[${TAG}] Failed to stop assistance alert sound:`,
                 error,
             );
         });
@@ -597,7 +582,7 @@ export default function HomeScreen() {
         return () => {
             void stopAssistanceAlertSound().catch((error) => {
                 console.error(
-                    "[HomeScreen] Failed to stop assistance alert sound during cleanup:",
+                    `[${TAG}] Failed to stop assistance alert sound during cleanup:`,
                     error,
                 );
             });
@@ -606,100 +591,6 @@ export default function HomeScreen() {
 
     return (
         <View style={styles.root}>
-            <View
-                style={[styles.header, { paddingTop: insets.top + spacing.sm }]}
-            >
-                <View style={styles.headerInner}>
-                    <View style={styles.headerCopy}>
-                        <Text style={styles.headerTitle}>Hi, {userName}</Text>
-                    </View>
-                    <Pressable
-                        accessibilityLabel="Open account menu"
-                        accessibilityRole="button"
-                        onPress={() => setMenuVisible(true)}
-                        style={({ pressed }) => [
-                            styles.avatar,
-                            pressed && styles.pressed,
-                        ]}
-                    >
-                        <Text style={styles.avatarText}>{userInitial}</Text>
-                    </Pressable>
-                </View>
-            </View>
-
-            <Modal
-                animationType="fade"
-                onRequestClose={() => setMenuVisible(false)}
-                transparent
-                visible={menuVisible}
-            >
-                <Pressable
-                    onPress={() => setMenuVisible(false)}
-                    style={styles.menuOverlay}
-                >
-                    <View
-                        style={[
-                            styles.menuSheet,
-                            { paddingTop: insets.top + spacing.sm },
-                        ]}
-                    >
-                        <Pressable
-                            onPress={() => undefined}
-                            style={styles.menuContent}
-                        >
-                            <View style={styles.menuUserRow}>
-                                <View style={styles.menuAvatar}>
-                                    <Text style={styles.menuAvatarText}>
-                                        {userInitial}
-                                    </Text>
-                                </View>
-                                <View style={styles.menuUserCopy}>
-                                    <Text
-                                        numberOfLines={1}
-                                        style={styles.menuUserName}
-                                    >
-                                        {user?.name || "Pilot operator"}
-                                    </Text>
-                                    <Text
-                                        numberOfLines={1}
-                                        style={styles.menuUserEmail}
-                                    >
-                                        {user?.email}
-                                    </Text>
-                                </View>
-                            </View>
-
-                            <View style={styles.menuDivider} />
-
-                            <Pressable
-                                accessibilityRole="button"
-                                onPress={handleOpenSettings}
-                                style={({ pressed }) => [
-                                    styles.menuItem,
-                                    pressed && styles.menuItemPressed,
-                                ]}
-                            >
-                                <Text style={styles.menuItemText}>
-                                    Settings
-                                </Text>
-                            </Pressable>
-                            <Pressable
-                                accessibilityRole="button"
-                                onPress={handleLogout}
-                                style={({ pressed }) => [
-                                    styles.menuItem,
-                                    pressed && styles.menuItemPressed,
-                                ]}
-                            >
-                                <Text style={styles.menuItemText}>
-                                    {isLoggingOut ? "Logging out…" : "Log out"}
-                                </Text>
-                            </Pressable>
-                        </Pressable>
-                    </View>
-                </Pressable>
-            </Modal>
-
             <ScrollView
                 contentContainerStyle={styles.scrollContent}
                 refreshControl={
@@ -787,6 +678,9 @@ export default function HomeScreen() {
                                     <View style={styles.signHeaderRow}>
                                         <Text style={styles.signName}>
                                             {device.name || "Sign"}
+                                        </Text>
+                                        <Text style={styles.signMeta}>
+                                            Battery: {device.battery_percentage ?? 0}%
                                         </Text>
                                         <Feather
                                             accessibilityLabel="Wi-Fi connected"
@@ -891,7 +785,7 @@ export default function HomeScreen() {
                                             </Text>
                                         )}
                                     </Pressable>
-                                ) : null}
+                                ) : null}{}
 
                                 {canMarkFalsePositive ? (
                                     <Pressable

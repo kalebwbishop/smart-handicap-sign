@@ -49,7 +49,7 @@ const linking: LinkingOptions<RootStackParamList> = {
     config: {
         screens: {
             LandingScreen: '',
-            Home: {
+            MainTabs: {
                 path: 'home',
                 parse: {
                     code: String,
@@ -101,7 +101,7 @@ function AppContent() {
         pendingNotificationOpenRef.current = nextState.hasPendingNotificationOpen;
 
         if (nextState.shouldNavigateHome) {
-            navigationRef.navigate('Home');
+            navigationRef.navigate('MainTabs');
         }
     }, []);
 
@@ -339,7 +339,7 @@ function AppContent() {
                         pendingNotificationOpenRef.current = nextState.hasPendingNotificationOpen;
 
                         if (nextState.shouldNavigateHome) {
-                            navigationRef.navigate('Home');
+                            navigationRef.navigate('MainTabs');
                         }
                     }}
                     ref={navigationRef}

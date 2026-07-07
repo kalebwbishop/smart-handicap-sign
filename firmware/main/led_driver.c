@@ -63,7 +63,7 @@ static const led_pattern_t LED_PATTERNS[STATUS_COUNT] = {
     [STATUS_ERROR] = {.steps = ERROR_STEPS, .step_count = 1},
 };
 
-static device_status_t s_current_status = STATUS_OFFLINE;
+static device_operational_status_t s_current_status = STATUS_OFFLINE;
 static uint8_t s_step_index = 0;
 static uint8_t s_phase = 0;
 static esp_timer_handle_t s_timer = NULL;
@@ -78,7 +78,7 @@ static uint64_t led_driver_delay_to_us(uint16_t delay_ms)
     return (uint64_t)safe_delay_ms * 1000ULL;
 }
 
-static const led_pattern_t *led_driver_get_pattern(device_status_t status)
+static const led_pattern_t *led_driver_get_pattern(device_operational_status_t status)
 {
     if (status >= STATUS_COUNT) {
         status = STATUS_OFFLINE;
@@ -216,7 +216,7 @@ esp_err_t led_driver_init(void)
     return ESP_OK;
 }
 
-void led_driver_set_status(device_status_t status)
+void led_driver_set_status(device_operational_status_t status)
 {
     if (!s_initialized) {
         return;
@@ -250,7 +250,7 @@ void led_driver_set_status(device_status_t status)
     led_driver_schedule_next();
 }
 
-device_status_t led_driver_status_from_string(const char *status_str)
+device_operational_status_t led_driver_status_from_string(const char *status_str)
 {
     if (status_str == NULL) {
         return STATUS_OFFLINE;

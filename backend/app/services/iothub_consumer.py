@@ -78,6 +78,30 @@ async def process_iothub_telemetry_event(event: Any) -> None:
     if serial_number:
         body.setdefault("serial_number", serial_number)
 
+    if body.get("messageType") == "heartbeat" or "heartbeat_data" in body:
+        if not serial_number:
+            logger.warning("Skipping IoT Hub heartbeat without a device serial number")
+            return
+        heartbeat_data = body.get("heartbeat_data")
+        if not isinstance(heartbeat_data, dict):
+            heartbeat_data = body
+        battery_percentage = heartbeat_data.get("batteryPercentage")
+        if isinstance(battery_percentage, bool) or battery_percentage is None:
+            battery_percentage = None
+        elif isinstance(battery_percentage, (int, float)):
+            battery_percentage = int(battery_percentage)
+        else:
+            battery_percentage = None
+        try:
+            await device_service.update_device_heartbeat(
+                serial_number=serial_number,
+                heartbeat_data=heartbeat_data,
+                battery_percentage=battery_percentage,
+            )
+        except Exception:
+            logger.exception("Failed to process IoT Hub heartbeat for %s", serial_number)
+        return
+
     try:
         payload = DeviceTelemetryIn.model_validate(body)
     except ValidationError as exc:

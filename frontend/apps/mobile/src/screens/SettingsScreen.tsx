@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import {
     ActivityIndicator,
+    Pressable,
     StyleSheet,
     Switch,
     Text,
@@ -11,6 +12,8 @@ import { useSettings } from '../context/SettingsContext';
 import { colors } from '../theme/colors';
 import { layout, spacing, shadows } from '../theme/spacing';
 import { typography } from '../theme/typography';
+import { useAuthStore } from '@/store/authStore';
+import Feather from '@expo/vector-icons/Feather';
 
 export default function SettingsScreen() {
     const { 
@@ -18,6 +21,19 @@ export default function SettingsScreen() {
         receiveNotifications, setReceiveNotifications,
         isSettingsLoaded } = useSettings();
     const [isSavingNotifications, setIsSavingNotifications] = useState(false);
+        const { user, logout, ensureFreshSession } = useAuthStore();
+
+        const handleSignOut = useCallback(async () => {
+            try {
+                await ensureFreshSession();
+                logout();
+            } catch (error) {
+                console.error('[Settings] Failed to sign out:', error);
+            }
+        }, [ensureFreshSession, logout]);
+    
+        const userName = user?.name || user?.email || "Operator";
+
 
     const handleReceiveNotificationsChange = useCallback(
         async (enabled: boolean) => {
@@ -51,6 +67,21 @@ export default function SettingsScreen() {
 
     return (
         <View style={styles.root}>
+            <View style={styles.card}>
+                <View style={styles.row}>
+                    <View style={[styles.copy, { flexDirection: 'row', alignItems: 'center' }]}>
+                        <View style={{ marginRight: 8, backgroundColor: colors.primaryLight, borderRadius: "50%", padding: 14 }}>
+                            <Feather name="user" size={24} color={colors.primary} />
+                        </View>
+                        <View>
+                            <Text style={styles.label}>{userName}</Text>
+                            <Text style={[styles.helper, { marginTop: -8 }]}>
+                                Sign Operator
+                            </Text>
+                        </View>
+                    </View>
+                </View>
+            </View>
             <View style={styles.card}>
                 <View style={styles.row}>
                     <View style={styles.copy}>
@@ -95,6 +126,13 @@ export default function SettingsScreen() {
                     />
                 </View>
             </View>
+
+            <Pressable
+                style={({ pressed }) => [styles.signOutButton, pressed && styles.signOutButtonPressed]}
+                onPress={handleSignOut}
+            >
+                <Text style={styles.signOutText}>Sign Out</Text>
+            </Pressable>
         </View>
     );
 }
@@ -152,5 +190,22 @@ const styles = StyleSheet.create({
     helper: {
         ...typography.bodySmall,
         color: colors.textSecondary,
+    },
+    signOutButton: {
+        backgroundColor: colors.primary,
+        borderRadius: layout.borderRadiusMd,
+        paddingVertical: spacing.md,
+        paddingHorizontal: spacing.lg,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginTop: spacing.lg,
+    },
+    signOutButtonPressed: {
+        backgroundColor: colors.primary,
+    },
+    signOutText: {
+        ...typography.body,
+        color: colors.white,
+        fontFamily: 'Montserrat_600SemiBold',
     },
 });

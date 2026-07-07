@@ -12,7 +12,9 @@
 import { Platform } from "react-native";
 import { TokenStorage } from "deploy-box-react-native/src/auth/tokenStorage";
 
-console.log('[AUTH] lib/auth.ts evaluating — creating tokenStorage with STATIC imports');
+const TAG = 'Auth';
+
+console.log(`[${TAG}] lib/auth.ts evaluating — creating tokenStorage with STATIC imports`);
 
 const TOKEN_KEYS = {
     access: "auth_access_token",
@@ -42,7 +44,7 @@ function createStaticTokenStorage(): TokenStorage {
     };
 
     if (Platform.OS === "web") {
-        console.log('[AUTH] Using web (localStorage) token storage');
+        console.log(`[${TAG}] Using web (localStorage) token storage`);
         return {
             async getAccessToken() {
                 return readCachedToken(
@@ -76,42 +78,40 @@ function createStaticTokenStorage(): TokenStorage {
     }
 
     // Native — use STATIC import to avoid async bundle fetching
-    console.log('[AUTH] Using native (expo-secure-store) token storage with STATIC import');
+    console.log(`[${TAG}] Using native (expo-secure-store) token storage with STATIC import`);
     const SecureStore = require("expo-secure-store");
-    console.log('[AUTH] expo-secure-store loaded:', !!SecureStore);
+    console.log(`[${TAG}] expo-secure-store loaded:`, !!SecureStore);
     return {
         async getAccessToken() {
-            console.log('[AUTH] tokenStorage.getAccessToken()');
+            console.log(`[${TAG}] tokenStorage.getAccessToken()`);
             const val = await readCachedToken(
                 accessTokenCache,
                 async () => SecureStore.getItemAsync(TOKEN_KEYS.access),
                 (value) => { accessTokenCache = value; },
             );
-            console.log('[AUTH] getAccessToken result:', val ? `${val.substring(0, 10)}...` : null);
             return val;
         },
         async getRefreshToken() {
-            console.log('[AUTH] tokenStorage.getRefreshToken()');
+            console.log(`[${TAG}] tokenStorage.getRefreshToken()`);
             const val = await readCachedToken(
                 refreshTokenCache,
                 async () => SecureStore.getItemAsync(TOKEN_KEYS.refresh),
                 (value) => { refreshTokenCache = value; },
             );
-            console.log('[AUTH] getRefreshToken result:', val ? `${val.substring(0, 10)}...` : null);
             return val;
         },
         async setAccessToken(token) {
-            console.log('[AUTH] tokenStorage.setAccessToken()');
+            console.log(`[${TAG}] tokenStorage.setAccessToken()`);
             accessTokenCache = token;
             await SecureStore.setItemAsync(TOKEN_KEYS.access, token);
         },
         async setRefreshToken(token) {
-            console.log('[AUTH] tokenStorage.setRefreshToken()');
+            console.log(`[${TAG}] tokenStorage.setRefreshToken()`);
             refreshTokenCache = token;
             await SecureStore.setItemAsync(TOKEN_KEYS.refresh, token);
         },
         async clear() {
-            console.log('[AUTH] tokenStorage.clear()');
+            console.log(`[${TAG}] tokenStorage.clear()`);
             accessTokenCache = null;
             refreshTokenCache = null;
             await SecureStore.deleteItemAsync(TOKEN_KEYS.access);
@@ -121,4 +121,4 @@ function createStaticTokenStorage(): TokenStorage {
 }
 
 export const tokenStorage = createStaticTokenStorage();
-console.log('[AUTH] tokenStorage created successfully');
+console.log(`[${TAG}] tokenStorage created successfully`);

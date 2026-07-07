@@ -1,7 +1,7 @@
 idf_component_register(
     SRCS "main.c"
     INCLUDE_DIRS "."
-    PRIV_REQUIRES driver esp_timer freertos
+    PRIV_REQUIRES esp_adc esp_timer freertos
 )
 
 target_compile_definitions(${COMPONENT_LIB} PRIVATE

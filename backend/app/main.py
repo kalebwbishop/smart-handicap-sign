@@ -151,8 +151,8 @@ async def status():
 API_PREFIX = "/api/v1"
 auth_router = build_auth_router()
 app.include_router(auth_router, prefix=API_PREFIX)
-if settings.environment != "cloud":
-    app.include_router(dev_telemetry_router, prefix=API_PREFIX)
+# if settings.environment != "cloud":
+app.include_router(dev_telemetry_router, prefix=API_PREFIX)
 app.include_router(inference_router, prefix=API_PREFIX)
 app.include_router(devices_router, prefix=API_PREFIX)
 app.include_router(mobile_updates_router, prefix=API_PREFIX)

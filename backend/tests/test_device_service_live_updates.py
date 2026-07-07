@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+import sys
+import types
 from unittest.mock import AsyncMock, patch
 
 from app.services import device_service
@@ -15,6 +17,8 @@ def _device(status: str = "available") -> dict:
         "model_code": "S01",
         "hardware_revision": "rev3",
         "firmware_version": "1.2.0",
+        "battery_percentage": 55,
+        "heartbeat_data": {"messageType": "heartbeat"},
         "connectivity_status": "online",
         "operational_status": status,
         "name": "Pilot Handicap Sign",
@@ -76,11 +80,12 @@ class _FakePool:
 
 
 @patch("app.services.device_service.publish_mobile_home_update_with_conn", new_callable=AsyncMock)
-@patch("app.services.device_twin_service.update_device_desired_properties", new_callable=AsyncMock)
 @patch("app.services.device_service.get_pool", new_callable=AsyncMock)
-def test_transition_device_status_publishes_live_update(mock_get_pool, mock_update_twin, mock_publish):
+def test_transition_device_status_publishes_live_update(mock_get_pool, mock_publish):
     conn = _FakeConn([_device(), _device("assistance_in_progress"), _device_event()])
     mock_get_pool.return_value = _FakePool(conn)
+    twin_module = types.SimpleNamespace(update_device_desired_properties=AsyncMock())
+    sys.modules["app.services.device_twin_service"] = twin_module
 
     result = asyncio.run(
         device_service.transition_device_status(
@@ -101,15 +106,16 @@ def test_transition_device_status_publishes_live_update(mock_get_pool, mock_upda
         "serial_number": "SHS-2605-S01-A7K-00001-J",
         "status_field": "operational_status",
     }
-    mock_update_twin.assert_awaited_once()
+    twin_module.update_device_desired_properties.assert_awaited_once()
 
 
 @patch("app.services.device_service.publish_mobile_home_update_with_conn", new_callable=AsyncMock)
-@patch("app.services.device_twin_service.update_device_desired_properties", new_callable=AsyncMock)
 @patch("app.services.device_service.get_pool", new_callable=AsyncMock)
-def test_mark_false_positive_publishes_live_update(mock_get_pool, mock_update_twin, mock_publish):
+def test_mark_false_positive_publishes_live_update(mock_get_pool, mock_publish):
     conn = _FakeConn([_device("assistance_requested"), _device_event(), _device_event(), _device("available")])
     mock_get_pool.return_value = _FakePool(conn)
+    twin_module = types.SimpleNamespace(update_device_desired_properties=AsyncMock())
+    sys.modules["app.services.device_twin_service"] = twin_module
 
     result = asyncio.run(
         device_service.mark_assistance_request_false_positive(
@@ -127,4 +133,23 @@ def test_mark_false_positive_publishes_live_update(mock_get_pool, mock_update_tw
         "device_event_id": "evt-1",
         "serial_number": "SHS-2605-S01-A7K-00001-J",
     }
-    mock_update_twin.assert_awaited_once()
+    twin_module.update_device_desired_properties.assert_awaited_once()
+
+
+@patch("app.services.device_service.get_pool", new_callable=AsyncMock)
+def test_update_device_heartbeat_persists_payload(mock_get_pool):
+    conn = _FakeConn([_device()])
+    mock_get_pool.return_value = _FakePool(conn)
+
+    result = asyncio.run(
+        device_service.update_device_heartbeat(
+            serial_number="SHS-2605-S01-A7K-00001-J",
+            heartbeat_data={"messageType": "heartbeat", "uptimeMs": 60000},
+            battery_percentage=73,
+        )
+    )
+
+    assert result is not None
+    assert result["serial_number"] == "SHS-2605-S01-A7K-00001-J"
+    assert result["battery_percentage"] == 55
+    assert "heartbeat_data" in result

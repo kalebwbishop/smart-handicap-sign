@@ -38,6 +38,9 @@ def get_classifier() -> WaveClassifier:
     logger.info("Wave-detection model loaded successfully")
     return classifier
 
+def classify_capture(samples: list[int]) -> dict[str, Any]:
+    classifier = get_classifier()
+    return classifier.classify(samples, threshold=WAVE_THRESHOLD)
 
 async def process_device_signal(serial_number: str, samples: list[int]) -> dict[str, Any]:
     classifier = get_classifier()

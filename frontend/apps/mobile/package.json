@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "expo start --offline --clear",
-    "start": "set EXPO_PACKAGER_PROXY_URL=https://tqr9vxj0-8081.usw3.devtunnels.ms && expo start --offline --clear",
+    "start": "set EXPO_PACKAGER_PROXY_URL=https://dx2dx7w7-8081.usw3.devtunnels.ms && expo start --offline --clear",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "lint": "eslint .",
@@ -14,7 +14,9 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@expo-google-fonts/jetbrains-mono": "^0.4.1",
     "@expo-google-fonts/montserrat": "^0.4.2",
+    "@expo-google-fonts/outfit": "^0.4.3",
     "@expo/metro-runtime": "~6.1.2",
     "@expo/vector-icons": "^15.0.3",
     "@hazard-hero/shared": "workspace:*",

@@ -39,6 +39,7 @@ export interface Device {
   name: string | null;
   last_seen_at: string | null;
   created_at: string;
+  battery_percentage: number;
   updated_at: string;
 }
 

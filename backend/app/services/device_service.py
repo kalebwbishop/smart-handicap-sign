@@ -34,6 +34,8 @@ _DEVICE_COLUMNS = """
     model_code,
     hardware_revision,
     firmware_version,
+    battery_percentage,
+    heartbeat_data,
     connectivity_status,
     operational_status,
     last_seen_at,
@@ -131,6 +133,54 @@ async def update_device_last_seen(
         serial_number,
         timestamp,
     )
+    return _row_to_dict(row) if row else None
+
+
+async def update_device_heartbeat(
+    *,
+    serial_number: str,
+    heartbeat_data: dict[str, Any],
+    battery_percentage: Optional[int] = None,
+    seen_at: Optional[datetime] = None,
+) -> Optional[dict]:
+    pool = await get_pool()
+    timestamp = seen_at or datetime.now(timezone.utc)
+    heartbeat_json = json.dumps(heartbeat_data)
+
+    async with pool.acquire() as conn:
+        if battery_percentage is None:
+            row = await conn.fetchrow(
+                f"""
+                UPDATE devices
+                SET last_seen_at = $2,
+                    heartbeat_data = $3::jsonb,
+                    connectivity_status = 'online',
+                    updated_at = NOW()
+                WHERE serial_number = $1
+                RETURNING {_DEVICE_COLUMNS}
+                """,
+                serial_number,
+                timestamp,
+                heartbeat_json,
+            )
+        else:
+            row = await conn.fetchrow(
+                f"""
+                UPDATE devices
+                SET last_seen_at = $2,
+                    heartbeat_data = $3::jsonb,
+                    battery_percentage = $4,
+                    connectivity_status = 'online',
+                    updated_at = NOW()
+                WHERE serial_number = $1
+                RETURNING {_DEVICE_COLUMNS}
+                """,
+                serial_number,
+                timestamp,
+                heartbeat_json,
+                battery_percentage,
+            )
+
     return _row_to_dict(row) if row else None
 
 
