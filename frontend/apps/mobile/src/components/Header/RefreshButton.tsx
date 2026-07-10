@@ -56,33 +56,6 @@ export default function RefreshButton() {
                 catch (error) {
                     console.error("Failed to fetch data:", error);
                 }
-            
-            //     if (devices.length === 0) {
-            //         setDevice(null);
-            //         setDeviceError(
-            //             "No pilot sign is linked to this account yet.",
-            //         );
-            //     } else {
-            //         const pilotDevice = devices[0];
-            //         setDevice(pilotDevice);
-            //         setDeviceError(null);
-            //     }
-
-            //     setNotifications(latestNotifications);
-            //     setNotificationPreferences(preferences);
-            //     setNotificationError(null);
-            // } catch (error) {
-            //     console.error(`[${TAG}] Failed to load pilot sign:`, error);
-            //     setDeviceError("Unable to load the pilot sign right now.");
-            //     setNotificationError("Unable to load notifications right now.");
-            // } finally {
-            //     setDeviceLoading(false);
-            //     fetchInFlightRef.current = false;
-            //     hasLoadedOnceRef.current = true;
-            //     if (auto) {
-            //         setIsAutoRefreshing(false);
-            //     }
-            // }
         },
         [ensureFreshSession],
     );
@@ -162,7 +135,7 @@ const styles = StyleSheet.create({
     headerButton: {
         padding: 8,
     },
-    logo: { width: 60, height: 60, backgroundColor: 'red' },
+    logo: { width: 60, height: 60 },
     notificationBadge: {
         position: 'absolute',
         top: -4,

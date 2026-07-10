@@ -26,6 +26,7 @@ import {
     Montserrat_700Bold,
 } from '@expo-google-fonts/montserrat';
 import Header from "../components/Header"
+import SignIcon from '@/components/SignIcon';
 console.log('[NAV] All RootNavigator imports resolved');
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -55,6 +56,22 @@ function MainTabs({ navigation }: { navigation: NativeStackNavigationProp<RootSt
         }
     };
 
+    const getTabIcon = (tab: 'Dashboard' | 'Signs' | 'Requests' | 'Settings', isActive: boolean, size: number = 24, color: string = isActive ? colors.primary : colors.textSecondary) => {
+        if (tab === 'Dashboard') {
+            return <Feather name="home" size={size} color={color} />;
+        }
+        if (tab === 'Signs') {
+            return <SignIcon size={size} color={color} />;
+        }
+        if (tab === 'Requests') {
+            return <Feather name="bell" size={size} color={color} />;
+        }
+        if (tab === 'Settings') {
+            return <Feather name="settings" size={size} color={color} />;
+        }
+        return <SignIcon size={size} color={color} />;
+    };
+
     return (
         <View style={{ flex: 1 }}>
             <Header headerTitle={headerTitle} onPressRequests={() => setActiveTab('Requests')} />
@@ -63,7 +80,6 @@ function MainTabs({ navigation }: { navigation: NativeStackNavigationProp<RootSt
             </View>
             <View style={{ flexDirection: 'row', borderTopColor: colors.divider, borderTopWidth: 1, backgroundColor: colors.white, paddingBottom: Math.max(insets.bottom, 8) }}>
                 {(['Dashboard', 'Signs', 'Requests', 'Settings'] as const).map((tab) => {
-                    const iconName = tab === 'Dashboard' ? 'home' : tab === 'Signs' ? 'map' : tab === 'Requests' ? 'bell' : 'settings';
                     const isActive = activeTab === tab;
                     return (
                         <Pressable
@@ -71,7 +87,7 @@ function MainTabs({ navigation }: { navigation: NativeStackNavigationProp<RootSt
                             onPress={() => setActiveTab(tab)}
                             style={{ flex: 1, alignItems: 'center', paddingTop: 10, paddingBottom: 6 }}
                         >
-                            <Feather name={iconName} size={20} color={isActive ? colors.primary : colors.textSecondary} />
+                            {getTabIcon(tab, isActive, 24, isActive ? colors.primary : colors.textSecondary)}
                             <Text style={{ color: isActive ? colors.primary : colors.textSecondary, fontSize: 12, marginTop: 4 }}>
                                 {tab}
                             </Text>

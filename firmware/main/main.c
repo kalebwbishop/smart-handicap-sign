@@ -3,6 +3,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "esp_system.h"
 #include "esp_timer.h"
 #include "esp_wifi.h"
 #include "esp_err.h"
@@ -132,6 +133,12 @@ void app_main(void)
     esp_err_t err = nvs_storage_init();
     if (err != ESP_OK) {
         boot_support_fatal_restart("Failed to initialize NVS storage", err);
+    }
+
+    // Reset wifi credentials if GPIO0 is pressed at boot
+    if (gpio_get_level(GPIO_NUM_0) == 0) {
+        ESP_LOGI(TAG, "GPIO0 pressed at boot, resetting WiFi credentials");
+        nvs_wifi_clear();
     }
 
     err = led_driver_init();

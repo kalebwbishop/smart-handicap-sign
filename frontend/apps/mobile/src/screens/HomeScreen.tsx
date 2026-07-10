@@ -54,6 +54,7 @@ import {
     shouldRefreshHomeOnLiveUpdate,
 } from "@/lib/homeLiveUpdates";
 import Feather from "@expo/vector-icons/Feather";
+import BatteryIcon from "@/components/BatteryIcon";
 
 const TAG = "HomeScreen";
 
@@ -81,7 +82,7 @@ function formatLastSeen(iso: string | null): string {
         return "Last seen unknown";
     }
 
-    return `Last seen ${formatRelativeTime(iso)}`;
+    return `${formatRelativeTime(iso)}`;
 }
 
 export default function HomeScreen() {
@@ -421,10 +422,10 @@ export default function HomeScreen() {
                 currentNotifications.map((notification) =>
                     notification.device_event_id === updated.device_event.id
                         ? {
-                              ...notification,
-                              device_event_correct_response:
-                                  updated.device_event.correct_response,
-                          }
+                            ...notification,
+                            device_event_correct_response:
+                                updated.device_event.correct_response,
+                        }
                         : notification,
                 ),
             );
@@ -524,9 +525,9 @@ export default function HomeScreen() {
         () =>
             device
                 ? hasFalsePositiveRequest(
-                      device,
-                      latestAssistanceRequestNotification,
-                  )
+                    device,
+                    latestAssistanceRequestNotification,
+                )
                 : false,
         [device, latestAssistanceRequestNotification],
     );
@@ -537,16 +538,16 @@ export default function HomeScreen() {
     const refreshProgress = isLiveUpdatesConnected
         ? 1
         : isAutoRefreshing
-          ? 1
-          : Math.min(
+            ? 1
+            : Math.min(
                 1,
                 Math.max(0, 1 - millisecondsUntilRefresh / POLL_INTERVAL_MS),
             );
     const refreshIndicatorText = isLiveUpdatesConnected
         ? "Live updates connected"
         : isAutoRefreshing
-          ? "Refreshing now…"
-          : `Next refresh in ${secondsUntilRefresh}s`;
+            ? "Refreshing now…"
+            : `Next refresh in ${secondsUntilRefresh}s`;
     const setUnreadCount = useNotificationStore((s) => s.setUnreadCount);
     const unreadNotificationCount = useMemo(
         () => notifications.filter((notification) => !notification.read).length,
@@ -604,46 +605,6 @@ export default function HomeScreen() {
             >
                 <View style={styles.content}>
                     <View style={styles.card}>
-                        <Pressable
-                            accessibilityLabel={
-                                isAutoRefreshing
-                                    ? "Pilot sign refresh in progress"
-                                    : `Refresh pilot sign now. Auto refresh resumes in ${secondsUntilRefresh} seconds`
-                            }
-                            accessibilityRole="button"
-                            accessibilityValue={{
-                                min: 0,
-                                max: 100,
-                                now: Math.round(refreshProgress * 100),
-                                text: refreshIndicatorText,
-                            }}
-                            disabled={isAutoRefreshing || refreshing}
-                            onPress={handleRefreshIndicatorPress}
-                            style={({ pressed }) => [
-                                styles.refreshIndicator,
-                                (isAutoRefreshing || refreshing) &&
-                                    styles.disabledAction,
-                                pressed && styles.pressed,
-                            ]}
-                        >
-                            <View style={styles.refreshIndicatorHeader}>
-                                <Text style={styles.refreshIndicatorLabel}>
-                                    Auto refresh
-                                </Text>
-                                <Text style={styles.refreshIndicatorValue}>
-                                    {refreshIndicatorText}
-                                </Text>
-                            </View>
-                            <View style={styles.refreshIndicatorTrack}>
-                                <View
-                                    style={[
-                                        styles.refreshIndicatorFill,
-                                        { width: `${refreshProgress * 100}%` },
-                                    ]}
-                                />
-                            </View>
-                        </Pressable>
-
                         {deviceLoading ? (
                             <View style={styles.emptyState}>
                                 <ActivityIndicator
@@ -676,31 +637,25 @@ export default function HomeScreen() {
                                     ]}
                                 >
                                     <View style={styles.signHeaderRow}>
+                                        {deviceOffline && (
+                                            <Text
+                                                style={
+                                                    styles.offlineWarningIcon
+                                                }
+                                            >
+                                                ⚠️
+                                            </Text>
+                                        )}
                                         <Text style={styles.signName}>
                                             {device.name || "Sign"}
                                         </Text>
-                                        <Text style={styles.signMeta}>
-                                            Battery: {device.battery_percentage ?? 0}%
-                                        </Text>
-                                        <Feather
-                                            accessibilityLabel="Wi-Fi connected"
-                                            name={
-                                                deviceOffline
-                                                    ? "wifi-off"
-                                                    : "wifi"
-                                            }
-                                            size={24}
-                                            color="black"
-                                        />
                                     </View>
                                     <Text style={styles.signName}>
                                         {device?.connectivity_status ??
                                             "Unknown"}
                                     </Text>
 
-                                    <Text style={styles.signMeta}>
-                                        {formatLastSeen(device.last_seen_at)}
-                                    </Text>
+
 
                                     <View
                                         style={[
@@ -753,6 +708,28 @@ export default function HomeScreen() {
                                             </Text>
                                         </View>
                                     ) : null}
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+                                        <BatteryIcon batteryPercentage={device.battery_percentage ?? 0} size={24} />
+                                        <Text style={styles.signMeta}>
+                                            {device.battery_percentage}%
+                                        </Text>
+                                        <Feather
+                                            accessibilityLabel="Wi-Fi connected"
+                                            name={
+                                                deviceOffline
+                                                    ? "wifi-off"
+                                                    : "wifi"
+                                            }
+                                            size={24}
+                                            color={
+                                                deviceOffline ? "red" : "green"
+                                            }
+                                        />
+
+                                        <Text style={styles.signMeta}>
+                                            {formatLastSeen(device.last_seen_at)}
+                                        </Text>
+                                    </View>
                                 </Pressable>
 
                                 {canAcknowledge ? (
@@ -768,7 +745,7 @@ export default function HomeScreen() {
                                             styles.primaryAction,
                                             (deviceActionLoading ||
                                                 falsePositiveActionLoading) &&
-                                                styles.disabledAction,
+                                            styles.disabledAction,
                                             pressed && styles.pressed,
                                         ]}
                                     >
@@ -785,7 +762,7 @@ export default function HomeScreen() {
                                             </Text>
                                         )}
                                     </Pressable>
-                                ) : null}{}
+                                ) : null}{ }
 
                                 {canMarkFalsePositive ? (
                                     <Pressable
@@ -800,7 +777,7 @@ export default function HomeScreen() {
                                             styles.falsePositiveAction,
                                             (falsePositiveActionLoading ||
                                                 deviceActionLoading) &&
-                                                styles.disabledAction,
+                                            styles.disabledAction,
                                             pressed && styles.pressed,
                                         ]}
                                     >
@@ -834,7 +811,7 @@ export default function HomeScreen() {
                                             styles.successAction,
                                             (deviceActionLoading ||
                                                 falsePositiveActionLoading) &&
-                                                styles.disabledAction,
+                                            styles.disabledAction,
                                             pressed && styles.pressed,
                                         ]}
                                     >
@@ -883,7 +860,7 @@ export default function HomeScreen() {
                                     style={({ pressed }) => [
                                         styles.inlineAction,
                                         notificationActionLoading &&
-                                            styles.disabledAction,
+                                        styles.disabledAction,
                                         pressed && styles.pressed,
                                     ]}
                                 >
@@ -950,7 +927,7 @@ export default function HomeScreen() {
                                             style={({ pressed }) => [
                                                 styles.notificationRow,
                                                 !notification.read &&
-                                                    styles.notificationRowUnread,
+                                                styles.notificationRowUnread,
                                                 pressed && styles.pressed,
                                             ]}
                                         >

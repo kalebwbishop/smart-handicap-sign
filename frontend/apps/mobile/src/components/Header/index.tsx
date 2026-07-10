@@ -83,7 +83,7 @@ const styles = StyleSheet.create({
     headerButton: {
         padding: 8,
     },
-    logo: { width: 60, height: 60, backgroundColor: 'red' },
+    logo: { width: 60, height: 60 },
     notificationBadge: {
         position: 'absolute',
         top: -4,

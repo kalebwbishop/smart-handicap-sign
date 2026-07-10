@@ -2,6 +2,7 @@ import React, { useCallback, useState } from 'react';
 import {
     ActivityIndicator,
     Pressable,
+    ScrollView,
     StyleSheet,
     Switch,
     Text,
@@ -14,25 +15,26 @@ import { layout, spacing, shadows } from '../theme/spacing';
 import { typography } from '../theme/typography';
 import { useAuthStore } from '@/store/authStore';
 import Feather from '@expo/vector-icons/Feather';
+import SectionCard from '@/components/SectionCard'
 
 export default function SettingsScreen() {
-    const { 
+    const {
         playToneOnAssistanceRequest, setPlayToneOnAssistanceRequest,
         receiveNotifications, setReceiveNotifications,
         isSettingsLoaded } = useSettings();
     const [isSavingNotifications, setIsSavingNotifications] = useState(false);
-        const { user, logout, ensureFreshSession } = useAuthStore();
+    const { user, logout, ensureFreshSession } = useAuthStore();
 
-        const handleSignOut = useCallback(async () => {
-            try {
-                await ensureFreshSession();
-                logout();
-            } catch (error) {
-                console.error('[Settings] Failed to sign out:', error);
-            }
-        }, [ensureFreshSession, logout]);
-    
-        const userName = user?.name || user?.email || "Operator";
+    const handleSignOut = useCallback(async () => {
+        try {
+            await ensureFreshSession();
+            logout();
+        } catch (error) {
+            console.error('[Settings] Failed to sign out:', error);
+        }
+    }, [ensureFreshSession, logout]);
+
+    const userName = user?.name || user?.email || "Operator";
 
 
     const handleReceiveNotificationsChange = useCallback(
@@ -66,7 +68,7 @@ export default function SettingsScreen() {
     }
 
     return (
-        <View style={styles.root}>
+        <ScrollView style={styles.root}>
             <View style={styles.card}>
                 <View style={styles.row}>
                     <View style={[styles.copy, { flexDirection: 'row', alignItems: 'center' }]}>
@@ -82,35 +84,15 @@ export default function SettingsScreen() {
                     </View>
                 </View>
             </View>
-            <View style={styles.card}>
-                <View style={styles.row}>
-                    <View style={styles.copy}>
-                        <Text style={styles.label}>Play tone on assistance request</Text>
-                        <Text style={styles.helper}>
-                            When enabled, a tone will play when assistance is requested.
-                        </Text>
-                    </View>
-                    <Switch
-                        accessibilityLabel="Play tone on assistance request"
-                        value={playToneOnAssistanceRequest}
-                        onValueChange={setPlayToneOnAssistanceRequest}
-                        trackColor={{
-                            false: colors.divider,
-                            true: colors.primaryLight,
-                        }}
-                        thumbColor={playToneOnAssistanceRequest ? colors.primary : colors.white}
-                    />
-                </View>
-            </View>
-            <View style={styles.card}>
+
+            <SectionCard title="Notifications">
                 <View style={styles.row}>
                     <View style={styles.copy}>
                         <Text style={styles.label}>
-                            Receive assistance notifications
+                            New Assistance Requests
                         </Text>
                         <Text style={styles.helper}>
-                            Turn this off to pause assistance alerts in the
-                            inbox.
+                            Push notification on incoming requests
                         </Text>
                     </View>
                     <Switch
@@ -118,6 +100,7 @@ export default function SettingsScreen() {
                         value={receiveNotifications}
                         onValueChange={handleReceiveNotificationsChange}
                         disabled={isSavingNotifications}
+                        style={{ alignSelf: 'center' }}
                         trackColor={{
                             false: colors.divider,
                             true: colors.primaryLight,
@@ -125,7 +108,46 @@ export default function SettingsScreen() {
                         thumbColor={receiveNotifications ? colors.primary : colors.white}
                     />
                 </View>
-            </View>
+                <View style={styles.row}>
+                    <View style={styles.copy}>
+                        <Text style={styles.label}>Play tone on assistance request</Text>
+                        <Text style={styles.helper}>
+                            When enabled, a tone will play when assistance is requested
+                        </Text>
+                    </View>
+                    <Switch
+                        accessibilityLabel="Play tone on assistance request"
+                        value={playToneOnAssistanceRequest}
+                        onValueChange={setPlayToneOnAssistanceRequest}
+                        style={{ alignSelf: 'center' }}
+                        trackColor={{
+                            false: colors.divider,
+                            true: colors.primaryLight,
+                        }}
+                        thumbColor={playToneOnAssistanceRequest ? colors.primary : colors.white}
+                    />
+                </View>
+            </SectionCard>
+
+            <SectionCard title="System">
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text>
+                        App Version
+                    </Text>
+                    <Text style={{ color: colors.textSecondary }}>
+                        v0.1.0
+                    </Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text>
+                        Last Sync
+                    </Text>
+                    <Text style={{ color: colors.textSecondary }}>
+                        Just Now
+                    </Text>
+                </View>
+            </SectionCard>
+
 
             <Pressable
                 style={({ pressed }) => [styles.signOutButton, pressed && styles.signOutButtonPressed]}
@@ -133,7 +155,7 @@ export default function SettingsScreen() {
             >
                 <Text style={styles.signOutText}>Sign Out</Text>
             </Pressable>
-        </View>
+        </ScrollView>
     );
 }
 

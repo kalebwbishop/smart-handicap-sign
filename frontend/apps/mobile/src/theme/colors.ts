@@ -46,7 +46,7 @@ export const colors = {
   announcement: '#2997ff',
 
   /** Borders & misc */
-  divider: '#d2d2d7',          // Soft Border Gray
+  divider: '#e0e0e0',          // Soft Border Gray
   borderSubtle: '#d2d2d7',
   shadow: 'rgba(0,0,0,0.08)',
   shadowMedium: 'rgba(0,0,0,0.04)',

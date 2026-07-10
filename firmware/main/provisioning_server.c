@@ -82,6 +82,10 @@ static esp_err_t status_get_handler(httpd_req_t *req)
     add_cors_headers(req);
     httpd_resp_set_type(req, "application/json");
     esp_err_t err = httpd_resp_sendstr(req, body);
+
+    ESP_LOGI(TAG, "Status response sent");
+    ESP_LOGI(TAG, "Status response body: %s", body);
+
     free(body);
     return err;
 }
@@ -124,6 +128,7 @@ static esp_err_t scan_get_handler(httpd_req_t *req)
 
 static esp_err_t configure_post_handler(httpd_req_t *req)
 {
+    ESP_LOGI(TAG, "Received WiFi configuration request");
     if (req->content_len <= 0 || req->content_len > 512) {
         return send_json_response(req, "400 Bad Request", "{\"error\":\"Invalid request body\"}");
     }
@@ -147,6 +152,8 @@ static esp_err_t configure_post_handler(httpd_req_t *req)
 
     const cJSON *ssid = cJSON_GetObjectItemCaseSensitive(json, "ssid");
     const cJSON *password = cJSON_GetObjectItemCaseSensitive(json, "password");
+    ESP_LOGI(TAG, "Received WiFi configuration request: ssid=%s", ssid->valuestring);
+    ESP_LOGI(TAG, "Received WiFi configuration request: password=%s", password->valuestring);
     if (!cJSON_IsString(ssid) || ssid->valuestring == NULL || ssid->valuestring[0] == '\0') {
         cJSON_Delete(json);
         return send_json_response(req, "400 Bad Request", "{\"error\":\"ssid is required\"}");
