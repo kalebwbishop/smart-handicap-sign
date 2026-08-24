@@ -74,16 +74,6 @@ jobs:
           test -n "$ACR_LOGIN_SERVER" || { echo "Missing ACR_LOGIN_SERVER configuration"; exit 1; }
           test -n "$ACR_REPOSITORY" || { echo "Missing ACR_REPOSITORY configuration"; exit 1; }
 
-      - name: Authenticate to Azure with OIDC
-        uses: azure/login@v2
-        with:
-          client-id: ${{ env.ARM_CLIENT_ID }}
-          tenant-id: ${{ env.ARM_TENANT_ID }}
-          subscription-id: ${{ env.ARM_SUBSCRIPTION_ID }}
-
-      - name: Log in to Azure Container Registry
-        run: az acr login --name "$ACR_NAME"
-
       - name: Set image tags
         id: image
         run: |
@@ -189,12 +179,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: database/package-lock.json
-
-      - name: Install database dependencies
-        working-directory: database
-        run: npm ci
 
       - name: Fetch database connection string
         id: db_connection
@@ -209,85 +193,25 @@ jobs:
           echo "::add-mask::$POSTGRES_CONNECTION_STRING"
           printf 'value=%s\n' "$POSTGRES_CONNECTION_STRING" >> "$GITHUB_OUTPUT"
 
-      - name: Run database schema migration
+      - name: Apply database migrations
         working-directory: database
         env:
           NODE_ENV: production
           POSTGRES_CONNECTION_STRING: ${{ steps.db_connection.outputs.value }}
-        run: npm run migrate
+        run: npx --yes prisma@7.8.0 migrate deploy --config prisma.config.ts
 
-      - name: Load pilot sign
-        working-directory: database
-        env:
-          NODE_ENV: production
-          POSTGRES_CONNECTION_STRING: ${{ steps.db_connection.outputs.value }}
-        run: npm run load:sign
-
-  apply:
+  deploy:
     needs:
       - build-image
       - migrate-database
     if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment: main
-    defaults:
-      run:
-        shell: bash
-        working-directory: terraform
-    env:
-      TF_IN_AUTOMATION: true
-      TF_VAR_container_image: ${{ needs.build-image.outputs.image_ref }}
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Verify workflow configuration
-        run: |
-          test -n "$ARM_CLIENT_ID" || { echo "Missing repository variable AZURE_CLIENT_ID"; exit 1; }
-          test -n "$ARM_TENANT_ID" || { echo "Missing repository variable AZURE_TENANT_ID"; exit 1; }
-          test -n "$ARM_SUBSCRIPTION_ID" || { echo "Missing repository variable AZURE_SUBSCRIPTION_ID"; exit 1; }
-          test -n "$TF_VAR_container_image" || { echo "Missing built container image reference"; exit 1; }
-
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_wrapper: false
-
-      - name: Authenticate to Azure with OIDC
-        uses: azure/login@v2
-        with:
-          client-id: ${{ env.ARM_CLIENT_ID }}
-          tenant-id: ${{ env.ARM_TENANT_ID }}
-          subscription-id: ${{ env.ARM_SUBSCRIPTION_ID }}
-
-      - name: Check Terraform formatting
-        run: terraform fmt -check -recursive
-
-      - name: Initialize Terraform
-        run: terraform init -input=false -reconfigure
-
-      - name: Validate Terraform
-        run: terraform validate -no-color
-
-      - name: Plan Terraform changes
-        id: plan
-        run: |
-          set +e
-          terraform plan -input=false -lock-timeout=5m -no-color -detailed-exitcode -var-file=github.auto.tfvars -out=tfplan
-          plan_exit_code=$?
-          set -e
-
-          if [ "$plan_exit_code" -eq 1 ]; then
-            exit 1
-          fi
-
-          if [ "$plan_exit_code" -eq 2 ]; then
-            echo "has_changes=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_changes=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Apply Terraform changes
-        if: steps.plan.outputs.has_changes == 'true'
-        run: terraform apply -input=false -no-color -auto-approve tfplan
+    uses: Deploy-Box/deploy-box-platform/.github/workflows/terraform-deploy.yml@b360734ba2c250c06b3a81e29f6a865fab248d24
+    with:
+      terraform_dir: ./terraform
+      terraform_version: "1.9.x"
+      extra_var_flags: '-var="container_image=${{ needs.build-image.outputs.image_ref }}"'
+      use_plan_file: true
+      environment: main
+    permissions:
+      contents: read
+      id-token: write
