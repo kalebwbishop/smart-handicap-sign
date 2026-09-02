@@ -255,7 +255,7 @@ public sealed class SignalClassificationResultRepository
         return tokens;
     }
 
-    public async Task<IReadOnlyList<string>> MarkStaleDevicesOfflineAsync(
+    public async Task<IReadOnlyList<DeviceConnectivityUpdate>> MarkStaleDevicesOfflineAsync(
         DateTime cutoff,
         CancellationToken cancellationToken)
     {
@@ -268,18 +268,20 @@ public sealed class SignalClassificationResultRepository
                 updated_at = CURRENT_TIMESTAMP
             WHERE connectivity_status = 'online'
               AND COALESCE(last_seen_at, created_at) <= $1
-            RETURNING device_id;
+            RETURNING device_id, operational_status;
             """;
         command.Parameters.Add(new NpgsqlParameter<DateTime> { TypedValue = cutoff });
 
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        var deviceIds = new List<string>();
+        var devices = new List<DeviceConnectivityUpdate>();
         while (await reader.ReadAsync(cancellationToken))
         {
-            deviceIds.Add(reader.GetString(0));
+            devices.Add(new DeviceConnectivityUpdate(
+                reader.GetString(0),
+                reader.GetString(1)));
         }
 
-        return deviceIds;
+        return devices;
     }
 
     private static DeviceRecord ReadDevice(NpgsqlDataReader reader)
@@ -319,6 +321,10 @@ public sealed record DeviceResolveResult(
     bool Exists,
     bool Resolved,
     string? OperationalStatus);
+
+public sealed record DeviceConnectivityUpdate(
+    string DeviceId,
+    string OperationalStatus);
 
 public sealed record DeviceRecord(
     string DeviceId,

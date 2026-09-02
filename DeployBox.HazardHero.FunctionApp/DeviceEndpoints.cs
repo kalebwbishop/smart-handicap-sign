@@ -7,10 +7,14 @@ namespace DeployBox.HazardHero.FunctionApp;
 public class DeviceEndpoints
 {
     private readonly SignalClassificationResultRepository _repository;
+    private readonly IDeviceTwinService _deviceTwinService;
 
-    public DeviceEndpoints(SignalClassificationResultRepository repository)
+    public DeviceEndpoints(
+        SignalClassificationResultRepository repository,
+        IDeviceTwinService deviceTwinService)
     {
         _repository = repository;
+        _deviceTwinService = deviceTwinService;
     }
 
     [Function("ListDevices")]
@@ -91,6 +95,12 @@ public class DeviceEndpoints
                     "The device is not currently in progress.",
                     result.OperationalStatus)));
         }
+
+        await _deviceTwinService.UpdateAsync(
+            deviceId,
+            result.OperationalStatus,
+            null,
+            cancellationToken);
 
         return new OkObjectResult(new DeviceActionResponse(
             deviceId,

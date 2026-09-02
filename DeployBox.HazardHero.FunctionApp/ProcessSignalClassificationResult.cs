@@ -9,15 +9,18 @@ public class ProcessSignalClassificationResult
     private readonly ILogger<ProcessSignalClassificationResult> _logger;
     private readonly SignalClassificationResultRepository _repository;
     private readonly IDeviceNotificationService _notificationService;
+    private readonly IDeviceTwinService _deviceTwinService;
 
     public ProcessSignalClassificationResult(
         ILogger<ProcessSignalClassificationResult> logger,
         SignalClassificationResultRepository repository,
-        IDeviceNotificationService notificationService)
+        IDeviceNotificationService notificationService,
+        IDeviceTwinService deviceTwinService)
     {
         _logger = logger;
         _repository = repository;
         _notificationService = notificationService;
+        _deviceTwinService = deviceTwinService;
     }
 
     [Function("ProcessSignalClassificationResult")]
@@ -60,6 +63,14 @@ public class ProcessSignalClassificationResult
                 ? "Persisted signal classification result {MessageId}."
                 : "Signal classification result {MessageId} was already persisted.",
             result!.MessageId);
+
+        await _deviceTwinService.UpdateAsync(
+            result.DeviceId!,
+            result.Classification!.Label == "positive"
+                ? "assistance_requested"
+                : "available",
+            "online",
+            cancellationToken);
 
         if (result.Classification!.Label == "positive")
         {

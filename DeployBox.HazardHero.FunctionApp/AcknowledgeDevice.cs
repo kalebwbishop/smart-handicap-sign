@@ -7,10 +7,14 @@ namespace DeployBox.HazardHero.FunctionApp;
 public class AcknowledgeDevice
 {
     private readonly SignalClassificationResultRepository _repository;
+    private readonly IDeviceTwinService _deviceTwinService;
 
-    public AcknowledgeDevice(SignalClassificationResultRepository repository)
+    public AcknowledgeDevice(
+        SignalClassificationResultRepository repository,
+        IDeviceTwinService deviceTwinService)
     {
         _repository = repository;
+        _deviceTwinService = deviceTwinService;
     }
 
     [Function("AcknowledgeDevice")]
@@ -51,6 +55,12 @@ public class AcknowledgeDevice
                     "The device is not currently requesting assistance.",
                     result.OperationalStatus)));
         }
+
+        await _deviceTwinService.UpdateAsync(
+            deviceId,
+            result.OperationalStatus,
+            null,
+            cancellationToken);
 
         return new OkObjectResult(new DeviceActionResponse(
             deviceId,

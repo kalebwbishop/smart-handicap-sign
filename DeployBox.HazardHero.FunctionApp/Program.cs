@@ -18,6 +18,7 @@ var postgresConnectionString = BuildPostgresConnectionString(builder.Configurati
 builder.Services.AddSingleton(
     NpgsqlDataSource.Create(postgresConnectionString));
 builder.Services.AddSingleton<SignalClassificationResultRepository>();
+builder.Services.AddSingleton<IDeviceTwinService, DeviceTwinService>();
 builder.Services.AddHttpClient<IDeviceNotificationService, DeviceNotificationService>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(10);
