@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "expo start --offline --clear",
-    "start": "set EXPO_PACKAGER_PROXY_URL=https://drkzptfs-8081.use2.devtunnels.ms && expo start --offline --clear",
+    "start": "set EXPO_PACKAGER_PROXY_URL=https://sk3cmdr5-8081.use.devtunnels.ms && expo start --offline --clear",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "lint": "eslint .",

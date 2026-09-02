@@ -4,7 +4,7 @@
   "packageManager": "pnpm@9.12.3",
   "scripts": {
     "dev": "turbo dev",
-    "dev:mobile": "pnpm --filter mobile dev",
+    "dev:mobile": "corepack pnpm --filter mobile dev",
     "dev:web": "pnpm --filter web dev",
     "build": "turbo build",
     "build:web": "pnpm --filter web build",

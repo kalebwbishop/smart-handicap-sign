@@ -170,3 +170,15 @@ Firmware validation depends on an ESP-IDF 5.4+ environment; see `firmware/README
 ## Status
 
 This repository still contains some post-pilot or legacy building blocks. When documentation and implementation disagree, treat the **one-sign pilot flow** as the current product target.
+
+
+{
+  "SchemaVersion": "1.0",
+  "MessageId": "a4f2c8d1-6b73-4e95-9a20-1c5d7f8b3e42",
+  "OccurredAt": "2026-09-02T20:20:00Z",
+  "DeviceId": "hazard-hero-001",
+  "Classification": {
+    "Label": "positive",
+    "Confidence": 0.97
+  }
+}
