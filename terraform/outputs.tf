@@ -24,8 +24,13 @@ output "storage_account_name" {
 }
 
 output "function_plan_name" {
-  description = "Azure Functions Consumption plan name"
-  value       = azurerm_service_plan.functions.name
+  description = "Azure Functions Flex Consumption plan name for the API"
+  value       = azurerm_service_plan.api_functions.name
+}
+
+output "ai_function_plan_name" {
+  description = "Azure Functions Flex Consumption plan name for the AI app"
+  value       = azurerm_service_plan.ai_functions.name
 }
 
 output "api_function_app_url" {

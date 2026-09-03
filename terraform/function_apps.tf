@@ -28,7 +28,7 @@ resource "azurerm_function_app_flex_consumption" "api" {
   name                          = var.api_function_app_name
   location                      = azurerm_resource_group.this.location
   resource_group_name           = azurerm_resource_group.this.name
-  service_plan_id               = azurerm_service_plan.functions.id
+  service_plan_id               = azurerm_service_plan.api_functions.id
   storage_container_type        = "blobContainer"
   storage_container_endpoint    = "${azurerm_storage_account.static_site.primary_blob_endpoint}${azurerm_storage_container.api_function_package.name}"
   storage_authentication_type   = "StorageAccountConnectionString"
@@ -69,7 +69,7 @@ resource "azurerm_function_app_flex_consumption" "ai" {
   name                          = var.ai_function_app_name
   location                      = azurerm_resource_group.this.location
   resource_group_name           = azurerm_resource_group.this.name
-  service_plan_id               = azurerm_service_plan.functions.id
+  service_plan_id               = azurerm_service_plan.ai_functions.id
   storage_container_type        = "blobContainer"
   storage_container_endpoint    = "${azurerm_storage_account.static_site.primary_blob_endpoint}${azurerm_storage_container.ai_function_package.name}"
   storage_authentication_type   = "StorageAccountConnectionString"

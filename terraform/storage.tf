@@ -28,11 +28,28 @@ resource "azurerm_storage_container" "ai_function_package" {
   container_access_type = "private"
 }
 
-resource "azurerm_service_plan" "functions" {
-  name                         = var.function_plan_name
+resource "azurerm_service_plan" "api_functions" {
+  name                         = var.api_function_plan_name
   location                     = var.function_plan_location
   resource_group_name          = azurerm_resource_group.this.name
   os_type                      = "Linux"
   sku_name                     = "FC1"
   maximum_elastic_worker_count = 1
+}
+
+resource "azurerm_service_plan" "ai_functions" {
+  name                         = var.ai_function_plan_name
+  location                     = var.function_plan_location
+  resource_group_name          = azurerm_resource_group.this.name
+  os_type                      = "Linux"
+  sku_name                     = "FC1"
+  maximum_elastic_worker_count = 1
+}
+
+removed {
+  from = azurerm_service_plan.functions
+
+  lifecycle {
+    destroy = false
+  }
 }

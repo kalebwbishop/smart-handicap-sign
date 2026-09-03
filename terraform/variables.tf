@@ -22,10 +22,16 @@ variable "storage_account_name" {
   default     = "shsstaticweb"
 }
 
-variable "function_plan_name" {
-  description = "Name of the Azure Functions Consumption plan"
+variable "api_function_plan_name" {
+  description = "Name of the .NET API Azure Functions Flex Consumption plan"
   type        = string
-  default     = "ASP-res0000shs-893e"
+  default     = "ASP-res0000shs-api"
+}
+
+variable "ai_function_plan_name" {
+  description = "Name of the Python AI Azure Functions Flex Consumption plan"
+  type        = string
+  default     = "ASP-res0000shs-ai"
 }
 
 variable "function_plan_location" {
