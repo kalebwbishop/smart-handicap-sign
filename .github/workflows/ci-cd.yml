@@ -7,6 +7,8 @@ on:
     paths:
       - "backend/**"
       - "database/**"
+      - "DeployBox.HazardHero.FunctionApp/**"
+      - "DeployBox.HazardHero.AI.FunctionApp/**"
       - "terraform/**"
       - ".github/workflows/ci-cd.yml"
   workflow_dispatch:
@@ -26,112 +28,10 @@ env:
   ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
   ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
   TF_VAR_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
-  ACR_NAME: deployboxcrprod
-  ACR_LOGIN_SERVER: deployboxcrprod.azurecr.io
-  ACR_REPOSITORY: hazard-hero-backend
   POSTGRES_CONNECTION_SECRET_NAME: postgres-connection-string
 
 jobs:
-  build-image:
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    environment: main
-    outputs:
-      image_ref: ${{ steps.resolve_image.outputs.image_ref }}
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Detect backend changes
-        id: backend_changes
-        run: |
-          if [ "$GITHUB_EVENT_NAME" = "push" ] && [ -n "$GITHUB_EVENT_BEFORE" ] && [ "$GITHUB_EVENT_BEFORE" != "0000000000000000000000000000000000000000" ]; then
-            BASE_SHA="$GITHUB_EVENT_BEFORE"
-          else
-            BASE_SHA="$(git rev-parse HEAD^ 2>/dev/null || true)"
-          fi
-
-          if [ -z "$BASE_SHA" ]; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if git diff --name-only "$BASE_SHA" "$GITHUB_SHA" -- backend/ | grep -q .; then
-            echo "changed=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Verify workflow configuration
-        run: |
-          test -n "$ARM_CLIENT_ID" || { echo "Missing repository variable AZURE_CLIENT_ID"; exit 1; }
-          test -n "$ARM_TENANT_ID" || { echo "Missing repository variable AZURE_TENANT_ID"; exit 1; }
-          test -n "$ARM_SUBSCRIPTION_ID" || { echo "Missing repository variable AZURE_SUBSCRIPTION_ID"; exit 1; }
-          test -n "$ACR_NAME" || { echo "Missing ACR_NAME configuration"; exit 1; }
-          test -n "$ACR_LOGIN_SERVER" || { echo "Missing ACR_LOGIN_SERVER configuration"; exit 1; }
-          test -n "$ACR_REPOSITORY" || { echo "Missing ACR_REPOSITORY configuration"; exit 1; }
-
-      - name: Set image tags
-        id: image
-        run: |
-          echo "sha_image=${ACR_LOGIN_SERVER}/${ACR_REPOSITORY}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
-          echo "latest_image=${ACR_LOGIN_SERVER}/${ACR_REPOSITORY}:latest" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve image reference
-        id: resolve_image
-        run: |
-          if [ "${{ steps.backend_changes.outputs.changed }}" = "true" ]; then
-            echo "image_ref=${{ steps.image.outputs.sha_image }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "image_ref=${{ steps.image.outputs.latest_image }}" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Prepare Docker build context
-        id: build_context
-        if: steps.backend_changes.outputs.changed == 'true'
-        run: |
-          BUILD_CONTEXT="$RUNNER_TEMP/hazard-hero-build-context"
-          rm -rf "$BUILD_CONTEXT"
-          mkdir -p "$BUILD_CONTEXT/smart-handicap-sign/backend"
-          cp config.json "$BUILD_CONTEXT/smart-handicap-sign/config.json"
-          rsync -a --exclude='.env' --exclude='venv' --exclude='__pycache__' --exclude='.pytest_cache' --exclude='logs' backend/ "$BUILD_CONTEXT/smart-handicap-sign/backend/"
-          echo "path=$BUILD_CONTEXT" >> "$GITHUB_OUTPUT"
-
-      - name: Set up Docker Buildx
-        if: steps.backend_changes.outputs.changed == 'true'
-        uses: docker/setup-buildx-action@v3
-
-      - name: Authenticate to Azure with OIDC
-        if: steps.backend_changes.outputs.changed == 'true'
-        uses: azure/login@v2
-        with:
-          client-id: ${{ env.ARM_CLIENT_ID }}
-          tenant-id: ${{ env.ARM_TENANT_ID }}
-          subscription-id: ${{ env.ARM_SUBSCRIPTION_ID }}
-
-      - name: Log in to Azure Container Registry
-        if: steps.backend_changes.outputs.changed == 'true'
-        run: az acr login --name "$ACR_NAME"
-
-      - name: Build and push backend image
-        if: steps.backend_changes.outputs.changed == 'true'
-        uses: docker/build-push-action@v6
-        with:
-          context: ${{ steps.build_context.outputs.path }}
-          file: ${{ steps.build_context.outputs.path }}/smart-handicap-sign/backend/dockerfile
-          platforms: linux/amd64
-          push: true
-          tags: |
-            ${{ steps.image.outputs.sha_image }}
-            ${{ steps.image.outputs.latest_image }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
   migrate-database:
-    needs: build-image
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: main
@@ -202,16 +102,82 @@ jobs:
 
   deploy:
     needs:
-      - build-image
       - migrate-database
     if: github.ref == 'refs/heads/main'
     uses: Deploy-Box/deploy-box-platform/.github/workflows/terraform-deploy.yml@b360734ba2c250c06b3a81e29f6a865fab248d24
     with:
       terraform_dir: ./terraform
       terraform_version: "1.9.x"
-      extra_var_flags: '-var="container_image=${{ needs.build-image.outputs.image_ref }}"'
       use_plan_file: true
       environment: main
+    secrets: inherit
     permissions:
       contents: read
       id-token: write
+
+  build-api-function:
+    needs: deploy
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: main
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.x"
+
+      - name: Publish API Function
+        run: dotnet publish DeployBox.HazardHero.FunctionApp/DeployBox_HazardHero_FunctionApp.csproj --configuration Release --output ./artifacts/api-function
+
+      - name: Upload API Function artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-function
+          path: ./artifacts/api-function
+
+  deploy-api-function:
+    needs: build-api-function
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: main
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Download API Function artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: api-function
+          path: ./artifacts/api-function
+
+      - name: Azure Login with OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy API Function
+        uses: Azure/functions-action@v1
+        with:
+          app-name: func-smart-handicap-sign-api
+          package: ./artifacts/api-function
+
+  deploy-ai-function:
+    needs: deploy
+    if: github.ref == 'refs/heads/main'
+    uses: Deploy-Box/deploy-box-platform/.github/workflows/azure-function-deploy.yml@dev
+    with:
+      function_app_name: func-smart-handicap-sign-ai
+      package_path: DeployBox.HazardHero.AI.FunctionApp
+      python_version: "3.12"
+      environment: main
+    secrets: inherit

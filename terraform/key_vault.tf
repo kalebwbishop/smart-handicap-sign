@@ -18,13 +18,6 @@ resource "azurerm_role_assignment" "deployer_key_vault_secrets_user" {
   principal_id         = data.azurerm_client_config.current.object_id
 }
 
-resource "azurerm_role_assignment" "container_app_key_vault_secrets_user" {
-  scope                            = azurerm_key_vault.this.id
-  role_definition_name             = "Key Vault Secrets User"
-  principal_id                     = azurerm_user_assigned_identity.container_app.principal_id
-  skip_service_principal_aad_check = true
-}
-
 data "azurerm_key_vault_secret" "workos_api_key" {
   name         = local.key_vault_secret_names.workos_api_key
   key_vault_id = azurerm_key_vault.this.id

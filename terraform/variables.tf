@@ -16,6 +16,50 @@ variable "location" {
   default     = "eastus"
 }
 
+variable "storage_account_name" {
+  description = "Globally unique Azure Storage Account name used by Functions and static website hosting"
+  type        = string
+  default     = "shsstaticweb"
+}
+
+variable "function_plan_name" {
+  description = "Name of the Azure Functions Consumption plan"
+  type        = string
+  default     = "asp-smart-handicap-sign"
+}
+
+variable "api_function_app_name" {
+  description = "Name of the .NET API Azure Function App"
+  type        = string
+  default     = "func-smart-handicap-sign-api"
+}
+
+variable "ai_function_app_name" {
+  description = "Name of the Python AI Azure Function App"
+  type        = string
+  default     = "func-smart-handicap-sign-ai"
+}
+
+variable "static_website_index_document" {
+  description = "Entry document served by the Storage Account static website"
+  type        = string
+  default     = "index.html"
+}
+
+variable "static_website_error_document" {
+  description = "Fallback error document served by the Storage Account static website"
+  type        = string
+  default     = "404.html"
+}
+
+variable "service_bus_connection_string" {
+  description = "Service Bus connection string used by the Function Apps"
+  type        = string
+  sensitive   = true
+  default     = null
+  nullable    = true
+}
+
 variable "key_vault_name" {
   description = "Stable Azure Key Vault name used for application secrets"
   type        = string
@@ -26,60 +70,6 @@ variable "domain_name" {
   description = "Optional public hostname for the application, managed outside Terraform"
   type        = string
   default     = ""
-}
-
-variable "container_registry_name" {
-  description = "Azure Container Registry name used to store backend images"
-  type        = string
-  default     = "deployboxcrprod"
-}
-
-variable "container_registry_resource_group_name" {
-  description = "Resource group that contains the Azure Container Registry"
-  type        = string
-  default     = "deploy-box-rg-prod"
-}
-
-variable "container_image_repository" {
-  description = "Repository name inside the Azure Container Registry"
-  type        = string
-  default     = "hazard-hero-backend"
-}
-
-variable "container_image" {
-  description = "Optional full container image reference to run in Azure Container Apps"
-  type        = string
-  default     = ""
-}
-
-variable "container_cpu" {
-  description = "vCPU allocated to the backend container"
-  type        = number
-  default     = 0.25
-}
-
-variable "container_memory" {
-  description = "Memory allocated to the backend container"
-  type        = string
-  default     = "0.5Gi"
-}
-
-variable "container_target_port" {
-  description = "Port exposed by the backend container"
-  type        = number
-  default     = 8000
-}
-
-variable "container_min_replicas" {
-  description = "Minimum number of backend replicas"
-  type        = number
-  default     = 0
-}
-
-variable "container_max_replicas" {
-  description = "Maximum number of backend replicas"
-  type        = number
-  default     = 1
 }
 
 variable "postgres_connection_string" {

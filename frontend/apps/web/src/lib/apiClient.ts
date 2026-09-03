@@ -1,86 +1,63 @@
-import axios, { AxiosError, AxiosRequestConfig } from "axios";
-import { createApiServices, getApiV1BaseUrl } from "@hazard-hero/shared";
-import { clearTokens, getAccessToken, getRefreshToken, setTokens } from "./tokens";
-
-const API_URL = getApiV1BaseUrl(process.env.NEXT_PUBLIC_API_URL);
-
-const axiosInstance = axios.create({
-  baseURL: API_URL,
-  timeout: 30000,
-  headers: {
-    "Content-Type": "application/json",
-  },
-});
-
-axiosInstance.interceptors.request.use(async (config) => {
-  const token = await getAccessToken();
-  if (token) {
-    config.headers = config.headers ?? {};
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
-let refreshInFlight: Promise<string | null> | null = null;
-
-async function refreshAccessToken(): Promise<string | null> {
-  if (!refreshInFlight) {
-    refreshInFlight = (async () => {
-      const refreshToken = await getRefreshToken();
-      if (!refreshToken) return null;
-      const { data } = await axios.post<{ accessToken: string; refreshToken?: string }>(
-        `${API_URL}/auth/refresh`,
-        { refreshToken }
-      );
-      await setTokens(data.accessToken, data.refreshToken ?? refreshToken);
-      return data.accessToken;
-    })().finally(() => {
-      refreshInFlight = null;
-    });
-  }
-  return refreshInFlight;
+export interface ApiDevice {
+  deviceId: string;
+  serialNumber: string | null;
+  modelCode: string | null;
+  hardwareRevision: string | null;
+  firmwareVersion: string | null;
+  lifecycleStatus: string;
+  connectivityStatus: string;
+  operationalStatus: string;
+  batteryPercentage: number;
+  lastSeenAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
-axiosInstance.interceptors.response.use(
-  (response) => response,
-  async (error: AxiosError) => {
-    const original = error.config as (AxiosRequestConfig & { _retry?: boolean }) | undefined;
-    if (!original || original._retry || error.response?.status !== 401) {
-      throw error;
+export interface DeviceActionResponse {
+  deviceId: string;
+  operationalStatus: string | null;
+}
+
+export interface HealthResponse {
+  status: string;
+}
+
+const API_BASE_URL = "/function-api";
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers: {
+      Accept: "application/json",
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...init?.headers,
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    let message = `Request failed (${response.status})`;
+    try {
+      const payload = (await response.json()) as { error?: { message?: string } };
+      message = payload.error?.message || message;
+    } catch {
+      // Keep the useful status-based error when the service returns no JSON.
     }
-    original._retry = true;
-    const token = await refreshAccessToken();
-    if (!token) {
-      await clearTokens();
-      throw error;
-    }
-    original.headers = original.headers ?? {};
-    original.headers.Authorization = `Bearer ${token}`;
-    return axiosInstance.request(original);
+    throw new Error(message);
   }
-);
 
-const apiClient = {
-  async get<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
-    const response = await axiosInstance.get<T>(url, config);
-    return response.data;
-  },
-  async post<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
-    const response = await axiosInstance.post<T>(url, data, config);
-    return response.data;
-  },
-  async put<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
-    const response = await axiosInstance.put<T>(url, data, config);
-    return response.data;
-  },
-  async patch<T>(url: string, data?: unknown, config?: AxiosRequestConfig): Promise<T> {
-    const response = await axiosInstance.patch<T>(url, data, config);
-    return response.data;
-  },
-  async delete<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
-    const response = await axiosInstance.delete<T>(url, config);
-    return response.data;
-  },
+  return response.json() as Promise<T>;
+}
+
+export const hazardHeroApi = {
+  health: () => request<HealthResponse>("/health"),
+  listDevices: () => request<ApiDevice[]>("/devices"),
+  acknowledgeDevice: (deviceId: string) =>
+    request<DeviceActionResponse>(`/devices/${encodeURIComponent(deviceId)}/acknowledge`, {
+      method: "POST",
+    }),
+  resolveDevice: (deviceId: string) =>
+    request<DeviceActionResponse>(`/devices/${encodeURIComponent(deviceId)}/resolve`, {
+      method: "POST",
+    }),
 };
-
-export const sharedApi = createApiServices(apiClient);
