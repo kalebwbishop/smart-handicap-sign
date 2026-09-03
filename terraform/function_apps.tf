@@ -1,10 +1,6 @@
 locals {
   api_function_app_settings = merge(
     {
-      FUNCTIONS_EXTENSION_VERSION           = "~4"
-      FUNCTIONS_WORKER_RUNTIME              = "dotnet-isolated"
-      WEBSITE_RUN_FROM_PACKAGE              = "1"
-      WEBSITE_NODE_DEFAULT_VERSION          = "~22"
       FRONTEND_URL                          = var.frontend_url
       WORKOS_REDIRECT_URI                   = var.workos_redirect_uri
       CORS_ORIGIN                           = var.cors_origin
@@ -21,11 +17,7 @@ locals {
   )
 
   ai_function_app_settings = merge(
-    {
-      FUNCTIONS_EXTENSION_VERSION = "~4"
-      FUNCTIONS_WORKER_RUNTIME    = "python"
-      WEBSITE_RUN_FROM_PACKAGE    = "1"
-    },
+    {},
     var.service_bus_connection_string != null ? {
       ServiceBusConnection = var.service_bus_connection_string
     } : {}
