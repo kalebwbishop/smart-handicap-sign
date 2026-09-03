@@ -30,10 +30,10 @@ output "function_plan_name" {
 
 output "api_function_app_url" {
   description = "Default URL for the .NET API Function App"
-  value       = "https://${azurerm_linux_function_app.api.default_hostname}"
+  value       = "https://${azurerm_function_app_flex_consumption.api.default_hostname}"
 }
 
 output "ai_function_app_url" {
   description = "Default URL for the Python AI Function App"
-  value       = "https://${azurerm_linux_function_app.ai.default_hostname}"
+  value       = "https://${azurerm_function_app_flex_consumption.ai.default_hostname}"
 }

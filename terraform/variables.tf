@@ -25,7 +25,13 @@ variable "storage_account_name" {
 variable "function_plan_name" {
   description = "Name of the Azure Functions Consumption plan"
   type        = string
-  default     = "asp-smart-handicap-sign"
+  default     = "ASP-res0000shs-893e"
+}
+
+variable "function_plan_location" {
+  description = "Azure region for the Azure Functions Consumption plan"
+  type        = string
+  default     = "eastus"
 }
 
 variable "api_function_app_name" {

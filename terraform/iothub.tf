@@ -42,14 +42,14 @@ resource "azurerm_iothub_shared_access_policy" "service" {
 resource "azurerm_role_assignment" "iothub_eventhub_data_receiver" {
   scope                            = azurerm_iothub.this.id
   role_definition_name             = "Azure Event Hubs Data Receiver"
-  principal_id                     = azurerm_linux_function_app.api.identity[0].principal_id
+  principal_id                     = azurerm_function_app_flex_consumption.api.identity[0].principal_id
   skip_service_principal_aad_check = true
 }
 
 resource "azurerm_role_assignment" "iothub_data_contributor" {
   scope                            = azurerm_iothub.this.id
   role_definition_name             = "IoT Hub Data Contributor"
-  principal_id                     = azurerm_linux_function_app.api.identity[0].principal_id
+  principal_id                     = azurerm_function_app_flex_consumption.api.identity[0].principal_id
   skip_service_principal_aad_check = true
 }
 

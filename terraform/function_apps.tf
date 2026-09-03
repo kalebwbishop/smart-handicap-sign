@@ -32,17 +32,22 @@ locals {
   )
 }
 
-resource "azurerm_linux_function_app" "api" {
-  name                       = var.api_function_app_name
-  location                   = azurerm_resource_group.this.location
-  resource_group_name        = azurerm_resource_group.this.name
-  service_plan_id            = azurerm_service_plan.functions.id
-  storage_account_name       = azurerm_storage_account.static_site.name
-  storage_account_access_key = azurerm_storage_account.static_site.primary_access_key
-
-  https_only                  = true
-  builtin_logging_enabled     = true
-  functions_extension_version = "~4"
+resource "azurerm_function_app_flex_consumption" "api" {
+  name                          = var.api_function_app_name
+  location                      = azurerm_resource_group.this.location
+  resource_group_name           = azurerm_resource_group.this.name
+  service_plan_id               = azurerm_service_plan.functions.id
+  storage_container_type        = "blobContainer"
+  storage_container_endpoint    = "${azurerm_storage_account.static_site.primary_blob_endpoint}${azurerm_storage_container.api_function_package.name}"
+  storage_authentication_type   = "StorageAccountConnectionString"
+  storage_access_key            = azurerm_storage_account.static_site.primary_access_key
+  runtime_name                  = "dotnet-isolated"
+  runtime_version               = "10.0"
+  maximum_instance_count        = 100
+  instance_memory_in_mb         = 512
+  https_only                    = true
+  enabled                       = true
+  public_network_access_enabled = true
 
   identity {
     type = "SystemAssigned"
@@ -51,15 +56,12 @@ resource "azurerm_linux_function_app" "api" {
   site_config {
     minimum_tls_version = "1.2"
 
-    application_stack {
-      dotnet_version = "10.0"
-    }
-
     dynamic "cors" {
       for_each = trimspace(var.frontend_url) != "" ? [var.frontend_url] : []
 
       content {
-        allowed_origins = [cors.value]
+        allowed_origins     = [cors.value]
+        support_credentials = false
       }
     }
   }
@@ -71,17 +73,22 @@ resource "azurerm_linux_function_app" "api" {
   ]
 }
 
-resource "azurerm_linux_function_app" "ai" {
-  name                       = var.ai_function_app_name
-  location                   = azurerm_resource_group.this.location
-  resource_group_name        = azurerm_resource_group.this.name
-  service_plan_id            = azurerm_service_plan.functions.id
-  storage_account_name       = azurerm_storage_account.static_site.name
-  storage_account_access_key = azurerm_storage_account.static_site.primary_access_key
-
-  https_only                  = true
-  builtin_logging_enabled     = true
-  functions_extension_version = "~4"
+resource "azurerm_function_app_flex_consumption" "ai" {
+  name                          = var.ai_function_app_name
+  location                      = azurerm_resource_group.this.location
+  resource_group_name           = azurerm_resource_group.this.name
+  service_plan_id               = azurerm_service_plan.functions.id
+  storage_container_type        = "blobContainer"
+  storage_container_endpoint    = "${azurerm_storage_account.static_site.primary_blob_endpoint}${azurerm_storage_container.ai_function_package.name}"
+  storage_authentication_type   = "StorageAccountConnectionString"
+  storage_access_key            = azurerm_storage_account.static_site.primary_access_key
+  runtime_name                  = "python"
+  runtime_version               = "3.12"
+  maximum_instance_count        = 100
+  instance_memory_in_mb         = 512
+  https_only                    = true
+  enabled                       = true
+  public_network_access_enabled = true
 
   identity {
     type = "SystemAssigned"
@@ -89,10 +96,6 @@ resource "azurerm_linux_function_app" "ai" {
 
   site_config {
     minimum_tls_version = "1.2"
-
-    application_stack {
-      python_version = "3.12"
-    }
   }
 
   app_settings = local.ai_function_app_settings
@@ -101,19 +104,19 @@ resource "azurerm_linux_function_app" "ai" {
 resource "azurerm_role_assignment" "api_key_vault_secrets_user" {
   scope                = azurerm_key_vault.this.id
   role_definition_name = "Key Vault Secrets User"
-  principal_id         = azurerm_linux_function_app.api.identity[0].principal_id
+  principal_id         = azurerm_function_app_flex_consumption.api.identity[0].principal_id
 }
 
 resource "azurerm_role_assignment" "api_iothub_data_contributor" {
   scope                            = azurerm_iothub.this.id
   role_definition_name             = "IoT Hub Data Contributor"
-  principal_id                     = azurerm_linux_function_app.api.identity[0].principal_id
+  principal_id                     = azurerm_function_app_flex_consumption.api.identity[0].principal_id
   skip_service_principal_aad_check = true
 }
 
 resource "azurerm_role_assignment" "api_iothub_eventhub_data_receiver" {
   scope                            = azurerm_iothub.this.id
   role_definition_name             = "Azure Event Hubs Data Receiver"
-  principal_id                     = azurerm_linux_function_app.api.identity[0].principal_id
+  principal_id                     = azurerm_function_app_flex_consumption.api.identity[0].principal_id
   skip_service_principal_aad_check = true
 }

@@ -35,6 +35,12 @@ builder.Build().Run();
 
 static string BuildPostgresConnectionString(IConfiguration configuration)
 {
+    var fullConnectionString = configuration["POSTGRES_CONNECTION_STRING"];
+    if (!string.IsNullOrWhiteSpace(fullConnectionString))
+    {
+        return fullConnectionString;
+    }
+
     var settings = new[]
     {
         "postgres-db-host",
