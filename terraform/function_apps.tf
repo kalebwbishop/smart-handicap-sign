@@ -1,15 +1,14 @@
 locals {
   api_function_app_settings = merge(
     {
-      FRONTEND_URL                          = var.frontend_url
-      WORKOS_REDIRECT_URI                   = var.workos_redirect_uri
-      CORS_ORIGIN                           = var.cors_origin
-      IOTHUB_HOST_NAME                      = var.iothub_host_name
-      IOTHUB_EVENTHUB_NAME                  = var.iothub_eventhub_name
-      POSTGRES_CONNECTION_STRING            = "@Microsoft.KeyVault(SecretUri=${data.azurerm_key_vault_secret.postgres_connection_string.versionless_id})"
-      WORKOS_API_KEY                        = "@Microsoft.KeyVault(SecretUri=${data.azurerm_key_vault_secret.workos_api_key.versionless_id})"
-      WORKOS_CLIENT_ID                      = "@Microsoft.KeyVault(SecretUri=${data.azurerm_key_vault_secret.workos_client_id.versionless_id})"
-      APPLICATIONINSIGHTS_CONNECTION_STRING = ""
+      FRONTEND_URL               = var.frontend_url
+      WORKOS_REDIRECT_URI        = var.workos_redirect_uri
+      CORS_ORIGIN                = var.cors_origin
+      IOTHUB_HOST_NAME           = var.iothub_host_name
+      IOTHUB_EVENTHUB_NAME       = var.iothub_eventhub_name
+      POSTGRES_CONNECTION_STRING = "@Microsoft.KeyVault(SecretUri=${data.azurerm_key_vault_secret.postgres_connection_string.versionless_id})"
+      WORKOS_API_KEY             = "@Microsoft.KeyVault(SecretUri=${data.azurerm_key_vault_secret.workos_api_key.versionless_id})"
+      WORKOS_CLIENT_ID           = "@Microsoft.KeyVault(SecretUri=${data.azurerm_key_vault_secret.workos_client_id.versionless_id})"
     },
     var.service_bus_connection_string != null ? {
       ServiceBusConnection = var.service_bus_connection_string
@@ -97,18 +96,4 @@ resource "azurerm_role_assignment" "api_key_vault_secrets_user" {
   scope                = azurerm_key_vault.this.id
   role_definition_name = "Key Vault Secrets User"
   principal_id         = azurerm_function_app_flex_consumption.api.identity[0].principal_id
-}
-
-resource "azurerm_role_assignment" "api_iothub_data_contributor" {
-  scope                            = azurerm_iothub.this.id
-  role_definition_name             = "IoT Hub Data Contributor"
-  principal_id                     = azurerm_function_app_flex_consumption.api.identity[0].principal_id
-  skip_service_principal_aad_check = true
-}
-
-resource "azurerm_role_assignment" "api_iothub_eventhub_data_receiver" {
-  scope                            = azurerm_iothub.this.id
-  role_definition_name             = "Azure Event Hubs Data Receiver"
-  principal_id                     = azurerm_function_app_flex_consumption.api.identity[0].principal_id
-  skip_service_principal_aad_check = true
 }

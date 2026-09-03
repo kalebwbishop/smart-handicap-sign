@@ -16,6 +16,10 @@ resource "azurerm_role_assignment" "deployer_key_vault_secrets_user" {
   scope                = azurerm_key_vault.this.id
   role_definition_name = "Key Vault Secrets User"
   principal_id         = data.azurerm_client_config.current.object_id
+
+  lifecycle {
+    ignore_changes = [principal_id]
+  }
 }
 
 data "azurerm_key_vault_secret" "workos_api_key" {

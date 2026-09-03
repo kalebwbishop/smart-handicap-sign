@@ -53,6 +53,16 @@ resource "azurerm_role_assignment" "iothub_data_contributor" {
   skip_service_principal_aad_check = true
 }
 
+moved {
+  from = azurerm_role_assignment.api_iothub_eventhub_data_receiver
+  to   = azurerm_role_assignment.iothub_eventhub_data_receiver
+}
+
+moved {
+  from = azurerm_role_assignment.api_iothub_data_contributor
+  to   = azurerm_role_assignment.iothub_data_contributor
+}
+
 
 locals {
   iothub_eventhub_connection_string = "Endpoint=${azurerm_iothub.this.event_hub_events_endpoint};SharedAccessKeyName=${azurerm_iothub_shared_access_policy.service.name};SharedAccessKey=${azurerm_iothub_shared_access_policy.service.primary_key};EntityPath=${azurerm_iothub.this.event_hub_events_path}"
