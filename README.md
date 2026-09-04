@@ -176,7 +176,7 @@ This repository still contains some post-pilot or legacy building blocks. When d
   "SchemaVersion": "1.0",
   "MessageId": "a4f2c8d1-6b73-4e95-9a20-1c5d7f8b3e42",
   "OccurredAt": "2026-09-02T20:20:00Z",
-  "DeviceId": "hazard-hero-001",
+  "DeviceId": "SHS-2605-S01-A7K-00001-J",
   "Classification": {
     "Label": "positive",
     "Confidence": 0.97

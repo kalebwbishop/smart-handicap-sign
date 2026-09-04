@@ -3,6 +3,8 @@
 # azure-monitor-opentelemetry 
 
 azure-functions
+azure-identity
+azure-storage-blob
 numpy>=1.24.0
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.9.0+cpu

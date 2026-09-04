@@ -11,7 +11,9 @@ public sealed record DeviceActionResponse(
     string DeviceId,
     string? OperationalStatus);
 
-public sealed record HealthResponse(string Status);
+public sealed record HealthResponse(
+    string Status,
+    bool IotHubConfigured);
 
 public sealed record DeviceResponse(
     string DeviceId,

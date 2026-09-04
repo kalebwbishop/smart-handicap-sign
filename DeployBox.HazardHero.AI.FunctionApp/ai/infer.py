@@ -8,7 +8,6 @@ from ai.model import WaveDetector
 
 SEQ_LEN = SIGNAL_CONFIG["sample_count"]
 MAX_VAL = SIGNAL_CONFIG["max_value"]
-DEFAULT_CHECKPOINT = str(get_runtime_checkpoint_path())
 
 
 class WaveClassifier:
@@ -16,12 +15,16 @@ class WaveClassifier:
 
     def __init__(
         self,
-        checkpoint_path: str = DEFAULT_CHECKPOINT,
+        checkpoint_path: str | None = None,
         device: str | None = None,
     ) -> None:
         self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
         self.model = WaveDetector()
-        checkpoint = torch.load(checkpoint_path, map_location=self.device, weights_only=True)
+        checkpoint = torch.load(
+            checkpoint_path or str(get_runtime_checkpoint_path()),
+            map_location=self.device,
+            weights_only=True,
+        )
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.model.to(self.device)
         self.model.eval()

@@ -52,6 +52,18 @@ variable "ai_function_app_name" {
   default     = "func-smart-handicap-sign-ai"
 }
 
+variable "model_blob_url" {
+  description = "HTTPS URL of the AI model checkpoint blob"
+  type        = string
+  default     = "https://res0000shs9a64.blob.core.windows.net/res0000shs9a64/best.pt"
+}
+
+variable "model_storage_account_name" {
+  description = "Storage account containing the AI model checkpoint"
+  type        = string
+  default     = "res0000shs9a64"
+}
+
 variable "static_website_index_document" {
   description = "Entry document served by the Storage Account static website"
   type        = string

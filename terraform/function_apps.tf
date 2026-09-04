@@ -16,11 +16,18 @@ locals {
   )
 
   ai_function_app_settings = merge(
-    {},
+    {
+      MODEL_BLOB_URL = var.model_blob_url
+    },
     var.service_bus_connection_string != null ? {
       ServiceBusConnection = var.service_bus_connection_string
     } : {}
   )
+}
+
+data "azurerm_storage_account" "model" {
+  name                = var.model_storage_account_name
+  resource_group_name = azurerm_resource_group.this.name
 }
 
 resource "azurerm_function_app_flex_consumption" "api" {
@@ -96,4 +103,10 @@ resource "azurerm_role_assignment" "api_key_vault_secrets_user" {
   scope                = azurerm_key_vault.this.id
   role_definition_name = "Key Vault Secrets User"
   principal_id         = azurerm_function_app_flex_consumption.api.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "ai_model_blob_reader" {
+  scope                = data.azurerm_storage_account.model.id
+  role_definition_name = "Storage Blob Data Reader"
+  principal_id         = azurerm_function_app_flex_consumption.ai.identity[0].principal_id
 }

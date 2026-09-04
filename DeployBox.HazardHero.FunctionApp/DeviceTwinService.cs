@@ -64,7 +64,7 @@ public sealed class DeviceTwinService : IDeviceTwinService, IDisposable
         var twin = new Twin();
         if (operationalStatus is not null)
         {
-            twin.Properties.Desired["operationalStatus"] = operationalStatus;
+            twin.Properties.Desired["operational_status"] = operationalStatus;
         }
 
         if (connectivityStatus is not null)
