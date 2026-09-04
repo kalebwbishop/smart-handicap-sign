@@ -1,169 +1,220 @@
 #include "led_driver.h"
 
 #include <stdbool.h>
-#include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
-#include "driver/gpio.h"
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
-#include "freertos/portmacro.h"
+#include "freertos/semphr.h"
+#include "led_strip.h"
 
 typedef struct {
-    uint8_t red;
-    uint8_t green;
-    uint8_t blue;
+    led_rgb_t color;
     uint16_t on_ms;
     uint16_t off_ms;
 } led_step_t;
 
 typedef struct {
     const led_step_t *steps;
-    uint8_t step_count;
+    size_t step_count;
 } led_pattern_t;
 
 static const char *TAG = "led_driver";
 
-static const led_step_t AVAILABLE_STEPS[] = {
-    {0, 0, 255, 1000, 0},
-};
-
+static const led_step_t AVAILABLE_STEPS[] = {{{0, 255, 0}, 120, 1880}};
 static const led_step_t BOOTING_STEPS[] = {
-    {255, 255, 255, 1000, 0},
+    {{255, 255, 255}, 180, 180},
+    {{255, 255, 255}, 180, 900},
 };
-
-static const led_step_t CONNECTING_STEPS[] = {
-    {0, 160, 255, 1000, 0},
+static const led_step_t CONNECTION_NEEDED_STEPS[] = {
+    {{255, 160, 0}, 90, 90},
+    {{255, 160, 0}, 90, 90},
+    {{255, 160, 0}, 90, 900},
 };
-
+static const led_step_t CONNECTING_STEPS[] = {{{0, 160, 255}, 450, 450}};
 static const led_step_t ASSISTANCE_REQUESTED_STEPS[] = {
-    {255, 160, 0, 1000, 0},
+    {{255, 0, 0}, 120, 120},
+    {{255, 0, 0}, 120, 120},
+    {{255, 0, 0}, 120, 800},
 };
-
-static const led_step_t ASSISTANCE_IN_PROGRESS_STEPS[] = {
-    {0, 255, 0, 1000, 0},
-};
-
-static const led_step_t OFFLINE_STEPS[] = {
-    {255, 255, 255, 1000, 0},
-};
-
-static const led_step_t ERROR_STEPS[] = {
-    {255, 0, 0, 1000, 0},
-};
+static const led_step_t ASSISTANCE_IN_PROGRESS_STEPS[] = {{{0, 255, 0}, 750, 250}};
+static const led_step_t OFFLINE_STEPS[] = {{{255, 255, 255}, 80, 2920}};
+static const led_step_t ERROR_STEPS[] = {{{255, 0, 0}, 100, 100}};
 
 static const led_pattern_t LED_PATTERNS[STATUS_COUNT] = {
-    [STATUS_BOOTING] = {.steps = BOOTING_STEPS, .step_count = 2},
-    [STATUS_CONNECTING] = {.steps = CONNECTING_STEPS, .step_count = 2},
-    [STATUS_AVAILABLE] = {.steps = AVAILABLE_STEPS, .step_count = 1},
-    [STATUS_ASSISTANCE_REQUESTED] = {.steps = ASSISTANCE_REQUESTED_STEPS, .step_count = 1},
-    [STATUS_ASSISTANCE_IN_PROGRESS] = {.steps = ASSISTANCE_IN_PROGRESS_STEPS, .step_count = 1},
-    [STATUS_OFFLINE] = {.steps = OFFLINE_STEPS, .step_count = 1},
-    [STATUS_ERROR] = {.steps = ERROR_STEPS, .step_count = 1},
+    [STATUS_BOOTING] = {BOOTING_STEPS, sizeof(BOOTING_STEPS) / sizeof(BOOTING_STEPS[0])},
+    [STATUS_CONNECTION_NEEDED] = {CONNECTION_NEEDED_STEPS, sizeof(CONNECTION_NEEDED_STEPS) / sizeof(CONNECTION_NEEDED_STEPS[0])},
+    [STATUS_CONNECTING] = {CONNECTING_STEPS, sizeof(CONNECTING_STEPS) / sizeof(CONNECTING_STEPS[0])},
+    [STATUS_AVAILABLE] = {AVAILABLE_STEPS, sizeof(AVAILABLE_STEPS) / sizeof(AVAILABLE_STEPS[0])},
+    [STATUS_ASSISTANCE_REQUESTED] = {ASSISTANCE_REQUESTED_STEPS, sizeof(ASSISTANCE_REQUESTED_STEPS) / sizeof(ASSISTANCE_REQUESTED_STEPS[0])},
+    [STATUS_ASSISTANCE_IN_PROGRESS] = {ASSISTANCE_IN_PROGRESS_STEPS, sizeof(ASSISTANCE_IN_PROGRESS_STEPS) / sizeof(ASSISTANCE_IN_PROGRESS_STEPS[0])},
+    [STATUS_OFFLINE] = {OFFLINE_STEPS, sizeof(OFFLINE_STEPS) / sizeof(OFFLINE_STEPS[0])},
+    [STATUS_ERROR] = {ERROR_STEPS, sizeof(ERROR_STEPS) / sizeof(ERROR_STEPS[0])},
 };
 
+static led_strip_handle_t s_strip;
+static led_rgb_t *s_pixels;
+static SemaphoreHandle_t s_render_mutex;
+static SemaphoreHandle_t s_state_mutex;
+static esp_timer_handle_t s_timer;
 static device_operational_status_t s_current_status = STATUS_OFFLINE;
-static uint8_t s_step_index = 0;
-static uint8_t s_phase = 0;
-static esp_timer_handle_t s_timer = NULL;
-static bool s_initialized = false;
-static bool s_enabled = false;
-static uint32_t s_generation = 0;
-static portMUX_TYPE s_state_lock = portMUX_INITIALIZER_UNLOCKED;
+static size_t s_step_index;
+static bool s_step_off;
+static uint8_t s_brightness = LED_BRIGHTNESS;
+static bool s_initialized;
+static bool s_enabled;
+static bool s_dirty;
 
-static uint64_t led_driver_delay_to_us(uint16_t delay_ms)
+static uint8_t led_driver_scale(uint8_t value)
 {
-    uint16_t safe_delay_ms = delay_ms > 0 ? delay_ms : 1000;
-    return (uint64_t)safe_delay_ms * 1000ULL;
+    return (uint8_t)(((uint16_t)value * s_brightness + 127U) / 255U);
 }
 
 static const led_pattern_t *led_driver_get_pattern(device_operational_status_t status)
 {
-    if (status >= STATUS_COUNT) {
-        status = STATUS_OFFLINE;
+    if (status >= STATUS_COUNT || LED_PATTERNS[status].steps == NULL) {
+        return &LED_PATTERNS[STATUS_OFFLINE];
     }
-
     return &LED_PATTERNS[status];
 }
 
-static void led_driver_advance_step(const led_pattern_t *pattern)
+static esp_err_t led_driver_write_pixel(size_t index)
 {
-    s_step_index = (uint8_t)((s_step_index + 1U) % pattern->step_count);
+    return led_strip_set_pixel(
+        s_strip,
+        index,
+        led_driver_scale(s_pixels[index].red),
+        led_driver_scale(s_pixels[index].green),
+        led_driver_scale(s_pixels[index].blue));
 }
 
-static void led_driver_set_rgb(uint8_t red, uint8_t green, uint8_t blue)
+void led_driver_set_pixel(size_t index, led_rgb_t color)
 {
-    gpio_set_level(LED_RED_GPIO, red > 0 ? 1 : 0);
-    gpio_set_level(LED_GREEN_GPIO, green > 0 ? 1 : 0);
-    gpio_set_level(LED_BLUE_GPIO, blue > 0 ? 1 : 0);
-}
-
-static void led_driver_schedule_next(void)
-{
-    if (s_timer == NULL) {
+    if (!s_initialized || index >= LED_NUM_LEDS || xSemaphoreTake(s_render_mutex, portMAX_DELAY) != pdTRUE) {
         return;
     }
 
-    uint64_t delay_us = 0;
-    led_step_t step = {0};
-    uint32_t generation = 0;
-    bool show_step = false;
+    if (memcmp(&s_pixels[index], &color, sizeof(color)) != 0) {
+        s_pixels[index] = color;
+        esp_err_t err = led_driver_write_pixel(index);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "Failed to update pixel %u: %s", (unsigned)index, esp_err_to_name(err));
+        } else {
+            s_dirty = true;
+        }
+    }
+    xSemaphoreGive(s_render_mutex);
+}
 
-    portENTER_CRITICAL(&s_state_lock);
+void led_driver_set_color(led_rgb_t color)
+{
+    if (!s_initialized || xSemaphoreTake(s_render_mutex, portMAX_DELAY) != pdTRUE) {
+        return;
+    }
 
-    if (!s_enabled) {
-        portEXIT_CRITICAL(&s_state_lock);
-        led_driver_set_rgb(0, 0, 0);
+    for (size_t index = 0; index < LED_NUM_LEDS; ++index) {
+        if (memcmp(&s_pixels[index], &color, sizeof(color)) == 0) {
+            continue;
+        }
+        s_pixels[index] = color;
+        esp_err_t err = led_driver_write_pixel(index);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "Failed to update pixel %u: %s", (unsigned)index, esp_err_to_name(err));
+        } else {
+            s_dirty = true;
+        }
+    }
+    xSemaphoreGive(s_render_mutex);
+}
+
+void led_driver_clear(void)
+{
+    led_driver_set_color((led_rgb_t){0, 0, 0});
+}
+
+esp_err_t led_driver_show(void)
+{
+    if (!s_initialized || xSemaphoreTake(s_render_mutex, portMAX_DELAY) != pdTRUE) {
+        return ESP_ERR_INVALID_STATE;
+    }
+
+    esp_err_t err = ESP_OK;
+    if (s_dirty) {
+        err = led_strip_refresh(s_strip);
+        if (err == ESP_OK) {
+            s_dirty = false;
+        }
+    }
+    xSemaphoreGive(s_render_mutex);
+    return err;
+}
+
+void led_driver_set_brightness(uint16_t brightness)
+{
+    if (!s_initialized || xSemaphoreTake(s_render_mutex, portMAX_DELAY) != pdTRUE) {
+        return;
+    }
+
+    uint8_t clamped_brightness = brightness > UINT8_MAX ? UINT8_MAX : (uint8_t)brightness;
+    if (s_brightness != clamped_brightness) {
+        s_brightness = clamped_brightness;
+        for (size_t index = 0; index < LED_NUM_LEDS; ++index) {
+            esp_err_t err = led_driver_write_pixel(index);
+            if (err != ESP_OK) {
+                ESP_LOGW(TAG, "Failed to apply brightness to pixel %u: %s", (unsigned)index, esp_err_to_name(err));
+            } else {
+                s_dirty = true;
+            }
+        }
+    }
+    xSemaphoreGive(s_render_mutex);
+}
+
+static void led_driver_schedule_next_locked(void)
+{
+    if (s_timer == NULL || !s_enabled) {
         return;
     }
 
     const led_pattern_t *pattern = led_driver_get_pattern(s_current_status);
-    step = pattern->steps[s_step_index];
-    generation = s_generation;
+    const led_step_t step = pattern->steps[s_step_index];
 
-    if (s_phase == 0U) {
-        if (step.on_ms == 0U) {
-            delay_us = led_driver_delay_to_us(step.off_ms);
-            led_driver_advance_step(pattern);
-        } else if (step.off_ms == 0U) {
-            delay_us = led_driver_delay_to_us(step.on_ms);
-            led_driver_advance_step(pattern);
-        } else {
-            delay_us = led_driver_delay_to_us(step.on_ms);
-            s_phase = 1U;
-        }
-
-        show_step = true;
+    if (!s_step_off) {
+        led_driver_set_color(step.color);
     } else {
-        step.red = 0;
-        step.green = 0;
-        step.blue = 0;
-        delay_us = led_driver_delay_to_us(step.off_ms);
-        led_driver_advance_step(pattern);
-        s_phase = 0U;
+        led_driver_clear();
+    }
+    esp_err_t err = led_driver_show();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to refresh LED strip: %s", esp_err_to_name(err));
     }
 
-    portEXIT_CRITICAL(&s_state_lock);
-
-    if (show_step) {
-        led_driver_set_rgb(step.red, step.green, step.blue);
+    uint16_t delay_ms = s_step_off ? step.off_ms : step.on_ms;
+    if (s_step_off || step.off_ms == 0U) {
+        s_step_index = (s_step_index + 1U) % pattern->step_count;
+        s_step_off = false;
     } else {
-        led_driver_set_rgb(0, 0, 0);
+        s_step_off = true;
+    }
+    if (delay_ms == 0U) {
+        delay_ms = 1000U;
     }
 
-    portENTER_CRITICAL(&s_state_lock);
-    bool should_schedule = s_enabled && (generation == s_generation);
-    portEXIT_CRITICAL(&s_state_lock);
-
-    if (!should_schedule) {
-        return;
-    }
-
-    esp_err_t err = esp_timer_start_once(s_timer, delay_us);
+    err = esp_timer_start_once(s_timer, (uint64_t)delay_ms * 1000ULL);
     if (err != ESP_OK) {
         ESP_LOGW(TAG, "Failed to schedule LED timer: %s", esp_err_to_name(err));
     }
+}
+
+static void led_driver_schedule_next(void)
+{
+    if (s_state_mutex == NULL || xSemaphoreTake(s_state_mutex, portMAX_DELAY) != pdTRUE) {
+        return;
+    }
+    led_driver_schedule_next_locked();
+    xSemaphoreGive(s_state_mutex);
 }
 
 static void led_driver_timer_callback(void *arg)
@@ -172,47 +223,89 @@ static void led_driver_timer_callback(void *arg)
     led_driver_schedule_next();
 }
 
-static esp_err_t led_driver_configure_gpio(gpio_num_t pin)
-{
-    gpio_reset_pin(pin);
-    gpio_set_direction(pin, GPIO_MODE_OUTPUT);
-    gpio_set_level(pin, 0);
-    return ESP_OK;
-}
-
 esp_err_t led_driver_init(void)
 {
     if (s_initialized) {
         return ESP_OK;
     }
 
-    led_driver_configure_gpio(LED_RED_GPIO);
-    led_driver_configure_gpio(LED_GREEN_GPIO);
-    led_driver_configure_gpio(LED_BLUE_GPIO);
+    s_pixels = calloc(LED_NUM_LEDS, sizeof(*s_pixels));
+    if (s_pixels == NULL) {
+        return ESP_ERR_NO_MEM;
+    }
+
+    s_render_mutex = xSemaphoreCreateMutex();
+    if (s_render_mutex == NULL) {
+        free(s_pixels);
+        s_pixels = NULL;
+        return ESP_ERR_NO_MEM;
+    }
+    s_state_mutex = xSemaphoreCreateMutex();
+    if (s_state_mutex == NULL) {
+        vSemaphoreDelete(s_render_mutex);
+        s_render_mutex = NULL;
+        free(s_pixels);
+        s_pixels = NULL;
+        return ESP_ERR_NO_MEM;
+    }
+
+    const led_strip_config_t strip_config = {
+        .strip_gpio_num = LED_DATA_PIN,
+        .max_leds = LED_NUM_LEDS,
+        .led_model = LED_MODEL_WS2812,
+        .color_component_format = LED_STRIP_COLOR_COMPONENT_FMT_GRB,
+        .flags.invert_out = false,
+    };
+    const led_strip_rmt_config_t rmt_config = {
+        .clk_src = RMT_CLK_SRC_DEFAULT,
+        .resolution_hz = 10 * 1000 * 1000,
+        .mem_block_symbols = 64,
+        .flags.with_dma = false,
+    };
+
+    esp_err_t err = led_strip_new_rmt_device(&strip_config, &rmt_config, &s_strip);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to initialize WS2812B strip: %s", esp_err_to_name(err));
+        vSemaphoreDelete(s_state_mutex);
+        s_state_mutex = NULL;
+        vSemaphoreDelete(s_render_mutex);
+        s_render_mutex = NULL;
+        free(s_pixels);
+        s_pixels = NULL;
+        return err;
+    }
 
     const esp_timer_create_args_t timer_args = {
         .callback = led_driver_timer_callback,
-        .arg = NULL,
-        .dispatch_method = ESP_TIMER_TASK,
         .name = "led_driver",
         .skip_unhandled_events = true,
     };
-
-    esp_err_t err = esp_timer_create(&timer_args, &s_timer);
+    err = esp_timer_create(&timer_args, &s_timer);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Failed to create LED timer: %s", esp_err_to_name(err));
+        led_strip_del(s_strip);
+        s_strip = NULL;
+        vSemaphoreDelete(s_state_mutex);
+        s_state_mutex = NULL;
+        vSemaphoreDelete(s_render_mutex);
+        s_render_mutex = NULL;
+        free(s_pixels);
+        s_pixels = NULL;
         return err;
     }
 
     s_initialized = true;
-    s_current_status = STATUS_OFFLINE;
-    s_step_index = 0U;
-    s_phase = 0U;
     s_enabled = true;
-    s_generation++;
-
+    s_step_off = false;
+    s_dirty = true;
+    led_driver_set_brightness(LED_BRIGHTNESS);
+    led_driver_clear();
+    err = led_driver_show();
+    if (err != ESP_OK) {
+        return err;
+    }
     led_driver_schedule_next();
-    ESP_LOGI(TAG, "RGB LED driver initialized on GPIO %d/%d/%d", LED_RED_GPIO, LED_GREEN_GPIO, LED_BLUE_GPIO);
+    ESP_LOGI(TAG, "WS2812B LED driver initialized on GPIO %d with %d LEDs", LED_DATA_PIN, LED_NUM_LEDS);
     return ESP_OK;
 }
 
@@ -221,33 +314,27 @@ void led_driver_set_status(device_operational_status_t status)
     if (!s_initialized) {
         return;
     }
-
     if (status >= STATUS_COUNT) {
         status = STATUS_OFFLINE;
     }
 
-    portENTER_CRITICAL(&s_state_lock);
-    if (s_enabled && s_current_status == status) {
-        portEXIT_CRITICAL(&s_state_lock);
+    if (xSemaphoreTake(s_state_mutex, portMAX_DELAY) != pdTRUE) {
         return;
     }
-    portEXIT_CRITICAL(&s_state_lock);
-
+    if (s_enabled && s_current_status == status) {
+        xSemaphoreGive(s_state_mutex);
+        return;
+    }
     esp_err_t stop_err = esp_timer_stop(s_timer);
     if (stop_err != ESP_OK && stop_err != ESP_ERR_INVALID_STATE) {
         ESP_LOGW(TAG, "Failed to stop LED timer: %s", esp_err_to_name(stop_err));
     }
-
-    portENTER_CRITICAL(&s_state_lock);
     s_current_status = status;
-    s_step_index = 0U;
-    s_phase = 0U;
+    s_step_index = 0;
+    s_step_off = false;
     s_enabled = true;
-    s_generation++;
-    portEXIT_CRITICAL(&s_state_lock);
-
-    ESP_LOGI(TAG, "LED status set to %d", (int)status);
-    led_driver_schedule_next();
+    led_driver_schedule_next_locked();
+    xSemaphoreGive(s_state_mutex);
 }
 
 device_operational_status_t led_driver_status_from_string(const char *status_str)
@@ -255,29 +342,14 @@ device_operational_status_t led_driver_status_from_string(const char *status_str
     if (status_str == NULL) {
         return STATUS_OFFLINE;
     }
-
-    if (strcmp(status_str, "available") == 0) {
-        return STATUS_AVAILABLE;
-    }
-    if (strcmp(status_str, "booting") == 0) {
-        return STATUS_BOOTING;
-    }
-    if (strcmp(status_str, "connecting") == 0) {
-        return STATUS_CONNECTING;
-    }
-    if (strcmp(status_str, "assistance_requested") == 0) {
-        return STATUS_ASSISTANCE_REQUESTED;
-    }
-    if (strcmp(status_str, "assistance_in_progress") == 0) {
-        return STATUS_ASSISTANCE_IN_PROGRESS;
-    }
-    if (strcmp(status_str, "offline") == 0) {
-        return STATUS_OFFLINE;
-    }
-    if (strcmp(status_str, "error") == 0) {
-        return STATUS_ERROR;
-    }
-
+    if (strcmp(status_str, "available") == 0) return STATUS_AVAILABLE;
+    if (strcmp(status_str, "booting") == 0) return STATUS_BOOTING;
+    if (strcmp(status_str, "connection_needed") == 0) return STATUS_CONNECTION_NEEDED;
+    if (strcmp(status_str, "connecting") == 0) return STATUS_CONNECTING;
+    if (strcmp(status_str, "assistance_requested") == 0) return STATUS_ASSISTANCE_REQUESTED;
+    if (strcmp(status_str, "assistance_in_progress") == 0) return STATUS_ASSISTANCE_IN_PROGRESS;
+    if (strcmp(status_str, "offline") == 0) return STATUS_OFFLINE;
+    if (strcmp(status_str, "error") == 0) return STATUS_ERROR;
     return STATUS_OFFLINE;
 }
 
@@ -286,19 +358,19 @@ void led_driver_off(void)
     if (!s_initialized) {
         return;
     }
-
+    if (xSemaphoreTake(s_state_mutex, portMAX_DELAY) != pdTRUE) {
+        return;
+    }
     esp_err_t stop_err = esp_timer_stop(s_timer);
     if (stop_err != ESP_OK && stop_err != ESP_ERR_INVALID_STATE) {
         ESP_LOGW(TAG, "Failed to stop LED timer: %s", esp_err_to_name(stop_err));
     }
-
-    portENTER_CRITICAL(&s_state_lock);
-    s_current_status = STATUS_COUNT;
-    s_step_index = 0U;
-    s_phase = 0U;
     s_enabled = false;
-    s_generation++;
-    portEXIT_CRITICAL(&s_state_lock);
-
-    led_driver_set_rgb(0, 0, 0);
+    s_step_off = false;
+    led_driver_clear();
+    esp_err_t err = led_driver_show();
+    if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to refresh LED strip while turning off: %s", esp_err_to_name(err));
+    }
+    xSemaphoreGive(s_state_mutex);
 }
