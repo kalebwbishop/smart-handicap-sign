@@ -7,6 +7,7 @@ locals {
       IOTHUB_HOST_NAME           = var.iothub_host_name
       IOTHUB_EVENTHUB_NAME       = var.iothub_eventhub_name
       POSTGRES_CONNECTION_STRING = "@Microsoft.KeyVault(SecretUri=${data.azurerm_key_vault_secret.postgres_connection_string.versionless_id})"
+      IOT_HUB_CONNECTION_STRING  = "HostName=${azurerm_iothub.this.hostname};SharedAccessKeyName=${azurerm_iothub_shared_access_policy.service.name};SharedAccessKey=${azurerm_iothub_shared_access_policy.service.primary_key}"
       WORKOS_API_KEY             = "@Microsoft.KeyVault(SecretUri=${data.azurerm_key_vault_secret.workos_api_key.versionless_id})"
       WORKOS_CLIENT_ID           = "@Microsoft.KeyVault(SecretUri=${data.azurerm_key_vault_secret.workos_client_id.versionless_id})"
     },

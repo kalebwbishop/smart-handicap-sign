@@ -55,7 +55,7 @@ public sealed class DeviceTwinService : IDeviceTwinService, IDisposable
         if (registryManager is null)
         {
             _logger.LogWarning(
-                "IoT Hub device twin update skipped for device {DeviceId}; IotHubConnectionString is not configured.",
+                "IoT Hub device twin update skipped for device {DeviceId}; IOT_HUB_CONNECTION_STRING is not configured.",
                 deviceId);
             return new DeviceTwinUpdateResult(
                 DeviceTwinUpdateStatus.NotConfigured);
@@ -95,7 +95,7 @@ public sealed class DeviceTwinService : IDeviceTwinService, IDisposable
 
     private RegistryManager? CreateRegistryManager()
     {
-        var connectionString = _configuration["IotHubConnectionString"];
+        var connectionString = _configuration["IOT_HUB_CONNECTION_STRING"];
         if (string.IsNullOrWhiteSpace(connectionString))
         {
             return null;

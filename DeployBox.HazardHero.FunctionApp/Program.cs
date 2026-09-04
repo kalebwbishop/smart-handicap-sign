@@ -80,7 +80,15 @@ static string NormalizePostgresConnectionString(string connectionString)
         return connectionString;
     }
 
-    if (!Uri.TryCreate(connectionString, UriKind.Absolute, out var uri) ||
+    var schemeSeparator = connectionString.IndexOf("://", StringComparison.Ordinal);
+    var userInfoSeparator = connectionString.LastIndexOf('@');
+    if (schemeSeparator < 0 ||
+        userInfoSeparator <= schemeSeparator + 3 ||
+        !Uri.TryCreate(
+            connectionString[..(schemeSeparator + 3)] +
+                connectionString[(userInfoSeparator + 1)..],
+            UriKind.Absolute,
+            out var uri) ||
         string.IsNullOrWhiteSpace(uri.Host) ||
         string.IsNullOrWhiteSpace(uri.AbsolutePath))
     {
@@ -88,7 +96,8 @@ static string NormalizePostgresConnectionString(string connectionString)
             "POSTGRES_CONNECTION_STRING must be a valid PostgreSQL URI or Npgsql connection string.");
     }
 
-    var userInfo = uri.UserInfo.Split(':', 2);
+    var userInfo = connectionString[
+        (schemeSeparator + 3)..userInfoSeparator].Split(':', 2);
     if (userInfo.Length != 2 ||
         string.IsNullOrWhiteSpace(userInfo[0]) ||
         string.IsNullOrWhiteSpace(userInfo[1]))

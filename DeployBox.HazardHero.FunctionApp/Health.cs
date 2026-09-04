@@ -20,7 +20,7 @@ public class Health
         HttpRequest request)
     {
         var iotHubConfigured = !string.IsNullOrWhiteSpace(
-            _configuration["IotHubConnectionString"]);
+            _configuration["IOT_HUB_CONNECTION_STRING"]);
 
         var response = new HealthResponse(
             iotHubConfigured ? "healthy" : "degraded",
