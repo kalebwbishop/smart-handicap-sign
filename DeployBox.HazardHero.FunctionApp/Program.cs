@@ -38,7 +38,7 @@ static string BuildPostgresConnectionString(IConfiguration configuration)
     var fullConnectionString = configuration["POSTGRES_CONNECTION_STRING"];
     if (!string.IsNullOrWhiteSpace(fullConnectionString))
     {
-        return fullConnectionString;
+        return NormalizePostgresConnectionString(fullConnectionString);
     }
 
     var settings = new[]
@@ -70,4 +70,53 @@ static string BuildPostgresConnectionString(IConfiguration configuration)
     };
 
     return connectionString.ConnectionString;
+}
+
+static string NormalizePostgresConnectionString(string connectionString)
+{
+    if (!connectionString.StartsWith("postgres://", StringComparison.OrdinalIgnoreCase) &&
+        !connectionString.StartsWith("postgresql://", StringComparison.OrdinalIgnoreCase))
+    {
+        return connectionString;
+    }
+
+    if (!Uri.TryCreate(connectionString, UriKind.Absolute, out var uri) ||
+        string.IsNullOrWhiteSpace(uri.Host) ||
+        string.IsNullOrWhiteSpace(uri.AbsolutePath))
+    {
+        throw new InvalidOperationException(
+            "POSTGRES_CONNECTION_STRING must be a valid PostgreSQL URI or Npgsql connection string.");
+    }
+
+    var userInfo = uri.UserInfo.Split(':', 2);
+    if (userInfo.Length != 2 ||
+        string.IsNullOrWhiteSpace(userInfo[0]) ||
+        string.IsNullOrWhiteSpace(userInfo[1]))
+    {
+        throw new InvalidOperationException(
+            "PostgreSQL URI must include a username and password.");
+    }
+
+    var builder = new NpgsqlConnectionStringBuilder
+    {
+        Host = uri.Host,
+        Port = uri.IsDefaultPort ? 5432 : uri.Port,
+        Database = uri.AbsolutePath.TrimStart('/'),
+        Username = Uri.UnescapeDataString(userInfo[0]),
+        Password = Uri.UnescapeDataString(userInfo[1])
+    };
+
+    foreach (var queryPart in uri.Query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+    {
+        var keyValue = queryPart.Split('=', 2);
+        if (keyValue.Length == 2 &&
+            keyValue[0].Equals("sslmode", StringComparison.OrdinalIgnoreCase))
+        {
+            builder.SslMode = Enum.Parse<SslMode>(
+                Uri.UnescapeDataString(keyValue[1]),
+                ignoreCase: true);
+        }
+    }
+
+    return builder.ConnectionString;
 }
