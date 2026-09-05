@@ -39,9 +39,7 @@ resource "azurerm_iothub_endpoint_servicebus_queue" "signal_classification_reque
   name                = "sbq-signal-classification-requests"
   resource_group_name = azurerm_resource_group.this.name
   iothub_id           = azurerm_iothub.this.id
-  connection_string   = data.azurerm_servicebus_namespace_authorization_rule.hazard_hero_function.primary_connection_string
-  endpoint_uri        = "sb://${data.azurerm_servicebus_namespace.this.name}.servicebus.windows.net/"
-  entity_path         = "sbq-signal-classification-requests"
+  connection_string   = "${data.azurerm_servicebus_namespace_authorization_rule.hazard_hero_function.primary_connection_string};EntityPath=sbq-signal-classification-requests"
 }
 
 resource "azurerm_iothub_route" "signal_classification_requests" {
