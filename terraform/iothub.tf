@@ -29,17 +29,19 @@ resource "azurerm_iothub" "this" {
   }
 }
 
-data "azurerm_servicebus_namespace_authorization_rule" "hazard_hero_function" {
-  name                = "HazardHeroFunction"
-  namespace_name      = data.azurerm_servicebus_namespace.this.name
-  resource_group_name = data.azurerm_servicebus_namespace.this.resource_group_name
+resource "azurerm_servicebus_namespace_authorization_rule" "iot_hub_route" {
+  name         = "IoTHubRoute"
+  namespace_id = data.azurerm_servicebus_namespace.this.id
+  listen       = false
+  manage       = false
+  send         = true
 }
 
 resource "azurerm_iothub_endpoint_servicebus_queue" "signal_classification_requests" {
   name                = "sbq-signal-classification-requests"
   resource_group_name = azurerm_resource_group.this.name
   iothub_id           = azurerm_iothub.this.id
-  connection_string   = "${data.azurerm_servicebus_namespace_authorization_rule.hazard_hero_function.primary_connection_string};EntityPath=sbq-signal-classification-requests"
+  connection_string   = "${azurerm_servicebus_namespace_authorization_rule.iot_hub_route.primary_connection_string};EntityPath=sbq-signal-classification-requests"
 }
 
 resource "azurerm_iothub_route" "signal_classification_requests" {
