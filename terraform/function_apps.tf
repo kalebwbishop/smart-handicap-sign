@@ -1,15 +1,16 @@
 locals {
   api_function_app_settings = merge(
     {
-      FRONTEND_URL               = var.frontend_url
-      WORKOS_REDIRECT_URI        = var.workos_redirect_uri
-      CORS_ORIGIN                = var.cors_origin
-      IOTHUB_HOST_NAME           = var.iothub_host_name
-      IOTHUB_EVENTHUB_NAME       = var.iothub_eventhub_name
-      POSTGRES_CONNECTION_STRING = "@Microsoft.KeyVault(SecretUri=${data.azurerm_key_vault_secret.postgres_connection_string.versionless_id})"
-      IOT_HUB_CONNECTION_STRING  = "HostName=${azurerm_iothub.this.hostname};SharedAccessKeyName=${azurerm_iothub_shared_access_policy.service.name};SharedAccessKey=${azurerm_iothub_shared_access_policy.service.primary_key}"
-      WORKOS_API_KEY             = "@Microsoft.KeyVault(SecretUri=${data.azurerm_key_vault_secret.workos_api_key.versionless_id})"
-      WORKOS_CLIENT_ID           = "@Microsoft.KeyVault(SecretUri=${data.azurerm_key_vault_secret.workos_client_id.versionless_id})"
+      APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.this.connection_string
+      FRONTEND_URL                          = var.frontend_url
+      WORKOS_REDIRECT_URI                   = var.workos_redirect_uri
+      CORS_ORIGIN                           = var.cors_origin
+      IOTHUB_HOST_NAME                      = var.iothub_host_name
+      IOTHUB_EVENTHUB_NAME                  = var.iothub_eventhub_name
+      POSTGRES_CONNECTION_STRING            = "@Microsoft.KeyVault(SecretUri=${data.azurerm_key_vault_secret.postgres_connection_string.versionless_id})"
+      IOT_HUB_CONNECTION_STRING             = "HostName=${azurerm_iothub.this.hostname};SharedAccessKeyName=${azurerm_iothub_shared_access_policy.service.name};SharedAccessKey=${azurerm_iothub_shared_access_policy.service.primary_key}"
+      WORKOS_API_KEY                        = "@Microsoft.KeyVault(SecretUri=${data.azurerm_key_vault_secret.workos_api_key.versionless_id})"
+      WORKOS_CLIENT_ID                      = "@Microsoft.KeyVault(SecretUri=${data.azurerm_key_vault_secret.workos_client_id.versionless_id})"
     },
     var.service_bus_connection_string != null ? {
       ServiceBusConnection = var.service_bus_connection_string
@@ -18,12 +19,21 @@ locals {
 
   ai_function_app_settings = merge(
     {
-      MODEL_BLOB_URL = var.model_blob_url
+      APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.this.connection_string
+      MODEL_BLOB_URL                        = var.model_blob_url
     },
     var.service_bus_connection_string != null ? {
       ServiceBusConnection = var.service_bus_connection_string
     } : {}
   )
+}
+
+resource "azurerm_application_insights" "this" {
+  name                = "appi-smart-handicap-sign"
+  location            = azurerm_resource_group.this.location
+  resource_group_name = azurerm_resource_group.this.name
+  application_type    = "web"
+  workspace_id        = azurerm_log_analytics_workspace.this.id
 }
 
 data "azurerm_storage_account" "model" {
