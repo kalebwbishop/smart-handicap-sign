@@ -1,31 +1,23 @@
 locals {
-  api_function_app_settings = merge(
-    {
-      APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.this.connection_string
-      FRONTEND_URL                          = var.frontend_url
-      WORKOS_REDIRECT_URI                   = var.workos_redirect_uri
-      CORS_ORIGIN                           = var.cors_origin
-      IOTHUB_HOST_NAME                      = var.iothub_host_name
-      IOTHUB_EVENTHUB_NAME                  = var.iothub_eventhub_name
-      POSTGRES_CONNECTION_STRING            = "@Microsoft.KeyVault(SecretUri=${data.azurerm_key_vault_secret.postgres_connection_string.versionless_id})"
-      IOT_HUB_CONNECTION_STRING             = "HostName=${azurerm_iothub.this.hostname};SharedAccessKeyName=${azurerm_iothub_shared_access_policy.service.name};SharedAccessKey=${azurerm_iothub_shared_access_policy.service.primary_key}"
-      WORKOS_API_KEY                        = "@Microsoft.KeyVault(SecretUri=${data.azurerm_key_vault_secret.workos_api_key.versionless_id})"
-      WORKOS_CLIENT_ID                      = "@Microsoft.KeyVault(SecretUri=${data.azurerm_key_vault_secret.workos_client_id.versionless_id})"
-    },
-    var.service_bus_connection_string != null ? {
-      ServiceBusConnection = var.service_bus_connection_string
-    } : {}
-  )
+  api_function_app_settings = {
+    APPLICATIONINSIGHTS_CONNECTION_STRING         = azurerm_application_insights.this.connection_string
+    FRONTEND_URL                                  = var.frontend_url
+    WORKOS_REDIRECT_URI                           = var.workos_redirect_uri
+    CORS_ORIGIN                                   = var.cors_origin
+    IOTHUB_HOST_NAME                              = var.iothub_host_name
+    IOTHUB_EVENTHUB_NAME                          = var.iothub_eventhub_name
+    POSTGRES_CONNECTION_STRING                    = "@Microsoft.KeyVault(SecretUri=${data.azurerm_key_vault_secret.postgres_connection_string.versionless_id})"
+    IOT_HUB_CONNECTION_STRING                     = "HostName=${azurerm_iothub.this.hostname};SharedAccessKeyName=${azurerm_iothub_shared_access_policy.service.name};SharedAccessKey=${azurerm_iothub_shared_access_policy.service.primary_key}"
+    WORKOS_API_KEY                                = "@Microsoft.KeyVault(SecretUri=${data.azurerm_key_vault_secret.workos_api_key.versionless_id})"
+    WORKOS_CLIENT_ID                              = "@Microsoft.KeyVault(SecretUri=${data.azurerm_key_vault_secret.workos_client_id.versionless_id})"
+    ServiceBusConnection__fullyQualifiedNamespace = "${data.azurerm_servicebus_namespace.this.name}.servicebus.windows.net"
+  }
 
-  ai_function_app_settings = merge(
-    {
-      APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.this.connection_string
-      MODEL_BLOB_URL                        = var.model_blob_url
-    },
-    var.service_bus_connection_string != null ? {
-      ServiceBusConnection = var.service_bus_connection_string
-    } : {}
-  )
+  ai_function_app_settings = {
+    APPLICATIONINSIGHTS_CONNECTION_STRING         = azurerm_application_insights.this.connection_string
+    MODEL_BLOB_URL                                = var.model_blob_url
+    ServiceBusConnection__fullyQualifiedNamespace = "${data.azurerm_servicebus_namespace.this.name}.servicebus.windows.net"
+  }
 }
 
 resource "azurerm_application_insights" "this" {
@@ -34,6 +26,11 @@ resource "azurerm_application_insights" "this" {
   resource_group_name = azurerm_resource_group.this.name
   application_type    = "web"
   workspace_id        = azurerm_log_analytics_workspace.this.id
+}
+
+data "azurerm_servicebus_namespace" "this" {
+  name                = "sbns-hazard-hero-prod"
+  resource_group_name = azurerm_resource_group.this.name
 }
 
 data "azurerm_storage_account" "model" {
@@ -119,5 +116,23 @@ resource "azurerm_role_assignment" "api_key_vault_secrets_user" {
 resource "azurerm_role_assignment" "ai_model_blob_reader" {
   scope                = data.azurerm_storage_account.model.id
   role_definition_name = "Storage Blob Data Reader"
+  principal_id         = azurerm_function_app_flex_consumption.ai.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "api_servicebus_receiver" {
+  scope                = data.azurerm_servicebus_namespace.this.id
+  role_definition_name = "Azure Service Bus Data Receiver"
+  principal_id         = azurerm_function_app_flex_consumption.api.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "ai_servicebus_receiver" {
+  scope                = data.azurerm_servicebus_namespace.this.id
+  role_definition_name = "Azure Service Bus Data Receiver"
+  principal_id         = azurerm_function_app_flex_consumption.ai.identity[0].principal_id
+}
+
+resource "azurerm_role_assignment" "ai_servicebus_sender" {
+  scope                = data.azurerm_servicebus_namespace.this.id
+  role_definition_name = "Azure Service Bus Data Sender"
   principal_id         = azurerm_function_app_flex_consumption.ai.identity[0].principal_id
 }

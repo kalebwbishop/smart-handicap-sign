@@ -8,8 +8,14 @@ resource "azurerm_iothub" "this" {
   min_tls_version              = "1.2"
   name                         = "hazardhero-iothub"
   resource_group_name          = azurerm_resource_group.this.name
-  route                        = []
-  tags                         = {}
+  route = [{
+    condition      = "true"
+    enabled        = true
+    endpoint_names = ["sbq-signal-classification-requests"]
+    name           = "sbq-signal-classification-requests"
+    source         = "DeviceMessages"
+  }]
+  tags = {}
   cloud_to_device {
     default_ttl        = "PT1H"
     max_delivery_count = 10
