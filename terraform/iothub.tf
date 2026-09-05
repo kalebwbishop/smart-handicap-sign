@@ -1,5 +1,4 @@
 resource "azurerm_iothub" "this" {
-  endpoint                     = []
   enrichment                   = []
   event_hub_partition_count    = 2
   event_hub_retention_in_days  = 1
@@ -8,14 +7,7 @@ resource "azurerm_iothub" "this" {
   min_tls_version              = "1.2"
   name                         = "hazardhero-iothub"
   resource_group_name          = azurerm_resource_group.this.name
-  route = [{
-    condition      = "true"
-    enabled        = true
-    endpoint_names = ["sbq-signal-classification-requests"]
-    name           = "sbq-signal-classification-requests"
-    source         = "DeviceMessages"
-  }]
-  tags = {}
+  tags                         = {}
   cloud_to_device {
     default_ttl        = "PT1H"
     max_delivery_count = 10
@@ -35,6 +27,31 @@ resource "azurerm_iothub" "this" {
     capacity = 1
     name     = "F1"
   }
+}
+
+data "azurerm_servicebus_namespace_authorization_rule" "hazard_hero_function" {
+  name                = "HazardHeroFunction"
+  namespace_name      = data.azurerm_servicebus_namespace.this.name
+  resource_group_name = data.azurerm_servicebus_namespace.this.resource_group_name
+}
+
+resource "azurerm_iothub_endpoint_servicebus_queue" "signal_classification_requests" {
+  name                = "sbq-signal-classification-requests"
+  resource_group_name = azurerm_resource_group.this.name
+  iothub_id           = azurerm_iothub.this.id
+  connection_string   = data.azurerm_servicebus_namespace_authorization_rule.hazard_hero_function.primary_connection_string
+  endpoint_uri        = "sb://${data.azurerm_servicebus_namespace.this.name}.servicebus.windows.net/"
+  entity_path         = "sbq-signal-classification-requests"
+}
+
+resource "azurerm_iothub_route" "signal_classification_requests" {
+  name                = "sbq-signal-classification-requests"
+  resource_group_name = azurerm_resource_group.this.name
+  iothub_name         = azurerm_iothub.this.name
+  source              = "DeviceMessages"
+  condition           = "true"
+  endpoint_names      = [azurerm_iothub_endpoint_servicebus_queue.signal_classification_requests.name]
+  enabled             = true
 }
 
 
